@@ -6,6 +6,7 @@
 *.xlsx
 *.ipynb-test
 *.tsv
+*.txt
 
 
 
