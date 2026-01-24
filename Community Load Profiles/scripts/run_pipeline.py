@@ -1,8 +1,8 @@
 from __future__ import annotations
 import argparse
 from pathlib import Path
-from microgrid_profiles.config import load_config
-from microgrid_profiles.pipeline import run_pipeline
+from src.microgrid_profiles.config import load_config
+from src.microgrid_profiles.pipeline import run_pipeline
 
 def main() -> None:
     ap = argparse.ArgumentParser()
