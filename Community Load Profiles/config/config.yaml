@@ -1,0 +1,77 @@
+state: "DC"
+upgrade_num: 0
+input_root: "../data/input"
+output_root: "../data/output"
+run_id: null
+seed: 12345
+sample_runs: 50
+include_public: false
+adjustment_multiplier_off: true
+
+total_buildings: 50
+multifamily_buildings_percent_of_total: 1.0
+single_family_buildings_percent_of_total: 0.0
+
+multifamily_building_names:
+  - "Mobile Home"
+  - "Single-Family Detached"
+  - "Single-Family Attached"
+  - "Multi-Family with 2 - 4 Units"
+  - "Multi-Family with 5+ Units"
+
+multifamily_buildings_percentages:
+  "Mobile Home": 0.0
+  "Single-Family Detached": 0.0
+  "Single-Family Attached": 0.0
+  "Multi-Family with 2 - 4 Units": 0.65
+  "Multi-Family with 5+ Units": 0.35
+
+single_family:
+  max_footprint_area: 3000
+  electric_hp_percent: 0.4
+
+outputs:
+  write_csv: true
+  write_txt: true
+  write_xlsx: true
+  write_plots: true
+
+resstock_characteristics_xlsx: "resstock/building_characteristics/{state}_upgrade{upgrade_num}.xlsx"
+comstock_characteristics_xlsx: "comstock/building_characteristics/{state}_upgrade{upgrade_num}_agg.xlsx"
+
+resstock_timeseries_dir: "resstock/timeseries_individual_buildings/upgrade={upgrade_num}/state={state}"
+comstock_timeseries_dir: "comstock/timeseries_individual_buildings/upgrade={upgrade_num}/state={state}"
+
+columns:
+  building_id_resstock: "bldg_id"
+  building_id_comstock: "bldg_id"
+  resstock_building_type: "in.geometry_building_type_height"
+  resstock_units_mf: "in.geometry_building_number_units_mf"
+  resstock_sqft: "in.geometry_floor_area"
+  comstock_building_type: "in.comstock_building_type"
+  comstock_sqft: "in.sqft"
+  electricity_kwh: "out.electricity.total.energy_consumption"
+
+multifamily_filter:
+  - "Multi-Family with 2 - 4 Units"
+  - "Multi-Family with 5+ Units"
+
+performance:
+  fast_io: false
+  max_workers: 8
+  prune_parquet_columns: true
+
+weather:
+  enabled: false
+  preferred_units: "C"
+  files: []
+  source_labels: []
+
+profiles:
+  write_typical_day_by_month: true
+  include_by_building_type: true
+  include_sector_comparison: true
+  average_across_runs: true
+  write_long_csv: true
+  write_pivot_csv: true
+  workbook_include_run0: true
