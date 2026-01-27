@@ -52,16 +52,16 @@ class ColumnConfig:
     resstock_building_type: str
     resstock_units_mf: str
     resstock_sqft: str
+    resstock_electricity_kwh: str
     comstock_building_type: str
     comstock_sqft: str
+    comstock_electricity_kwh: str
     electricity_kwh: str
-
 
 @dataclass(frozen=True)
 class SingleFamilyConfig:
-    max_footprint_area: float = 3000
-    electric_hp_percent: float = 0.4
-
+    max_footprint_area: float = 2000
+    electric_hp_percent: float = 0.0
 
 @dataclass(frozen=True)
 class NeighborhoodConfig:
