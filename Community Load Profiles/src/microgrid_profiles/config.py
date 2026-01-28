@@ -166,8 +166,10 @@ def load_config(path: str | Path) -> ScenarioConfig:
         resstock_building_type=_require(columns_raw, "resstock_building_type"),
         resstock_units_mf=_require(columns_raw, "resstock_units_mf"),
         resstock_sqft=_require(columns_raw, "resstock_sqft"),
+        resstock_electricity_kwh=_require(columns_raw, "resstock_electricity_kwh"),
         comstock_building_type=_require(columns_raw, "comstock_building_type"),
         comstock_sqft=_require(columns_raw, "comstock_sqft"),
+        comstock_electricity_kwh=_require(columns_raw, "comstock_electricity_kwh"),
         electricity_kwh=_require(columns_raw, "electricity_kwh"),
     )
 
