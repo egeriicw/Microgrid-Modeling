@@ -5,8 +5,8 @@ from .config import ScenarioConfig
 
 def merge_timeseries(cfg: ScenarioConfig, ts: pd.DataFrame, chars: pd.DataFrame, id_col: str) -> pd.DataFrame:
     merged = ts.merge(chars, on=id_col, how="left")
-    merged["time"] = pd.to_datetime(merged.index)
-    return merged.set_index("time")
+    merged["timestamp"] = pd.to_datetime(merged["timestamp"])
+    return merged.set_index("timestamp")
 
 def apply_multifamily_adjustments(cfg: ScenarioConfig, df: pd.DataFrame) -> pd.DataFrame:
     c = cfg.columns
@@ -28,29 +28,30 @@ def agg_daily_sum(df: pd.DataFrame) -> pd.DataFrame:
     return df.resample("D").sum(numeric_only=True) if not df.empty else df
 
 def agg_monthly_sum(df: pd.DataFrame) -> pd.DataFrame:
-    return df.resample("M").sum(numeric_only=True) if not df.empty else df
+    return df.resample("ME").sum(numeric_only=True) if not df.empty else df
 
 def agg_daily_mean(df: pd.DataFrame, col: str) -> pd.DataFrame:
     return df[[col]].resample("D").mean(numeric_only=True) if (not df.empty and col in df.columns) else pd.DataFrame(index=df.index)
 
 def agg_monthly_mean(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    return df[[col]].resample("M").mean(numeric_only=True) if (not df.empty and col in df.columns) else pd.DataFrame(index=df.index)
+    return df[[col]].resample("ME").mean(numeric_only=True) if (not df.empty and col in df.columns) else pd.DataFrame(index=df.index)
 
-def build_total(res_h: pd.DataFrame, com_h: pd.DataFrame, kwh_col: str) -> pd.DataFrame:
+def build_total(res_h: pd.DataFrame, com_h: pd.DataFrame, res_kwh_col: str, com_kwh_col: str, tot_kwh_col: str = "Total") -> pd.DataFrame:
+    print(f'Build Total.')
     parts = []
-    if kwh_col in res_h.columns: parts.append(res_h[kwh_col])
-    if kwh_col in com_h.columns: parts.append(com_h[kwh_col])
+    if res_kwh_col in res_h.columns: parts.append(res_h[res_kwh_col])
+    if com_kwh_col in com_h.columns: parts.append(com_h[com_kwh_col])
     if not parts: return pd.DataFrame()
     total = pd.concat(parts, axis=1).fillna(0.0).sum(axis=1)
-    return pd.DataFrame({kwh_col: total})
+    return pd.DataFrame({tot_kwh_col: total})
 
 def build_compiled(idx: pd.DatetimeIndex) -> pd.DataFrame:
     return pd.DataFrame(index=idx)
 
-def add_run_cols(compiled: pd.DataFrame, i: int, res_h: pd.DataFrame, com_h: pd.DataFrame, kwh_col: str) -> pd.DataFrame:
+def add_run_cols(compiled: pd.DataFrame, i: int, res_h: pd.DataFrame, com_h: pd.DataFrame, res_kwh_col: str, com_kwh_col: str) -> pd.DataFrame:
     out = compiled.copy()
-    out[f"Residential{i}"] = res_h[kwh_col].values
-    out[f"Commercial{i}"] = com_h[kwh_col].values
+    out[f"Residential{i}"] = res_h[res_kwh_col].values
+    out[f"Commercial{i}"] = com_h[com_kwh_col].values
     return out
 
 def avg_from_compiled(compiled: pd.DataFrame):

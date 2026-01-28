@@ -42,6 +42,7 @@ def run_pipeline(cfg: ScenarioConfig) -> Path:
     c = cfg.columns
 
     for i in range(cfg.sample_runs):
+        print(f'Run {i} of {cfg.sample_runs}')
         run_dir = paths.scenario_output_dir / f"Run-{i}"
         ensure_dir(run_dir)
 
@@ -65,27 +66,27 @@ def run_pipeline(cfg: ScenarioConfig) -> Path:
         com_m = merge_timeseries(cfg, com_ts, com_subset, c.building_id_comstock)
 
         res_m = apply_multifamily_adjustments(cfg, res_m)
-        if c.electricity_kwh in res_m.columns:
-            res_m[c.electricity_kwh] = res_m[c.electricity_kwh] * float(mult[i])
+        if c.resstock_electricity_kwh in res_m.columns:
+            res_m[c.resstock_electricity_kwh] = res_m[c.resstock_electricity_kwh] * float(mult[i])
 
         res_h_full = resample_hourly_sum(res_m)
         com_h_full = resample_hourly_sum(com_m)
 
-        res_h = res_h_full[[c.electricity_kwh]] if c.electricity_kwh in res_h_full.columns else res_h_full
-        com_h = com_h_full[[c.electricity_kwh]] if c.electricity_kwh in com_h_full.columns else com_h_full
-        tot_h = build_total(res_h, com_h, c.electricity_kwh)
+        res_h = res_h_full[[c.resstock_electricity_kwh]] if c.resstock_electricity_kwh in res_h_full.columns else res_h_full
+        com_h = com_h_full[[c.comstock_electricity_kwh]] if c.comstock_electricity_kwh in com_h_full.columns else com_h_full
+        tot_h = build_total(res_h, com_h, c.resstock_electricity_kwh, c.comstock_electricity_kwh)
 
         if weather_df is not None:
             res_h = res_h.join(weather_df, how="left")
             com_h = com_h.join(weather_df, how="left")
             tot_h = tot_h.join(weather_df, how="left")
 
-        res_d = agg_daily_sum(res_h[[c.electricity_kwh]]) if c.electricity_kwh in res_h.columns else agg_daily_sum(res_h)
-        com_d = agg_daily_sum(com_h[[c.electricity_kwh]]) if c.electricity_kwh in com_h.columns else agg_daily_sum(com_h)
+        res_d = agg_daily_sum(res_h[[c.resstock_electricity_kwh]]) if c.resstock_electricity_kwh in res_h.columns else agg_daily_sum(res_h)
+        com_d = agg_daily_sum(com_h[[c.comstock_electricity_kwh]]) if c.comstock_electricity_kwh in com_h.columns else agg_daily_sum(com_h)
         tot_d = agg_daily_sum(tot_h[[c.electricity_kwh]]) if c.electricity_kwh in tot_h.columns else agg_daily_sum(tot_h)
 
-        res_mo = agg_monthly_sum(res_h[[c.electricity_kwh]]) if c.electricity_kwh in res_h.columns else agg_monthly_sum(res_h)
-        com_mo = agg_monthly_sum(com_h[[c.electricity_kwh]]) if c.electricity_kwh in com_h.columns else agg_monthly_sum(com_h)
+        res_mo = agg_monthly_sum(res_h[[c.resstock_electricity_kwh]]) if c.electricity_kwh in res_h.columns else agg_monthly_sum(res_h)
+        com_mo = agg_monthly_sum(com_h[[c.comstock_electricity_kwh]]) if c.electricity_kwh in com_h.columns else agg_monthly_sum(com_h)
         tot_mo = agg_monthly_sum(tot_h[[c.electricity_kwh]]) if c.electricity_kwh in tot_h.columns else agg_monthly_sum(tot_h)
 
         if "outdoor_air_temperature" in tot_h.columns:
@@ -96,7 +97,7 @@ def run_pipeline(cfg: ScenarioConfig) -> Path:
 
         if compiled is None:
             compiled = build_compiled(res_h.index)
-        compiled = add_run_cols(compiled, i, res_h, com_h, c.electricity_kwh)
+        compiled = add_run_cols(compiled, i, res_h, com_h, c.resstock_electricity_kwh, c.comstock_electricity_kwh)
 
         if cfg.outputs.write_csv:
             write_csv(res_h, run_dir / "residential_community_load_profile_hourly.csv")
@@ -109,9 +110,9 @@ def run_pipeline(cfg: ScenarioConfig) -> Path:
             write_csv(com_mo, run_dir / "commercial_community_load_profile_monthly.csv")
             write_csv(tot_mo, run_dir / "total_community_load_profile_monthly.csv")
 
-        if cfg.profiles.write_typical_day_by_month and c.electricity_kwh in res_h.columns and c.electricity_kwh in com_h.columns:
-            res_long, res_pivot = typical_day_monthly(res_h[c.electricity_kwh], "residential")
-            com_long, com_pivot = typical_day_monthly(com_h[c.electricity_kwh], "commercial")
+        if cfg.profiles.write_typical_day_by_month and c.resstock_electricity_kwh in res_h.columns and c.comstock_electricity_kwh in com_h.columns:
+            res_long, res_pivot = typical_day_monthly(res_h[c.resstock_electricity_kwh], "residential")
+            com_long, com_pivot = typical_day_monthly(com_h[c.comstock_electricity_kwh], "commercial")
             if cfg.outputs.write_csv and cfg.profiles.write_long_csv:
                 write_csv(res_long, run_dir / "typical_day_monthly_residential_long.csv")
                 write_csv(com_long, run_dir / "typical_day_monthly_commercial_long.csv")
