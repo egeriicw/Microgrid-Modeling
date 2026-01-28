@@ -12,11 +12,11 @@ from .transforms import merge_timeseries, apply_multifamily_adjustments, resampl
 from .viz import plot_hourly
 from .weather import read_weather_csv_auto
 
-def _run_id():
+def _run_id() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H%M%S")
 
 def run_pipeline(cfg: ScenarioConfig) -> Path:
-    run_id = cfg.run_id or _run_id()
+    run_id: str = cfg.run_id or _run_id()
     paths = resolve_paths(cfg, run_id)
     ensure_dir(paths.scenario_output_dir)
 
