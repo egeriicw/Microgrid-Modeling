@@ -1,0 +1,26 @@
+# OEDI input source manifest (placeholders)
+#
+# Fill these in later with the actual S3 bucket/prefixes used by your pipeline.
+# The download scripts will read this manifest to decide what to sync.
+#
+# Example:
+# bucket: oedi-data-lake
+# datasets:
+#   resstock:
+#     prefix: path/to/resstock/
+#     include:
+#       - "**/*.xlsx"
+#       - "**/*.parquet"
+
+bucket: ""
+
+datasets:
+  resstock:
+    prefix: ""
+    include: []
+  comstock:
+    prefix: ""
+    include: []
+  weather:
+    prefix: ""
+    include: []
