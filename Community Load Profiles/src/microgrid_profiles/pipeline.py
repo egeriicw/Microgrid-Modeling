@@ -9,7 +9,7 @@ from .io import read_characteristics_xlsx, read_many_building_parquets, read_man
 from .paths import ensure_dir, resolve_paths
 from .selection import building_parquet_path, construct_neighborhood_residential, construct_neighborhood_commercial
 from .transforms import merge_timeseries, apply_multifamily_adjustments, resample_hourly_sum, agg_daily_sum, agg_monthly_sum, agg_daily_mean, agg_monthly_mean, build_total, build_compiled, add_run_cols, avg_from_compiled, typical_day_monthly
-from .viz import plot_hourly
+from .viz import compute_ldc_df, plot_hourly, plot_ldc_stacked
 from .weather import read_weather_csv_auto
 
 def _run_id() -> str:
@@ -109,6 +109,26 @@ def run_pipeline(cfg: ScenarioConfig) -> Path:
             write_csv(res_mo, run_dir / "residential_community_load_profile_monthly.csv")
             write_csv(com_mo, run_dir / "commercial_community_load_profile_monthly.csv")
             write_csv(tot_mo, run_dir / "total_community_load_profile_monthly.csv")
+
+        # Load duration curves (LDCs): stacked Residential + Commercial by Total.
+        # Generate hourly/daily/monthly per run.
+        if c.resstock_electricity_kwh in res_h.columns and c.comstock_electricity_kwh in com_h.columns:
+            ldcs = {
+                "hourly": (res_h[c.resstock_electricity_kwh], com_h[c.comstock_electricity_kwh]),
+                "daily": (res_d[c.resstock_electricity_kwh], com_d[c.comstock_electricity_kwh]),
+                "monthly": (res_mo[c.resstock_electricity_kwh], com_mo[c.comstock_electricity_kwh]),
+            }
+
+            for suffix, (res_s, com_s) in ldcs.items():
+                ldc = compute_ldc_df(res_s, com_s)
+                if cfg.outputs.write_csv:
+                    write_csv(ldc, run_dir / "ldc" / f"ldc_{suffix}.csv")
+                if cfg.outputs.write_plots:
+                    plot_ldc_stacked(
+                        ldc,
+                        title=f"Run {i} {suffix.capitalize()} Load Duration Curve",
+                        out_path=run_dir / "plots" / f"ldc_{suffix}.png",
+                    )
 
         if cfg.profiles.write_typical_day_by_month and c.resstock_electricity_kwh in res_h.columns and c.comstock_electricity_kwh in com_h.columns:
             res_long, res_pivot = typical_day_monthly(res_h[c.resstock_electricity_kwh], "residential")
