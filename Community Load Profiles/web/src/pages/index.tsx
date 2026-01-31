@@ -1,4 +1,4 @@
-import { Container, Stack, Typography } from '@mui/material';
+import { Button, Container, Stack, Typography } from '@mui/material';
 
 import { AppShell } from '@/components/AppShell';
 
@@ -7,11 +7,15 @@ export default function HomePage() {
     <AppShell>
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Stack spacing={2}>
-          <Typography variant="h4">Microgrid Run Browser</Typography>
+          <Typography variant="h4">Microgrid Modeling</Typography>
           <Typography color="text.secondary">
-            This is the Next.js (TypeScript, Pages Router) foundation. Next PRs will add config editing,
-            async run launch/status, and D3 charts.
+            Start here:
           </Typography>
+          <Stack direction="row" spacing={2}>
+            <Button variant="contained" href="/configs">
+              Configs
+            </Button>
+          </Stack>
         </Stack>
       </Container>
     </AppShell>
