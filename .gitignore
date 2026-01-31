@@ -226,3 +226,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Community Load Profiles web
+Community Load Profiles/web/node_modules/
+Community Load Profiles/web/.next/
+Community Load Profiles/web/out/
+Community Load Profiles/web/dist/
