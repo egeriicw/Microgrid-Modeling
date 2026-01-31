@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .settings import settings
 
+# Engine is created from DATABASE_URL. Tests can override DATABASE_URL before import.
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

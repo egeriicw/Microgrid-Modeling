@@ -17,8 +17,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# No models in PR1; PR2 will add metadata.
-target_metadata = None
+from microgrid_api.models import Base
+
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
