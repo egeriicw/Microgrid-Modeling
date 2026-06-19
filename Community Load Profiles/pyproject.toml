@@ -11,5 +11,24 @@ dependencies = [
     "pandas>=2.3.3",
     "pvlib>=0.13.1",
     "pyarrow>=22.0.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pyyaml>=6.0",
+    "scipy>=1.13",
     "xlsxwriter>=3.2.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: requires parquet data files (deselect with -m 'not integration')",
 ]
