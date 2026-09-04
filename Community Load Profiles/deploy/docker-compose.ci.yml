@@ -1,0 +1,25 @@
+# CI overrides — layered on top of docker-compose.yml:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml up -d
+# Uses the committed fixture dataset and the mock runner so the compose-smoke
+# and e2e jobs run without OEDI data. See docs/infrastructure.md §6.
+services:
+  worker:
+    environment:
+      MICROGRID_RUNNER_MODE: mock
+    volumes:
+      - ../tests/fixtures/data:/data:ro
+
+  api:
+    environment:
+      MICROGRID_RUNNER_MODE: mock
+      MAX_RUNS_CEILING: "20"
+
+  db:
+    healthcheck:
+      interval: 2s
+      retries: 60
+
+  redis:
+    healthcheck:
+      interval: 2s
+      retries: 60
