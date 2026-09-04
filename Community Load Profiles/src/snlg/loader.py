@@ -20,10 +20,26 @@ RESSTOCK_KWH_COL = "out.electricity.total.energy_consumption..kwh"
 COMSTOCK_KWH_COL = "out.electricity.total.energy_consumption"
 
 
+def _no_extension_types_mapper(extension_name):
+    """Map unknown extension types to None, using storage type instead."""
+    return None
+
+
 @functools.lru_cache(maxsize=None)
 def _load_parquet_cached(path: str) -> pd.DataFrame:
-    """Load a parquet file and cache it by path string."""
-    return pd.read_parquet(path)
+    """Load a parquet file and cache it by path string.
+
+    Handles PyArrow extension type errors by falling back to reading
+    with a types_mapper that uses storage types for unknown extensions.
+    """
+    try:
+        return pd.read_parquet(path)
+    except Exception as e:
+        if "type extension" in str(e) or "ExtensionType" in str(e):
+            import pyarrow.parquet as pq
+            table = pq.read_table(path, types_mapper=_no_extension_types_mapper)
+            return table.to_pandas()
+        raise
 
 
 def _resolve_parquet_path(
