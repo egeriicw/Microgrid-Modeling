@@ -1,6 +1,6 @@
 scenario:
   name: 
-    - "DC Multifamily Baseline"
+    - "DC Multifamily Baseline 2"
   description: 
     - "100% multifamily residential neighborhood in Washington DC. Baseline (upgrade=0), no perturbations, fixed 50 runs. Matches the original notebook configuration for parity testing."
 
@@ -19,12 +19,20 @@ data:
   background_dir: ../data/background
 
 composition:
-  total_buildings: 10
+  total_buildings: 50
   method: dirichlet          # or uniform_renorm
   dirichlet_concentration: 5.0
   categories:
+    single_family_detached:
+      min_fraction: 0.20
+      max_fraction: 0.30
+      source: resstock
+    single_family_attached:
+      min_fraction: 0.20
+      max_fraction: 0.30
+      source: resstock
     mf_small:
-      min_fraction: 0.60
+      min_fraction: 0.10
       max_fraction: 0.85
       source: resstock
     mf_mid:
@@ -32,7 +40,7 @@ composition:
       max_fraction: 0.40
       source: resstock
     mf_large:
-      min_fraction: 0.00
+      min_fraction: 0.05
       max_fraction: 0.10
       source: resstock
     commercial_private:
@@ -41,6 +49,24 @@ composition:
 
 archetype_filters:
   resstock:
+    single_family_detached:
+      building_type_heights:
+        - "Single-Family Detached"
+      arealimit: 2000
+      garage: false
+      heatpump: 0.1
+      electric_vehicle: 0.1
+      solar_pv: 0.1
+      require_data_complete: true
+    single_family_attached:
+      building_type_heights:
+        - "Single-Family Attached"
+      arealimit: 2000
+      garage: false
+      heatpump: 0.1
+      electric_vehicle: 0.1
+      solar_pv: 0.1
+      require_data_complete: true
     mf_small:
       building_type_heights:
         - "Multi-Family with 2 - 4 Units"
@@ -86,7 +112,7 @@ feasibility:
         max: 0.80
 
 perturbation:
-  enabled: false             # matches original notebook; flip to true to activate
+  enabled: true             # matches original notebook; flip to true to activate
   max_temporal_shift_hours: 2
   energy_tolerance: 0.05
   end_use_factors:
@@ -100,9 +126,9 @@ perturbation:
       sigma: 0.08
 
 ensemble:
-  mode: fixed                # or adaptive
-  min_runs: 20
-  max_runs: 50
+  mode: adaptive                # or adaptive
+  min_runs: 50
+  max_runs: 300
   check_every: 10
 
 convergence:

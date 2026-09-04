@@ -10,7 +10,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from snlg._types import ArchetypePool, BuildingId, BuildingSelection, NeighborhoodComposition
+from snlg._types import (
+    ArchetypePool, 
+    BuildingId, 
+    BuildingSelection, 
+    NeighborhoodComposition,
+)
 from snlg.config import ScenarioConfig
 
 
