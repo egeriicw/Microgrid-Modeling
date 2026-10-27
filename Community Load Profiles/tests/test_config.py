@@ -77,3 +77,18 @@ ensemble:
     assert cfg.composition.total_buildings == 20
     assert cfg.composition.method == "uniform_renorm"
     assert cfg.ensemble.max_runs == 10
+
+
+def test_validate_config_accepts_all_fixed_count_composition():
+    """A GIS-derived neighborhood fixes every category; no stochastic bounds apply."""
+    from snlg.config import CategoryBounds, CompositionConfig, ScenarioConfig, validate_config
+
+    cfg = ScenarioConfig(name="gis")
+    cfg.composition = CompositionConfig(
+        total_buildings=7,
+        categories={
+            "mf_small": CategoryBounds(fixed_count=5, source="resstock"),
+            "commercial_private": CategoryBounds(fixed_count=2, source="comstock"),
+        },
+    )
+    validate_config(cfg)  # must not raise

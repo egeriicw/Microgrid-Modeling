@@ -14,6 +14,8 @@ building stock.
 
 ## Documentation
 
+- [`docs/prd-suite-4d.md`](./docs/prd-suite-4d.md) — **suite PRD v2** (4D template structure) and [`docs/prd-gap-analysis.md`](./docs/prd-gap-analysis.md) — gaps in `PRD.md`.
+
 Everything starts at **[`docs/README.md`](./docs/README.md)**:
 
 - [`docs/PRD.md`](./docs/PRD.md) — product requirements, the 4 locked design
@@ -45,6 +47,7 @@ Making `snlg` importable without `PYTHONPATH` is the first task in
 | Path | What |
 |---|---|
 | `src/snlg/` | the engine (see `docs/engine-reference.md`) |
+| `src/mgplan/` | **community microgrid planning suite**: `core`, `geo` (GIS to Neighborhood), `load`, `study`; `der`/`dispatch`/`economics` are interfaces (see `docs/prd-suite-4d.md`) |
 | `tests/` | engine tests + new RED placeholders (`test_packaging.py`, `test_run_facade.py`, `test_determinism.py`) |
 | `configs/scenarios/` | scenario YAMLs (also import/parity fixtures) |
 | `notebooks/` | the orchestration notebook |

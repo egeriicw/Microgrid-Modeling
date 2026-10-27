@@ -347,7 +347,8 @@ def validate_config(cfg: ScenarioConfig) -> None:
 
     # Composition bounds feasibility
     cats = cfg.composition.categories
-    if cats:
+    # An all-fixed composition has no stochastic bounds to check.
+    if any(c.fixed_count is None for c in cats.values()):
         p_min_sum = sum(c.min_fraction for c in cats.values() if c.fixed_count is None)
         p_max_sum = sum(c.max_fraction for c in cats.values() if c.fixed_count is None)
         if p_min_sum > 1.0 + 1e-9:
