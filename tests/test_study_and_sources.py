@@ -6,7 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from microgrid.core.types import LoadResult, Neighborhood, Structure, UseClass
+from microgrid.geo.types import Neighborhood, Structure, UseClass
+from microgrid.core.types import LoadResult
 from microgrid.der.base import DERResult
 from microgrid.community_load.sources import MeasuredLoadSource, scenario_for_neighborhood
 from microgrid.study import Study

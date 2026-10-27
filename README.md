@@ -9,12 +9,13 @@ Generation): Monte-Carlo profiles built from NREL ResStock / ComStock stock.
 
 ```
 microgrid                     Microgrid Planner (this repository)
-|-- core                      shared contracts: Structure, Neighborhood, LoadResult
-|-- community_load            Community Load Profiler: what load does a community have?
-|   |-- geo                   GIS footprints -> classified Neighborhood
+|-- core                      cross-cutting contract: LoadResult
+|-- geo                       geography: Structure, Neighborhood, footprints, boundaries
+|-- community_load            Community Load Profiler (reads geo; parallel to it)
 |   |-- synthetic             SNLG engine: Monte-Carlo ResStock/ComStock ensembles
+|   |-- categorize            geography -> SNLG archetype categories
 |   `-- sources               LoadSource adapters (synthetic, measured)
-|-- der / dispatch / economics   interfaces; implementations on the roadmap
+|-- der / dispatch / economics   interfaces; they read geo, not community_load
 `-- study                     pipeline chaining the layers
 ```
 
@@ -64,7 +65,7 @@ PYTHONPATH=src uv run pytest -q          # 50 pass (+ RED placeholders skip/xfai
 | Path | What |
 |---|---|
 | `src/microgrid/community_load/synthetic/` | the engine (see `docs/engine-reference.md`) |
-| `src/microgrid/` | the planner: `core`, `community_load/{geo,sources}`, `study`; `der`/`dispatch`/`economics` are interfaces (see `docs/prd-suite-4d.md`) |
+| `src/microgrid/` | the planner: `core`, `geo`, `community_load/{categorize,sources}`, `study`; `der`/`dispatch`/`economics` are interfaces (see `docs/prd-suite-4d.md`) |
 | `tests/` | engine tests + new RED placeholders (`test_packaging.py`, `test_run_facade.py`, `test_determinism.py`) |
 | `configs/scenarios/` | scenario YAMLs (also import/parity fixtures) |
 | `notebooks/` | the orchestration notebook |

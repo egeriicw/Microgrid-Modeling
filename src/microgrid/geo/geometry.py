@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from microgrid.core.types import LonLat, Ring
+from microgrid.geo.types import LonLat, Ring
 
 _EARTH_R = 6_371_008.8  # mean Earth radius, m
 

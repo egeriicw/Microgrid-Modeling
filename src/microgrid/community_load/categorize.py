@@ -1,13 +1,13 @@
-"""Assign Structures to microgrid.community_load.synthetic archetype categories and derive fixed building counts.
+"""Assign Structures to SNLG archetype categories and derive fixed building counts.
 
 This is the bridge between GIS and the synthetic load engine: a real neighborhood
-fixes the composition, so every microgrid.community_load.synthetic category gets a `fixed_count`.
+fixes the composition, so every SNLG category gets a `fixed_count`.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from microgrid.core.types import Structure, UseClass
+from microgrid.geo.types import Structure, UseClass
 
 
 @dataclass(frozen=True)

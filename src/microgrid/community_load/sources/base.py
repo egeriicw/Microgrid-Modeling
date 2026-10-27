@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from microgrid.core.types import LoadResult, Neighborhood
+from microgrid.geo.types import Neighborhood
+from microgrid.core.types import LoadResult
 
 
 class LoadSource(Protocol):

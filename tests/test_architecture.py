@@ -1,8 +1,13 @@
 """Layering contract: dependencies point downward only.
 
-Planner (der, dispatch, economics, study) -> community_load -> core.
-Inside community_load: sources -> geo -> core, and synthetic is the engine that
-sources adapts; geo and synthetic never import each other or anything above them.
+    study
+    economics -> dispatch -> der          (each also uses geo + core)
+    community_load  (categorize, sources -> synthetic; uses geo + core)
+    geo -> core                           (geography is the shared reference layer)
+
+`geo` and `community_load` are parallel siblings: load profiling reads geography,
+never the reverse. The SNLG engine (`synthetic`) knows nothing about geography.
+Planner layers exchange load via core.LoadResult, so they never import community_load.
 """
 from __future__ import annotations
 
@@ -13,21 +18,23 @@ import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "microgrid"
 
-# package prefix -> prefixes it must NOT import
+_ALL = ["core", "geo", "community_load", "der", "dispatch", "economics", "study"]
+
+
+def _ban(*allowed: str) -> list[str]:
+    return [f"microgrid.{m}" for m in _ALL if m not in allowed]
+
+
+# package prefix -> prefixes it must NOT import (longest prefix wins)
 FORBIDDEN = {
-    "microgrid.core": ["microgrid.community_load", "microgrid.der", "microgrid.dispatch",
-                       "microgrid.economics", "microgrid.study"],
-    "microgrid.community_load.synthetic": ["microgrid.community_load.geo",
-                                            "microgrid.community_load.sources", "microgrid.der",
-                                            "microgrid.dispatch", "microgrid.economics",
-                                            "microgrid.study", "microgrid.core"],
-    "microgrid.community_load.geo": ["microgrid.community_load.synthetic",
-                                     "microgrid.community_load.sources", "microgrid.der",
-                                     "microgrid.dispatch", "microgrid.economics",
-                                     "microgrid.study"],
-    "microgrid.community_load.sources": ["microgrid.der", "microgrid.dispatch",
-                                         "microgrid.economics", "microgrid.study"],
-    "microgrid.der": ["microgrid.study", "microgrid.dispatch", "microgrid.economics"],
+    "microgrid.core": _ban("core"),
+    "microgrid.geo": _ban("core", "geo"),
+    "microgrid.community_load": _ban("core", "geo", "community_load"),
+    "microgrid.community_load.synthetic": _ban("community_load") + [
+        "microgrid.community_load.sources", "microgrid.community_load.categorize"],
+    "microgrid.der": _ban("core", "geo", "der"),
+    "microgrid.dispatch": _ban("core", "geo", "der", "dispatch"),
+    "microgrid.economics": _ban("core", "geo", "der", "dispatch", "economics"),
 }
 
 

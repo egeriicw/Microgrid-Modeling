@@ -8,7 +8,7 @@ nothing marked `[OPEN]` has been guessed. Gap rationale: `prd-gap-analysis.md`.
 **Name (working):** Community Microgrid Planning Suite (code package `microgrid`).
 **One line:** Pick a neighborhood on a map and get an uncertainty-aware hourly load, the DER to serve it, and what it costs.
 **Industry:** Energy / distributed energy planning.
-**Hierarchy:** Microgrid Planner (`microgrid`) contains the Community Load Profiler (`microgrid.community_load`), which contains the SNLG engine (`.synthetic`) beside GIS construction (`.geo`) and load sources (`.sources`). DER, dispatch and economics are siblings of the profiler (interfaces only); the platform and UI are specified in `PRD.md`, not built.
+**Hierarchy:** Microgrid Planner (`microgrid`) has `geo` (structures, locations, neighborhoods) as its shared reference layer. The Community Load Profiler (`microgrid.community_load`, containing the SNLG engine `.synthetic`) sits parallel to `geo` and reads it. DER, dispatch and economics also read `geo` (a battery or PV array has a place, and distribution constraints depend on layout). They receive load through `core.LoadResult`, not from the profiler. The platform and UI are specified in `PRD.md`, not built.
 
 ## 1. Discovery
 

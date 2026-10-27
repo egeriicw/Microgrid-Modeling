@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from microgrid.core.types import Neighborhood, Ring
-from microgrid.community_load.geo.classify import AttributeMapping
-from microgrid.community_load.geo.geojson import read_structures
-from microgrid.community_load.geo.geometry import point_in_ring
+from microgrid.geo.types import Neighborhood, Ring
+from microgrid.geo.classify import AttributeMapping
+from microgrid.geo.geojson import read_structures
+from microgrid.geo.geometry import point_in_ring
 
 
 def build_neighborhood(

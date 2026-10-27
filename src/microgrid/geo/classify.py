@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from microgrid.core.types import UseClass
+from microgrid.geo.types import UseClass
 
 # Covers OpenStreetMap `building=*` values plus common municipal land-use words.
 _USE_TABLE: dict[str, UseClass] = {

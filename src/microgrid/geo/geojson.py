@@ -4,9 +4,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from microgrid.core.types import Ring, Structure
-from microgrid.community_load.geo.classify import AttributeMapping, classify_use
-from microgrid.community_load.geo.geometry import ring_area_m2, ring_centroid
+from microgrid.geo.types import Ring, Structure
+from microgrid.geo.classify import AttributeMapping, classify_use
+from microgrid.geo.geometry import ring_area_m2, ring_centroid
 
 
 def _num(v: object) -> float | None:

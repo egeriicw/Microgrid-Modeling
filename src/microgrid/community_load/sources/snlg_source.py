@@ -8,8 +8,9 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
-from microgrid.core.types import LoadResult, Neighborhood
-from microgrid.community_load.geo.categorize import CategoryRules, category_counts
+from microgrid.geo.types import Neighborhood
+from microgrid.core.types import LoadResult
+from microgrid.community_load.categorize import CategoryRules, category_counts
 from microgrid.community_load.synthetic.config import CategoryBounds, ScenarioConfig, load_config
 
 
@@ -45,7 +46,7 @@ class SnlgEnsembleSource:
         self.base_config, self.rules = Path(base_config), rules
 
     def profile(self, neighborhood: Neighborhood) -> LoadResult:
-        # Imported here so microgrid.community_load.geo / microgrid.core work without parquet data or pyarrow.
+        # Imported here so microgrid.geo / microgrid.core work without parquet data or pyarrow.
         from microgrid.community_load.synthetic import archetype, ensemble
 
         base = load_config(self.base_config)

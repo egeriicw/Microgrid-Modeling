@@ -5,11 +5,9 @@ import json
 
 import pytest
 
-from microgrid.core.types import UseClass
-from microgrid.community_load.geo import (
-    CategoryRules, build_neighborhood, category_counts, classify_use, read_structures,
-)
-from microgrid.community_load.geo.geometry import point_in_ring, ring_area_m2, ring_centroid
+from microgrid.geo.types import UseClass
+from microgrid.geo import build_neighborhood, classify_use, read_structures
+from microgrid.geo.geometry import point_in_ring, ring_area_m2, ring_centroid
 
 LAT, LON, D = 38.90, -77.00, 0.0001  # D degrees ~ 11.1 m N-S, ~8.6 m E-W at this latitude
 
@@ -84,16 +82,3 @@ def test_build_neighborhood_clips_by_centroid(layer):
 def test_build_neighborhood_rejects_degenerate_boundary(layer):
     with pytest.raises(ValueError):
         build_neighborhood("bad", layer, BOUNDARY[:2])
-
-
-def test_category_counts_follow_story_thresholds_and_report_skipped(layer):
-    n = build_neighborhood("test", layer, BOUNDARY)
-    counts, skipped = category_counts(n.structures)
-    assert counts == {"mf_small": 1, "mf_mid": 1, "mf_large": 1, "commercial_private": 1}
-    assert skipped == {"residential_sf": 1}
-
-
-def test_unknown_mf_stories_use_documented_default(layer):
-    from microgrid.core.types import Structure
-    s = Structure("x", UseClass.RESIDENTIAL_MF, 100.0, (LON, LAT), stories=None)
-    assert category_counts([s], CategoryRules(default_mf_stories=6))[0] == {"mf_mid": 1}

@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from microgrid.core.types import LoadResult, Neighborhood
+from microgrid.geo.types import Neighborhood
+from microgrid.core.types import LoadResult
 
 
 class MeasuredLoadSource:
