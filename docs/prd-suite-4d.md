@@ -80,7 +80,7 @@ Footprint sources and licenses `[OPEN]` (OSM and some open footprint datasets ca
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | `snlg` engine, notebook | Done (50 tests) |
-| 1 | `microgrid.core`, `microgrid.community_load.geo`, snlg bridge, measured load, `Study` pipeline | **Started** (22 tests) |
+| 1 | `microgrid.core`, `microgrid.geo`, `community_load.categorize`, snlg bridge, measured load, `Study` pipeline | **Started** (23 tests) |
 | 2 | Real-footprint pilot and validation against metered data; resolve baseline-config ambiguity | Next |
 | 3 | DER: solar (pvlib), storage, EV | Interfaces only |
 | 4 | Dispatch and economics | Not started |
