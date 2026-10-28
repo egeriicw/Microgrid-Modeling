@@ -1,3 +1,13 @@
+"""Legacy scratch code extracted from exploratory notebooks.
+
+This module is not part of the supported pipeline API. It contains snippets
+used during early experimentation (data inspection, quick plots, etc.).
+
+It is kept in the repository for reference and reproducibility of exploratory
+work, but it is not expected to run as-is without the surrounding notebook
+context (e.g., variables like ``DATA_DIR``/``DIR``).
+"""
+
 ### Commercial
 
 BUILDING_CHARACTERISTICS_FILE = 'DC_upgrade0_agg.xlsx'
@@ -5,6 +15,16 @@ BUILDING_CHARACTERISTICS_FILEPATH = DATA_DIR + 'background/' + BUILDING_CHARACTE
 commercial_building_characteristics = pd.read_excel(BUILDING_CHARACTERISTICS_FILEPATH, sheet_name='building_characteristics')
 
 def construct_neighborhood_commercial():
+    """Select a small set of commercial buildings (legacy notebook helper).
+
+    Returns:
+        list[list]: A nested list containing selected building IDs.
+
+    Notes:
+        This function relies on notebook-scoped globals (e.g.,
+        ``commercial_building_characteristics``) and is retained only as a
+        historical reference.
+    """
 
 
     warehouse_list = []

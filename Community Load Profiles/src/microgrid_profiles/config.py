@@ -1,3 +1,21 @@
+"""Configuration models and helpers for the microgrid profile pipeline.
+
+The pipeline is driven by a YAML file that describes:
+
+- Input data roots and file templates.
+- Scenario identifiers (state, upgrade number, run id).
+- Neighborhood composition (number of buildings and mix by type).
+- Optional weather inputs and output toggles.
+
+This module provides:
+
+- Frozen :class:`dataclasses.dataclass` models used throughout the codebase.
+- :func:`load_config` to load a YAML file into a :class:`ScenarioConfig`.
+- Small helper functions to apply CLI overrides via :func:`dataclasses.replace`.
+
+Docstring style follows Real Python / PEP 257 guidance.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -9,7 +27,15 @@ import yaml
 
 @dataclass(frozen=True)
 class OutputOptions:
-    """Controls which official outputs are written."""
+    """Controls which official outputs are written.
+
+    Attributes:
+        write_csv: Whether to write CSV outputs.
+        write_txt: Whether to write text overview output(s).
+        write_xlsx: Whether to write Excel workbooks.
+        write_plots: Whether to write plot image files.
+    """
+
     write_csv: bool = True
     write_txt: bool = True
     write_xlsx: bool = True
@@ -18,7 +44,14 @@ class OutputOptions:
 
 @dataclass(frozen=True)
 class PerformanceConfig:
-    """Performance options."""
+    """Performance and I/O options.
+
+    Attributes:
+        fast_io: If ``True``, read parquet files in parallel using threads.
+        max_workers: Maximum number of worker threads for parallel I/O.
+        prune_parquet_columns: If ``True``, only read needed parquet columns.
+    """
+
     fast_io: bool = False
     max_workers: int = 8
     prune_parquet_columns: bool = True
@@ -26,16 +59,38 @@ class PerformanceConfig:
 
 @dataclass(frozen=True)
 class WeatherConfig:
-    """Outdoor air temperature ingestion."""
+    """Outdoor air temperature ingestion settings.
+
+    Attributes:
+        enabled: Whether weather data is joined to hourly/daily/monthly outputs.
+        preferred_units: Preferred temperature units: ``"C"`` or ``"F"``.
+        files: List of weather CSV file paths.
+        source_labels: Optional list of labels matching ``files``.
+    """
+
     enabled: bool = False
     preferred_units: str = "C"
-    files: list[str] = None
-    source_labels: list[str] = None
+    files: Optional[list[str]] = None
+    source_labels: Optional[list[str]] = None
 
 
 @dataclass(frozen=True)
 class ProfilesConfig:
-    """Typical-day-by-month profile settings."""
+    """Typical-day-by-month profile settings.
+
+    These settings control the additional profile-style outputs derived from the
+    hourly load series.
+
+    Attributes:
+        write_typical_day_by_month: Whether to compute typical day by month.
+        include_by_building_type: Whether to include building-type breakdowns.
+        include_sector_comparison: Whether to include sector comparisons.
+        average_across_runs: Whether to average profiles across all sampled runs.
+        write_long_csv: Whether to write the long-form CSV output.
+        write_pivot_csv: Whether to write the pivot-table CSV output.
+        workbook_include_run0: Whether to include run-0 data in the workbook.
+    """
+
     write_typical_day_by_month: bool = True
     include_by_building_type: bool = True
     include_sector_comparison: bool = True
@@ -47,6 +102,24 @@ class ProfilesConfig:
 
 @dataclass(frozen=True)
 class ColumnConfig:
+    """Column names expected in input data.
+
+    The code works with multiple upstream datasets. To avoid hard-coding column
+    names, they are provided through configuration.
+
+    Attributes:
+        building_id_resstock: Column name for ResStock building identifier.
+        building_id_comstock: Column name for ComStock building identifier.
+        resstock_building_type: ResStock building type column name.
+        resstock_units_mf: ResStock multi-family units column name.
+        resstock_sqft: ResStock square-footage column name.
+        resstock_electricity_kwh: ResStock electricity consumption column name.
+        comstock_building_type: ComStock building type column name.
+        comstock_sqft: ComStock square-footage column name.
+        comstock_electricity_kwh: ComStock electricity consumption column name.
+        electricity_kwh: Generic electricity consumption column name (parquet).
+    """
+
     building_id_resstock: str
     building_id_comstock: str
     resstock_building_type: str
@@ -58,13 +131,28 @@ class ColumnConfig:
     comstock_electricity_kwh: str
     electricity_kwh: str
 
+
 @dataclass(frozen=True)
 class SingleFamilyConfig:
+    """Selection parameters specific to single-family housing."""
+
     max_footprint_area: float = 2000
     electric_hp_percent: float = 0.0
 
+
 @dataclass(frozen=True)
 class NeighborhoodConfig:
+    """Neighborhood selection configuration.
+
+    Attributes:
+        total_buildings: Total number of buildings in the neighborhood.
+        multifamily_buildings_percent_of_total: Share of buildings that are multifamily.
+        single_family_buildings_percent_of_total: Share of buildings that are single-family.
+        multifamily_building_names: ResStock building types that count as multifamily.
+        multifamily_buildings_percentages: Mix among multifamily types. Must sum to 1.0.
+        single_family: Additional single-family configuration.
+    """
+
     total_buildings: int
     multifamily_buildings_percent_of_total: float
     single_family_buildings_percent_of_total: float
@@ -75,6 +163,31 @@ class NeighborhoodConfig:
 
 @dataclass(frozen=True)
 class ScenarioConfig:
+    """Top-level configuration passed through the pipeline.
+
+    Attributes:
+        state: Two-letter state code used in templated file paths.
+        upgrade_num: Upgrade number used in templated file paths.
+        input_root: Root directory for input data.
+        output_root: Root directory for output data.
+        run_id: Optional explicit run identifier (otherwise auto-generated).
+        seed: Random seed for selection.
+        sample_runs: Number of Monte-Carlo runs to generate.
+        include_public: Whether to include public/commercial building types.
+        adjustment_multiplier_off: If ``True``, disable random per-run multipliers.
+        outputs: Output writing toggles.
+        performance: Performance / parallel I/O settings.
+        weather: Weather ingestion settings.
+        profiles: Typical-day profile settings.
+        resstock_characteristics_xlsx: Path template for ResStock characteristics.
+        comstock_characteristics_xlsx: Path template for ComStock characteristics.
+        resstock_timeseries_dir: Path template for ResStock timeseries directory.
+        comstock_timeseries_dir: Path template for ComStock timeseries directory.
+        columns: Input column names.
+        multifamily_filter: Building types considered multifamily for adjustments.
+        neighborhood: Neighborhood selection settings.
+    """
+
     state: str
     upgrade_num: int
     input_root: Path
@@ -101,12 +214,35 @@ class ScenarioConfig:
 
 
 def _require(d: dict[str, Any], key: str) -> Any:
+    """Return a required key from a mapping.
+
+    Args:
+        d: Mapping of configuration keys to values.
+        key: The required key to retrieve.
+
+    Returns:
+        The value stored at ``key``.
+
+    Raises:
+        ValueError: If the key is missing.
+    """
+
     if key not in d:
         raise ValueError(f"Missing required config key: {key}")
     return d[key]
 
 
 def validate_percentages(neighborhood: NeighborhoodConfig, tol: float = 1e-6) -> None:
+    """Validate that neighborhood mix percentages are properly normalized.
+
+    Args:
+        neighborhood: Neighborhood configuration to validate.
+        tol: Numerical tolerance for floating-point comparisons.
+
+    Raises:
+        ValueError: If any percentages are inconsistent.
+    """
+
     mf_sum = float(sum(neighborhood.multifamily_buildings_percentages.values()))
     if abs(mf_sum - 1.0) > tol:
         raise ValueError(f"multifamily_buildings_percentages must sum to 1.0. Got {mf_sum}.")
@@ -122,6 +258,20 @@ def validate_percentages(neighborhood: NeighborhoodConfig, tol: float = 1e-6) ->
 
 
 def load_config(path: str | Path) -> ScenarioConfig:
+    """Load a YAML scenario config file.
+
+    Args:
+        path: Path to the YAML configuration file.
+
+    Returns:
+        A validated :class:`ScenarioConfig` instance.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError: If required configuration keys are missing or invalid.
+        yaml.YAMLError: If the YAML cannot be parsed.
+    """
+
     path = Path(path)
     raw = yaml.safe_load(path.read_text())
 
@@ -215,13 +365,19 @@ def load_config(path: str | Path) -> ScenarioConfig:
     return cfg
 
 
-def apply_profiles_overrides(cfg: ScenarioConfig, **kwargs) -> ScenarioConfig:
+def apply_profiles_overrides(cfg: ScenarioConfig, **kwargs: Any) -> ScenarioConfig:
+    """Return a new config with :class:`ProfilesConfig` overrides applied."""
+
     return replace(cfg, profiles=replace(cfg.profiles, **kwargs))
 
 
-def apply_weather_overrides(cfg: ScenarioConfig, **kwargs) -> ScenarioConfig:
+def apply_weather_overrides(cfg: ScenarioConfig, **kwargs: Any) -> ScenarioConfig:
+    """Return a new config with :class:`WeatherConfig` overrides applied."""
+
     return replace(cfg, weather=replace(cfg.weather, **kwargs))
 
 
-def apply_performance_overrides(cfg: ScenarioConfig, **kwargs) -> ScenarioConfig:
+def apply_performance_overrides(cfg: ScenarioConfig, **kwargs: Any) -> ScenarioConfig:
+    """Return a new config with :class:`PerformanceConfig` overrides applied."""
+
     return replace(cfg, performance=replace(cfg.performance, **kwargs))
