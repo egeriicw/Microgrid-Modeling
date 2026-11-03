@@ -36,7 +36,7 @@ Dependencies point downward only (`tests/test_architecture.py`). The engine's
 
 Everything starts at **[`docs/README.md`](./docs/README.md)**:
 
-- [`docs/PRD.md`](./docs/PRD.md) — product requirements, the 4 locked design
+- [`docs/archive/PRD-v1-snlg-platform.md` (archived)](./docs/archive/PRD-v1-snlg-platform.md) — product requirements, the 4 locked design
   decisions, scope, success criteria.
 - [`docs/engine-reference.md`](./docs/engine-reference.md) — reference for
   the existing SNLG engine + known gaps.

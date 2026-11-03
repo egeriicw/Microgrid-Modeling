@@ -4,7 +4,7 @@ Start here. Read in this order.
 
 | # | Doc | Read it for |
 |---|---|---|
-| 1 | [`PRD.md`](./PRD.md) | Why the project exists, goals/non-goals, the 4 locked design decisions, feature list, success criteria, risks. **Entry point for the implementing agent.** |
+| 1 | [`archive/PRD-v1-snlg-platform.md` (archived, superseded)](./archive/PRD-v1-snlg-platform.md) | Why the project exists, goals/non-goals, the 4 locked design decisions, feature list, success criteria, risks. **Entry point for the implementing agent.** |
 | 2 | [`domain-glossary.md`](./domain-glossary.md) | The ubiquitous language. Use these exact terms in code/API/UI. |
 | 3 | [`engine-reference.md`](./engine-reference.md) | Faithful documentation of the **existing** `src/microgrid/community_load/synthetic/` engine + notebook, module by module, plus the 13 known gaps to fix. (PRD goal G2.) |
 | 4 | [`architecture.md`](./architecture.md) | Target system: containers, components, sequence diagrams, repo layout, tech stack, cross-cutting concerns. |

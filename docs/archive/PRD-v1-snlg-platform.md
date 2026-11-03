@@ -1,3 +1,5 @@
+> **ARCHIVED — historical artifact.** This is PRD v1.0 (2026-09-03), written by an earlier AI session before the product interview of 2026-11. It is kept unchanged below for the record and is **superseded** by the new PRD. Its companion specs in `docs/` have not been revised yet and should be treated as hypotheses.
+
 # Product Requirements Document — Synthetic Neighborhood Load Generation (SNLG) Platform
 
 **Status:** Draft v1.0
