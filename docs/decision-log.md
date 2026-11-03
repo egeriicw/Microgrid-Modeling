@@ -1,0 +1,12 @@
+# Decision Log
+
+Newest first. Agents add an entry for every autonomous decision (see `agent-team.md` §5). The owner reviews at each sprint review.
+
+| Date | Decision | Alternatives | Reason | Reversible? | Status |
+|---|---|---|---|---|---|
+| 2026-11-03 | PRD v1 archived (not deleted) to `docs/archive/`; new PRD v2 written from owner interview | Overwrite | Owner asked to keep the old PRD as a historical artifact | Yes | Done |
+| 2026-11-03 | Map demoted to SHOULD; load forecasting core is the success-or-failure item | Map as MUST | Owner priority statement | Yes | Owner-stated |
+| 2026-11-03 | Start from scratch for web/DB layers (no recoverable `feat/*` scaffold); SQLAlchemy + Alembic kept | Reuse old scaffold | Not in any git ref; owner could not locate | Yes | Owner-stated |
+| 2026-11-03 | Week-2 slip/cut rule: owner decides at checkpoint | Auto-cut | Owner did not specify; default chosen | Yes | Default |
+| 2026-11-03 | New dependencies allowed without approval but logged | Require approval | Interpretation of owner statement; confirm | Yes | Confirm |
+| 2026-11-03 | Celery + Redis recommended for jobs | RQ, Dramatiq, Arq | Maturity, cancel/progress support | Yes | Proposed (ADR-005) |
