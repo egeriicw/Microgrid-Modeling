@@ -57,7 +57,7 @@ community-scale warehouses are **in scope** (FR-ENG-1).
 |---|---|---|
 | **Admin** | Owner | Everything: define any parameter, **use and configure attribute filters**, manage compositions and demo content, view calibration and diagnostics, configure the demo. |
 | **Client** | Owner acting as first customer; later paying users | Full flexibility to define neighborhoods and parameters, run, view, download, upload calibration data. |
-| **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only, view **precomputed runs with fixed, stored seeds** (owner decision: the public always sees the same results), charts, and downloads. No arbitrary runs, no uploads, no filters. |
+| **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only and **run them live** with hard caps (small building count, low `max_runs`, queue, rate limit, one run at a time per visitor); results can be cached by (composition, seeds). Charts and downloads available. No uploads, no filters, no free-form compositions. Seed behavior (fixed stored seeds by default; optional "draw a new random sample" button) to be confirmed by the owner. |
 
 Business model (not built in MVP): subscription or pay-per-use. Persona stories: *Priya* (utility/DER planner),
 *Marcus* (community microgrid developer writing an RFP), *the owner* (power user and publisher), *a campus energy
@@ -209,6 +209,12 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   documentation/data dictionary: upgrade numbering and meaning are release-specific]**. AC: the catalog can describe
   more than one upgrade for the same state; the engine takes dataset ids as inputs rather than hard-coded paths;
   ingesting an extra upgrade adds catalog rows without code changes; ingestion shows progress and disk use.
+- **FR-DATA-9 (SHOULD) Compact building-profile library.** Live computation is cheap if each run does not have to read
+  large raw files. A build step extracts, for each ingested building, the needed load series (and its attributes) into a
+  compact, versioned library (for example one columnar file per dataset at float32), from which the engine samples
+  and sums. The public server then needs this library and not the raw 15-minute Parquet. AC: results from the library
+  match results from the raw files within a documented tolerance on fixtures; library size and load time are reported;
+  redistribution is permitted by the datasets' licenses **[verify]**.
 
 ### 6.3 Web application — `WEB`
 - **FR-WEB-1 (MUST) Composition form.** Define total buildings and per-type fractions/fixed counts, seeds, `max_runs`,
@@ -251,10 +257,15 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   callable from an IPython notebook; example notebooks are maintained and tested.
 - **FR-PLAT-4 (MUST)** One command starts the whole stack locally (Docker Compose); one command runs all tests.
 - **FR-PLAT-5 (MUST)** CI runs lint, type-check, tests and coverage on every push; lint failures block merge.
-- **FR-PLAT-6 (SHOULD)** Public demo at **$0 hosting cost** (owner budget: $0). Proposed form: a **static site** (React build +
-  precomputed demo results exported as static files) on a free host, so no server, database or spend exists to abuse; the
-  full app runs locally. An agent verifies current free-hosting terms and the owner approves before anything is published.
-  If a live server is later wanted: HTTPS, rate limiting, spend cap/alerts, no secrets in the repo.
+- **FR-PLAT-6 (SHOULD) Public demo with live computation, at $0 hosting cost.** Owner requirements: the public demo
+  computes results in real time (capped, per §4), and hosting costs $0. These conflict unless a free host can run the
+  engine, so: an agent evaluates free options (e.g. an always-free cloud VM, a free container/Spaces tier, or the
+  owner's own machine exposed through a free tunnel) against real requirements (RAM, disk, CPU time per run, sleep
+  behavior, terms of service) **[verify all; free-tier terms change]** and reports at the week-2 checkpoint. Safeguards
+  whatever the host: caps, rate limiting, queue, request size limits, HTTPS, no secrets in the repo, no uploads, and a
+  kill switch. **Fallback if no $0 host can run live computation:** publish a static site of precomputed results, and
+  offer live computation only when the owner runs the app locally (optionally through a tunnel). Nothing is published
+  without the owner's approval.
 - **FR-PLAT-7 (SHOULD)** Public repo readiness: license (owner decision), README that works on a clean machine,
   CONTRIBUTING, no secrets or large data in history, data attribution notices.
 
@@ -314,7 +325,7 @@ boundaries; cloud agents work on fixtures only unless data is made available.
 | R2 | Real data can't be used in the cloud | Fixtures; local-only integration tests marked and documented. |
 | R3 | Convergence definition is scientifically weak | Owner-approved criteria (O3); tests on synthetic ensembles. |
 | R4 | Untrusted numbers published | Visible caveat; calibration screen; benchmark checks; honest messaging (FR-WEB-8). |
-| R5 | Public link abused or costly | Locked demo role, precomputed results, rate limits, spend cap. |
+| R5 | Public link abused, costly, or unable to run live at $0 | Locked demo role with hard caps, rate limits, kill switch; compact profile library (FR-DATA-9); static fallback (FR-PLAT-6). |
 | R6 | 30 GB disk exhausted | Raw Parquet outside the DB; image and cache budgets; ingestion reports disk use. |
 | R7 | Data licensing/attribution missed | Per-dataset license review before public release. |
 | R8 | Dormant/ignored config silently misleads | FR-ENG-3 (strict config) in Sprint 1. |

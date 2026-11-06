@@ -19,3 +19,5 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 | 2026-11-06 | UI kit: MUI + ECharts (spike dropped) | shadcn/Tailwind | Owner unsure; agent default, fastest for forms/admin | Yes | Agent default under autonomy rule |
 | 2026-11-06 | Demo account shows precomputed runs with fixed stored seeds | Fresh random per view | Owner: yes | Yes | Owner-approved |
 | 2026-11-06 | Agent execution: lead session + role sub-agents on separate branches | One session per role | Cost, coordination | Yes | Recommended; owner asked what is recommended |
+| 2026-11-06 | Agent execution model: lead session + role sub-agents on separate branches | One session per role | Owner accepted | Yes | Owner-approved |
+| 2026-11-06 | Public demo must compute live (capped), still $0; conflict flagged; compact profile library + free-host evaluation + static fallback | Static only | Owner requirement | Yes | Owner-stated; host feasibility unresolved |
