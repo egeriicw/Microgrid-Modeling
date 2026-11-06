@@ -34,7 +34,7 @@ tuning (FR-CAL-4, already LATER), admin console (FR-WEB-9), public repo (FR-PLAT
 | 1.10 | Worker task runs the facade, writes progress and summary metrics (no UI yet) | PLAT-2 | Backend |
 | 1.11 | Performance baseline on owner's data/hardware (run time vs buildings × variations; memory) | NFR | Modeling/QA |
 | 1.11b | Dataset catalog + data dictionary per release; confirm what `upgrade=0` and other upgrade ids mean in the release(s) the owner holds; engine takes dataset ids | DATA-8 | Data/Modeling |
-| 1.12 | Spikes: UI kit (MUI vs shadcn) and charts (ECharts) with a 35k-point series; footprint source evaluation | ADR-007/010 | Frontend/Data |
+| 1.12 | Spikes: ECharts with a 35k-point series (UI kit decided: MUI); footprint source evaluation; free static-hosting options | ADR-007/008/010 | Frontend/Data/DevOps |
 
 **Exit criteria:** `make up` works; a fixture composition runs through API→worker→DB with progress rows; notebook example
 calls the same facade; determinism test green; baseline timing recorded; decision log has Sprint-1 entries.
@@ -55,7 +55,7 @@ calls the same facade; determinism test green; baseline timing recorded; decisio
 | 2.8 | Composition form with live validation, save/clone, YAML import/export, per-category filter builder with pool preview | WEB-1, ENG-11 |
 | 2.9 | Run screen with progress bar, stage text, convergence status, cancel | WEB-2 |
 | 2.10 | Auth: users table, JWT, three roles enforced in API | WEB-5 |
-| 2.11 | Hosting ADR + estimate of monthly cost | PLAT-6 |
+| 2.11 | Hosting ADR for the $0 static public demo; export format for precomputed demo results | PLAT-6 |
 
 **Week-2 checkpoint (Day 14):** PM reports status against the success criteria and gives a go / cut / slip
 recommendation. Likely cut candidates: map, admin console, repo publishing. **The owner decides.**
@@ -87,7 +87,7 @@ recommendation. Likely cut candidates: map, admin console, repo publishing. **Th
 | 4.1 | Demo role: predefined compositions + precomputed runs; locked-down endpoints | WEB-5 |
 | 4.2 | Admin: manage demo compositions (minimal) | WEB-9 |
 | 4.3 | Minimal map viewer: DC footprints, select area → fixed counts (**first to cut**) | WEB-7 |
-| 4.4 | Public deployment: HTTPS, rate limiting, spend cap/alerts, secrets handling, backups | PLAT-6 |
+| 4.4 | Public static demo build and publish (owner approves publishing); no secrets in artifacts | PLAT-6 |
 | 4.5 | Security review and fixes (auth, uploads, CORS, headers) | NFR |
 | 4.6 | Performance and resource pass (disk, memory, query speed) | NFR |
 | 4.7 | Data licenses/attribution displayed in-app; per-dataset review | NFR |

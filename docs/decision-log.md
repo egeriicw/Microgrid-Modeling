@@ -12,3 +12,10 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 | 2026-11-03 | Celery + Redis recommended for jobs | RQ, Dramatiq, Arq | Maturity, cancel/progress support | Yes | Proposed (ADR-005) |
 | 2026-11-06 | Dataset = (product, release, weather, upgrade, state); MVP baseline only; scenario switching designed (FR-ENG-12) but LATER | Hard-code upgrade=0 | Owner: scenarios like high EV/heat-pump penetration require switching datasets | Yes | Owner-stated; thresholds/method need owner approval |
 | 2026-11-06 | MVP datasets: ResStock 2025 Release 1 AMY2018 + ComStock 2025 Release 3 AMY2018, DC only; "typical year" relabeled "2018 weather year" | Older releases; TMY3 sets (only older releases) | Newest, shared weather year, full measure lists; owner said use recommendations | Yes (re-ingest) | Owner-approved; agent verifies names/DC coverage/known issues |
+| 2026-11-06 | Convergence default (FR-ENG-6) approved provisionally | Other rules | Owner: "agree" | Yes | Owner-approved |
+| 2026-11-06 | Data root and dataset choice are configurable | Hard-coded paths | Owner request | Yes | Owner-stated |
+| 2026-11-06 | Hosting budget $0; public demo proposed as static precomputed site | Always-on server | Owner budget; avoids cost/abuse | Yes | Proposed, needs owner OK |
+| 2026-11-06 | Celery + Redis approved | RQ etc. | Owner: "right" | Yes | Owner-approved |
+| 2026-11-06 | UI kit: MUI + ECharts (spike dropped) | shadcn/Tailwind | Owner unsure; agent default, fastest for forms/admin | Yes | Agent default under autonomy rule |
+| 2026-11-06 | Demo account shows precomputed runs with fixed stored seeds | Fresh random per view | Owner: yes | Yes | Owner-approved |
+| 2026-11-06 | Agent execution: lead session + role sub-agents on separate branches | One session per role | Cost, coordination | Yes | Recommended; owner asked what is recommended |

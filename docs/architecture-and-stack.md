@@ -49,12 +49,12 @@ tests/                    engine tests; api/tests; web tests; e2e/
 | API | **FastAPI** + Pydantic v2, `/api/v1` | REQUIRED | Auto OpenAPI; versioned routers. |
 | ORM / migrations | **SQLAlchemy 2 + Alembic** | REQUIRED | Owner asked to keep; also the local-testing path (SQLite/ephemeral Postgres for fast tests; Postgres for integration). |
 | Database | **PostgreSQL + PostGIS + TimescaleDB** in Docker | REQUIRED | A Timescale image that bundles PostGIS exists **[verify]**; otherwise build one image with both extensions. |
-| Queue / worker | **Celery + Redis** | RECOMMENDED | Mature, supports retries, cancellation (revoke), and progress via task state plus DB rows. Alternative considered: RQ (simpler, weaker cancel/progress), Dramatiq/Arq. Requires owner OK as a decision record. |
+| Queue / worker | **Celery + Redis** | APPROVED by owner 2026-11-06 | Mature, supports retries, cancellation (revoke), and progress via task state plus DB rows. Alternative considered: RQ (simpler, weaker cancel/progress), Dramatiq/Arq. Requires owner OK as a decision record. |
 | Progress to browser | Server-Sent Events from FastAPI reading run-progress rows | RECOMMENDED | One-way, simple; polling fallback. |
 | Analytics | pandas, numpy, scipy, scikit-learn, pyarrow | REQUIRED | Already used; add statsmodels if change-point regression is built later. |
 | Notebooks | JupyterLab + ipykernel; `pip install -e .` | REQUIRED | Notebook-first working style. |
 | Front end | **React + TypeScript + Vite** | REQUIRED (React) / RECOMMENDED (rest) | Vite for speed; SPA is enough (no SSR needed). The old plan's Next.js is dropped unless needed for SEO of a public landing page. |
-| UI components | **MUI** or **shadcn/ui + Tailwind** | RECOMMENDED: decide in Sprint 1 spike | MUI: fastest for forms/tables/admin, one consistent kit. shadcn/Tailwind: more design control. Agent proposes, owner picks. |
+| UI components | **MUI** (agent default, owner unsure, easily reversed; spike dropped) | DEFAULT chosen 2026-11-06 | MUI: fastest for forms/tables/admin, one consistent kit. shadcn/Tailwind: more design control. Agent proposes, owner picks. |
 | Server state | TanStack Query | RECOMMENDED | Caching, polling, SSE integration. |
 | Charts | **Apache ECharts** | RECOMMENDED | Handles 35k-point series, zoom, linked tooltips (load + temperature), large-data sampling. Alternatives: Plotly (heavier), Recharts (weak at this scale). |
 | Map | **MapLibre GL JS** (+ vector tiles via PostGIS) | RECOMMENDED | Open source, no vendor key required; basemap tiles source to confirm **[verify]** terms. |
@@ -63,7 +63,7 @@ tests/                    engine tests; api/tests; web tests; e2e/
 | Containers | Docker Compose: `db`, `redis`, `api`, `worker`, `web` (+ optional `jupyter`) | REQUIRED | Watch disk: pin slim base images; prune. |
 | CI | GitHub Actions: lint, mypy, tests, coverage, build images, e2e smoke | RECOMMENDED | Existing workflow has most jobs disabled / non-blocking; fix. |
 | Observability | structlog JSON logs, `/health` `/ready`; Sentry optional | RECOMMENDED | |
-| Hosting (demo) | Decide in Sprint 1–2 (ADR): small AWS Lightsail/EC2 + managed or containerized DB, or a PaaS | OPEN (O5) | Owner constraint: no spending without approval. |
+| Hosting (demo) | **$0 budget.** Proposed: static export of precomputed demo results + React build on a free static host; full app local-only | PROPOSED, needs owner OK | Agent verifies free-tier terms; no spending without approval. |
 | Object storage | Local filesystem for MVP; S3-compatible interface | RECOMMENDED | The old plan's MinIO is dropped for MVP to save moving parts and disk. |
 | SEED integration | Adapter interface only | REQUIRED placeholder | Real coupling later **[verify]** SEED API. |
 | Energy tools | REopt, SAM/PySAM, dGen, PyPSA/pandapower | LATER | Adapters behind interfaces. |

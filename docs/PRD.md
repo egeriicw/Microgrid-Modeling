@@ -57,7 +57,7 @@ community-scale warehouses are **in scope** (FR-ENG-1).
 |---|---|---|
 | **Admin** | Owner | Everything: define any parameter, **use and configure attribute filters**, manage compositions and demo content, view calibration and diagnostics, configure the demo. |
 | **Client** | Owner acting as first customer; later paying users | Full flexibility to define neighborhoods and parameters, run, view, download, upload calibration data. |
-| **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only, view precomputed or capped runs, charts, and downloads. No arbitrary runs, no uploads. |
+| **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only, view **precomputed runs with fixed, stored seeds** (owner decision: the public always sees the same results), charts, and downloads. No arbitrary runs, no uploads, no filters. |
 
 Business model (not built in MVP): subscription or pay-per-use. Persona stories: *Priya* (utility/DER planner),
 *Marcus* (community microgrid developer writing an RFP), *the owner* (power user and publisher), *a campus energy
@@ -101,7 +101,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   within the ensemble's stated uncertainty; (d) the UI shows the seeds and offers "replay with same seeds".
 - **FR-ENG-5 (MUST) Resolutions.** Output hourly and 15-minute profiles. AC: 15-minute totals equal source energy;
   hourly equals the sum of its four 15-minute values; units labeled kW/kWh explicitly.
-- **FR-ENG-6 (MUST) Adaptive convergence.** Run up to `max_runs` (default 1,000), stopping early when convergence
+- **FR-ENG-6 (MUST) Adaptive convergence** *(owner approved the proposed default 2026-11-06, provisional, revisit after first real runs)*. Run up to `max_runs` (default 1,000), stopping early when convergence
   criteria hold. Criteria are a **methodology decision for the owner** (proposed default: relative change of the
   ensemble mean of annual energy, peak kW, and the mean hourly profile below ε over M consecutive checks, plus a
   standard-error target on the P50 profile). AC: criteria and thresholds are configurable and reported; a synthetic
@@ -171,7 +171,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   describe the simulation model, not necessarily real building behavior.
 
 ### 6.2 Data — `DATA`
-- **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision DC ResStock/ComStock inputs into the
+- **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision (data root and dataset choice are **configurable** via an environment variable/config, never hard-coded paths) DC ResStock/ComStock inputs into the
   `data/input` / `data/background` layout, with a manifest of files, sizes and checksums. Raw Parquet stays on disk, **not**
   in the database. AC: running the script on a clean machine reproduces the expected layout; disk use is reported.
 - **FR-DATA-2 (MUST) Test fixtures.** A small committed fixture dataset (≤ ~5 buildings per type, checked in or
@@ -251,7 +251,10 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   callable from an IPython notebook; example notebooks are maintained and tested.
 - **FR-PLAT-4 (MUST)** One command starts the whole stack locally (Docker Compose); one command runs all tests.
 - **FR-PLAT-5 (MUST)** CI runs lint, type-check, tests and coverage on every push; lint failures block merge.
-- **FR-PLAT-6 (SHOULD)** Public demo deployed with HTTPS, rate limiting, spend cap/alerts, and no secrets in the repo.
+- **FR-PLAT-6 (SHOULD)** Public demo at **$0 hosting cost** (owner budget: $0). Proposed form: a **static site** (React build +
+  precomputed demo results exported as static files) on a free host, so no server, database or spend exists to abuse; the
+  full app runs locally. An agent verifies current free-hosting terms and the owner approves before anything is published.
+  If a live server is later wanted: HTTPS, rate limiting, spend cap/alerts, no secrets in the repo.
 - **FR-PLAT-7 (SHOULD)** Public repo readiness: license (owner decision), README that works on a clean machine,
   CONTRIBUTING, no secrets or large data in history, data attribution notices.
 
@@ -317,5 +320,5 @@ boundaries; cloud agents work on fixtures only unless data is made available.
 | R8 | Dormant/ignored config silently misleads | FR-ENG-3 (strict config) in Sprint 1. |
 
 **Open items (owner input needed):** O1 DC data size/completeness (parked) · O2 footprint source choice · O3 convergence
-criteria · O4 public repo license · O5 hosting provider and monthly budget · O6 week-2 rule if the date is at risk
+criteria (approved provisionally) · O4 public repo license · O5 hosting: budget is $0, provider to be chosen by agent recommendation · O6 week-2 rule if the date is at risk
 (default: owner decides at the checkpoint) · O7 confirm "CBEX" means CBECS · O8 name of the product.
