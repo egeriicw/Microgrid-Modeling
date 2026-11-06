@@ -27,7 +27,7 @@ tuning (FR-CAL-4, already LATER), admin console (FR-WEB-9), public repo (FR-PLAT
 | 1.4 | RNG with `SeedSequence.spawn`; determinism golden test | ENG-4 | Modeling/QA |
 | 1.5 | Building-type registry incl. single-family detached/attached, institutional, civic; categorize rewired to registry | ENG-1 | Modeling |
 | 1.6 | Data ingestion script + manifest + fixtures (≤5 buildings per type); load characteristics tables to Postgres with data dictionary | DATA-1/2/7 | Data |
-| 1.6b | Attribute-filter engine: filter language, attribute discovery, pool preview with small-pool warning (tests first on fixtures) | ENG-11 | Modeling |
+| 1.6b | Attribute-filter engine: filter language, attribute discovery, admin-configured exposed-attribute list (starter set), pool preview with small-pool warning (tests first on fixtures) | ENG-11 | Modeling/Backend |
 | 1.7 | Docker Compose: Postgres+PostGIS+TimescaleDB, Redis, api, worker; one-command up; disk-budget check | PLAT-4, DATA-4 | DevOps |
 | 1.8 | FastAPI skeleton `/api/v1`, health/ready, SQLAlchemy models, first Alembic migrations (up/down tested) | PLAT-1 | Backend |
 | 1.9 | Engine facade `run_scenario(config, progress=cb)` + typed progress events | ENG-8 | Modeling |

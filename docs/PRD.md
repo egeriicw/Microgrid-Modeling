@@ -112,24 +112,28 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   removed from the config surface. Requires owner approval (methodology).
 - **FR-ENG-10 (MUST) Temperature.** Each result carries the temperature series used (from the ResStock/ComStock
   weather files) so charts can show load and temperature together. **[verify]** which weather file applies per dataset.
-- **FR-ENG-11 (MUST) Attribute filtering of source buildings.** For every composition category, the user can filter the
-  ResStock/ComStock building population by **any characteristic present in the ingested data** (for example building
-  type and height, floor area, year built/vintage, number of stories, number of units, heating and cooling system,
-  fuel, water heater, presence of heat pump/solar/EV, envelope, and for commercial: type, size, vintage, HVAC; exact
-  columns are discovered from the data, not hard-coded). Filters are stored in the composition and apply when the
-  archetype pool is built. AC:
-  (a) a filter language supports equals/in-list, numeric ranges, not-null, and AND-combination (OR across lists);
-  (b) the engine can list filterable attributes with data type and value summary (distinct values or min/max/count)
-  straight from the characteristics data;
-  (c) a **pool preview** reports, per category, how many buildings match (and warns on zero, or on fewer than a
-  configurable minimum such as 10, since sampling with replacement from a tiny pool understates diversity);
-  (d) an unknown attribute or invalid value is a clear error (consistent with FR-ENG-3);
-  (e) the effective filters and the matched pool size are stored with every run and shown in results;
+- **FR-ENG-11 (MUST) Attribute filtering of source buildings, admin-configured.** For every composition category, the
+  user can filter the ResStock/ComStock building population by building characteristics. The mechanism has two layers:
+  1. **Discovery (automatic):** after ingestion, the system knows every characteristic column in the data, its type, and
+     its value summary (distinct values or min/max/count).
+  2. **Exposure (admin-configured):** an admin chooses which attributes users may filter on, with a friendly label,
+     help text, allowed operators, value choices or numeric bounds, which building types it applies to, and its
+     display order. The composition form is built from this configuration, not from code.
+  **Starter set (MVP defaults, editable by the admin):** stories/height; total dwelling units (multifamily only);
+  attached vs detached (single-family); EV present; and a few more chosen from the data in Sprint 1, for example year
+  built/vintage, floor area, heating fuel/system, and heat-pump presence **[verify column names in the DC data]**.
+  AC:
+  (a) a filter language supports equals/in-list, numeric ranges, not-null, AND-combination across attributes;
+  (b) the exposed-attribute configuration is stored in the database, versioned, and editable by an Admin through the
+      API (UI for it is FR-WEB-9); Client users see only exposed attributes; the Demo role sees none;
+  (c) a **pool preview** reports, per category, how many buildings match and warns on zero, or fewer than a configurable
+      minimum (default 10), since sampling with replacement from a tiny pool understates diversity;
+  (d) an attribute that is not in the data, or an invalid value, is a clear error (consistent with FR-ENG-3);
+  (e) the effective filters and matched pool size are stored with every run and shown in results;
   (f) changing a filter changes only the sampled pool, never silently the methodology.
-  Dependencies: FR-ENG-1 (registry types carry default filters that the user may extend), FR-ENG-3 (no silently ignored
-  keys), FR-DATA-7 (characteristics available for fast filtering), FR-WEB-1 (filter UI), FR-WEB-7/DATA-6 (mapped
-  buildings' stories/units/year built can seed filter values), FR-CAL (calibration may constrain pools to match the
-  measured buildings' vintage/size).
+  Dependencies: FR-ENG-1 (registry types carry default filters), FR-ENG-3 (no silently ignored keys), FR-DATA-7
+  (characteristics available for fast filtering), FR-WEB-1 (filter UI), FR-WEB-9 (admin screen), FR-WEB-7/DATA-6
+  (mapped buildings' stories/units/year built can seed filter values), FR-CAL (calibration may constrain pools).
 
 ### 6.2 Data — `DATA`
 - **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision DC ResStock/ComStock inputs into the
@@ -172,7 +176,9 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   a composition's fixed counts. **Demoted: not a failure condition if it slips.** Full GIS workspace is LATER.
 - **FR-WEB-8 (MUST) Accuracy caveat.** Every results view shows: *methodology demonstration with benchmark checks — not
   validated for engineering or investment decisions*, plus the calibration status of the run.
-- **FR-WEB-9 (SHOULD) Admin console.** Manage demo compositions and the demo account's allowed options.
+- **FR-WEB-9 (SHOULD) Admin console.** Manage demo compositions and the demo account's allowed options, and **configure
+  which building attributes are exposed as filters** (FR-ENG-11). If the screen slips, the same configuration is edited
+  through the API or a versioned config file; the underlying configuration (not the screen) is MUST.
 
 ### 6.4 Calibration and validation — `CAL`
 - **FR-CAL-1 (MUST) Upload.** Client/Admin uploads a CSV (timestamp + kW, optional building class and name); the system
