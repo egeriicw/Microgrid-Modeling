@@ -42,7 +42,7 @@ Energy Analyst **[verify]**) mostly assume a load profile is already known.
 - **G4** Be **extensible** without refactoring: new building types, new regions, weather normalization, DER, network,
   metering, policy constraints.
 - **G5** Be **maintainable by a small human + agent team**: documented, test-driven, versioned, modular.
-- **G6** Ship a **public, constrained demo** and (nice to have) a public repository by day 30.
+- **G6** Ship a complete demo on the owner's machine by day 30; stretch: a public, constrained live demo, and (nice to have) a public repository.
 
 ### 3.2 Non-goals for the 30-day MVP
 Power-flow physics, capacity checks, DER sizing and dispatch, revenue/economics, REopt/SAM file export, weather-driven
@@ -305,13 +305,17 @@ states · Parquet export · full admin, billing, subscriptions · AWS hosting at
 
 ## 10. Success criteria (30 days)
 
+**Minimum viable goal (MUST): a complete demo on the owner's machine**, orchestrated with Docker Compose.
+**Stretch goal (SHOULD): a public live link** with capped live computation, within the $100/month ceiling.
+
 1. **Core demo (failure if missing):** from the web app, a Client defines a composition, runs it with progress and
-   convergence, and views all required charts and downloads CSVs — on real DC data on the owner's machine.
+   convergence, and views all required charts and downloads CSVs, on real DC data on the owner's machine via
+   `docker compose up`.
 2. Calibration screen compares an uploaded CSV with synthetic output and shows the metrics.
-3. Three roles enforced; the Demo account is restricted to predefined compositions.
-4. A public link serves the constrained demo with HTTPS and spend protection.
-5. Test suite and CI green; docs sufficient for a newcomer; determinism golden test passing.
-6. SHOULD: minimal map; public repository.
+3. Three roles enforced; the Demo role is restricted to predefined compositions.
+4. Test suite and CI green; docs sufficient for a newcomer; determinism golden test passing.
+5. SHOULD: minimal map viewer; public repository (owner publishes on their own command).
+6. STRETCH: public live link serving the constrained Demo role (FR-PLAT-6), published only with owner approval.
 
 ## 11. Assumptions, risks and open decisions
 

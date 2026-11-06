@@ -82,7 +82,9 @@ recommendation. Likely cut candidates: map, admin console, repo publishing. **Th
 
 **Exit criteria:** the PRD §10 criteria 1–2 hold on the owner's real DC data. **Owner review:** hands-on session.
 
-## Sprint 4 — Demo account, public deployment, hardening (Days 22–30)
+## Sprint 4 — Demo account, local demo polish, stretch: public deployment (Days 22–30)
+
+**MVP = complete Docker Compose demo on the owner's machine. Public deployment (4.4) is the stretch and is attempted only if Sprints 1–3 land on time.**
 | # | Story | FR |
 |---|---|---|
 | 4.1 | Demo role: predefined compositions + precomputed runs; locked-down endpoints | WEB-5 |
@@ -96,7 +98,7 @@ recommendation. Likely cut candidates: map, admin console, repo publishing. **Th
 | 4.9 | Public repo readiness (license decision, history scan for secrets/large files) — **publish only on owner's command** | PLAT-7 |
 | 4.10 | Release `v0.1.0`, changelog, tag; final validation report; demo script for the owner's post | — |
 
-**Exit criteria:** PRD §10 met (items 5–6 as achievable). **Owner review:** go/no-go on publishing.
+**Exit criteria:** PRD §10 minimum goal met; stretch items as achievable. **Owner review:** go/no-go on publishing.
 
 ## Metrics tracked each sprint
 Stories done vs planned · test count and coverage · CI pass rate · open risks · decisions awaiting owner · run-time
