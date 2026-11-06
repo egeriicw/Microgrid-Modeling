@@ -55,7 +55,7 @@ community-scale warehouses are **in scope** (FR-ENG-1).
 
 | Tier | Who | Capabilities (MVP) |
 |---|---|---|
-| **Admin** | Owner | Everything: define any parameter, manage compositions and demo content, view calibration and diagnostics, configure the demo. |
+| **Admin** | Owner | Everything: define any parameter, **use and configure attribute filters**, manage compositions and demo content, view calibration and diagnostics, configure the demo. |
 | **Client** | Owner acting as first customer; later paying users | Full flexibility to define neighborhoods and parameters, run, view, download, upload calibration data. |
 | **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only, view precomputed or capped runs, charts, and downloads. No arbitrary runs, no uploads. |
 
@@ -125,7 +125,11 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   AC:
   (a) a filter language supports equals/in-list, numeric ranges, not-null, AND-combination across attributes;
   (b) the exposed-attribute configuration is stored in the database, versioned, and editable by an Admin through the
-      API (UI for it is FR-WEB-9); Client users see only exposed attributes; the Demo role sees none;
+      API (UI for it is FR-WEB-9); **in the MVP the filter feature is Admin-only** — Clients and Demo do not see or use
+      filters. Access is governed by a per-role **permission flag** (e.g. `filters.use`), not hard-coded role checks, so
+      enabling it for Clients later is a configuration change (when enabled, Clients see only exposed attributes; Demo
+      never gets it). Compositions created by an Admin with filters remain runnable by others as saved/predefined
+      compositions;
   (c) a **pool preview** reports, per category, how many buildings match and warns on zero, or fewer than a configurable
       minimum (default 10), since sampling with replacement from a tiny pool understates diversity;
   (d) an attribute that is not in the data, or an invalid value, is a clear error (consistent with FR-ENG-3);
