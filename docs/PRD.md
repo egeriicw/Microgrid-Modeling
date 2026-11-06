@@ -38,7 +38,7 @@ Energy Analyst **[verify]**) mostly assume a load profile is already known.
 - **G1** Make the load-forecasting core usable by a non-programmer through a web app (this is the success-or-failure core).
 - **G2** Make results **trustworthy and honest**: convergence evidence, uncertainty bands, a calibration/validation
   module, benchmark checks, and a visible accuracy caveat.
-- **G3** Be **reproducible**: same inputs + seeds + software version ⇒ identical results.
+- **G3** Be **statistically sound and replayable**: sampling is genuinely random (Monte Carlo) so ensembles represent plausible real neighborhoods; every run records its seeds so it can be replayed exactly (e.g. for calibration comparisons); and converged results must be statistically equivalent across different seeds.
 - **G4** Be **extensible** without refactoring: new building types, new regions, weather normalization, DER, network,
   metering, policy constraints.
 - **G5** Be **maintainable by a small human + agent team**: documented, test-driven, versioned, modular.
@@ -87,8 +87,12 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   3 fixed mapped counts + 2 ranged categories yields integer counts summing exactly to `total_buildings`.
 - **FR-ENG-3 (MUST) Config honesty.** Unknown or unsupported config keys raise an error listing them; none are silently
   ignored. AC: a config with `heatpump: 0.1` either applies it (tested) or is rejected with a clear message.
-- **FR-ENG-4 (MUST) Reproducibility.** Per-run RNG streams derived with `numpy.random.SeedSequence.spawn`. AC: determinism
-  golden test; 10,000 run indices produce distinct streams; same seeds + engine version ⇒ byte-identical scalar metrics.
+- **FR-ENG-4 (MUST) Seeding: random by default, replayable always.** A run uses fresh random seeds unless the user
+  supplies fixed ones; seeds are always recorded with the run. Per-run RNG streams are derived with
+  `numpy.random.SeedSequence.spawn`. AC: (a) same seeds + engine version + data manifest ⇒ byte-identical scalar
+  metrics (determinism golden test); (b) 10,000 run indices produce distinct streams; (c) **seed-robustness test:** for a
+  converged ensemble on fixture data, key metrics (annual energy, peak, P50 profile) from several different seeds agree
+  within the ensemble's stated uncertainty; (d) the UI shows the seeds and offers "replay with same seeds".
 - **FR-ENG-5 (MUST) Resolutions.** Output hourly and 15-minute profiles. AC: 15-minute totals equal source energy;
   hourly equals the sum of its four 15-minute values; units labeled kW/kWh explicitly.
 - **FR-ENG-6 (MUST) Adaptive convergence.** Run up to `max_runs` (default 1,000), stopping early when convergence
@@ -175,7 +179,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 |---|---|
 | Performance | A 50-building, 100-variation DC run completes in **minutes** on the owner's laptop with visible progress; chart interactions < 300 ms for 8,760 points and acceptable for 35,040. Targets to be measured in Sprint 1, then fixed. |
 | Resources | Fits the owner's **MacBook Air M2, 24 GB RAM, ~30 GB free disk**: Docker images + data + DB combined within budget; streaming/chunked reads; bounded caches. |
-| Reproducibility | Every run stores config snapshot, seeds, engine version, data manifest hash. |
+| Replayability | Every run stores config snapshot, seeds, engine version, data manifest hash, so any run can be replayed exactly; new runs default to fresh random seeds. |
 | Security | Hashed passwords, JWT with short expiry, role checks in API, input validation, upload size/type limits, rate limiting on public endpoints, secrets only via environment. |
 | Privacy | Uploaded measured data is private to its owner; never used in the public demo without explicit consent. |
 | Observability | Structured logs with run ids; basic health/ready endpoints; error tracking is SHOULD. |
