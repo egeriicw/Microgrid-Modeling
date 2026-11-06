@@ -112,6 +112,24 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   removed from the config surface. Requires owner approval (methodology).
 - **FR-ENG-10 (MUST) Temperature.** Each result carries the temperature series used (from the ResStock/ComStock
   weather files) so charts can show load and temperature together. **[verify]** which weather file applies per dataset.
+- **FR-ENG-11 (MUST) Attribute filtering of source buildings.** For every composition category, the user can filter the
+  ResStock/ComStock building population by **any characteristic present in the ingested data** (for example building
+  type and height, floor area, year built/vintage, number of stories, number of units, heating and cooling system,
+  fuel, water heater, presence of heat pump/solar/EV, envelope, and for commercial: type, size, vintage, HVAC; exact
+  columns are discovered from the data, not hard-coded). Filters are stored in the composition and apply when the
+  archetype pool is built. AC:
+  (a) a filter language supports equals/in-list, numeric ranges, not-null, and AND-combination (OR across lists);
+  (b) the engine can list filterable attributes with data type and value summary (distinct values or min/max/count)
+  straight from the characteristics data;
+  (c) a **pool preview** reports, per category, how many buildings match (and warns on zero, or on fewer than a
+  configurable minimum such as 10, since sampling with replacement from a tiny pool understates diversity);
+  (d) an unknown attribute or invalid value is a clear error (consistent with FR-ENG-3);
+  (e) the effective filters and the matched pool size are stored with every run and shown in results;
+  (f) changing a filter changes only the sampled pool, never silently the methodology.
+  Dependencies: FR-ENG-1 (registry types carry default filters that the user may extend), FR-ENG-3 (no silently ignored
+  keys), FR-DATA-7 (characteristics available for fast filtering), FR-WEB-1 (filter UI), FR-WEB-7/DATA-6 (mapped
+  buildings' stories/units/year built can seed filter values), FR-CAL (calibration may constrain pools to match the
+  measured buildings' vintage/size).
 
 ### 6.2 Data — `DATA`
 - **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision DC ResStock/ComStock inputs into the
@@ -132,6 +150,11 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 - **FR-DATA-6 (SHOULD) Building footprints, DC.** One footprint source for geometry (DC Open Data, OpenStreetMap,
   Microsoft or Overture), with attributes (use, stories, units, year built) joined from DC open government property
   data. An agent evaluates the options (coverage, attributes, license/attribution) and recommends one **for owner approval**.
+- **FR-DATA-7 (MUST) Building characteristics store.** The ResStock/ComStock building-characteristics tables (one row per
+  building, one column per characteristic) for the ingested region are loaded into PostgreSQL (plain tables, indexed on
+  commonly filtered columns) so filtering and pool previews are fast and queryable from the API. Raw 15-minute Parquet
+  stays on disk. AC: loading is repeatable from the manifest; a pool preview over DC returns in well under a second;
+  column names and value meanings are documented in a generated data dictionary shown in the UI.
 
 ### 6.3 Web application — `WEB`
 - **FR-WEB-1 (MUST) Composition form.** Define total buildings and per-type fractions/fixed counts, seeds, `max_runs`,

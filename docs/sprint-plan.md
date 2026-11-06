@@ -26,7 +26,8 @@ tuning (FR-CAL-4, already LATER), admin console (FR-WEB-9), public repo (FR-PLAT
 | 1.3 | Strict config: reject unknown keys; implement or remove ignored keys; fix `scenario.name` list bug | ENG-3 | Modeling |
 | 1.4 | RNG with `SeedSequence.spawn`; determinism golden test | ENG-4 | Modeling/QA |
 | 1.5 | Building-type registry incl. single-family detached/attached, institutional, civic; categorize rewired to registry | ENG-1 | Modeling |
-| 1.6 | Data ingestion script + manifest + fixtures (≤5 buildings per type) | DATA-1/2 | Data |
+| 1.6 | Data ingestion script + manifest + fixtures (≤5 buildings per type); load characteristics tables to Postgres with data dictionary | DATA-1/2/7 | Data |
+| 1.6b | Attribute-filter engine: filter language, attribute discovery, pool preview with small-pool warning (tests first on fixtures) | ENG-11 | Modeling |
 | 1.7 | Docker Compose: Postgres+PostGIS+TimescaleDB, Redis, api, worker; one-command up; disk-budget check | PLAT-4, DATA-4 | DevOps |
 | 1.8 | FastAPI skeleton `/api/v1`, health/ready, SQLAlchemy models, first Alembic migrations (up/down tested) | PLAT-1 | Backend |
 | 1.9 | Engine facade `run_scenario(config, progress=cb)` + typed progress events | ENG-8 | Modeling |
@@ -50,7 +51,7 @@ calls the same facade; determinism test green; baseline timing recorded; decisio
 | 2.5 | Load results in Timescale hypertable; results endpoints | DATA-4 |
 | 2.6 | Cancel run; SSE progress; run list/detail | WEB-2 / PLAT-2 |
 | 2.7 | React app shell, typed API client from OpenAPI, login placeholder | WEB |
-| 2.8 | Composition form with live validation, save/clone, YAML import/export | WEB-1 |
+| 2.8 | Composition form with live validation, save/clone, YAML import/export, per-category filter builder with pool preview | WEB-1, ENG-11 |
 | 2.9 | Run screen with progress bar, stage text, convergence status, cancel | WEB-2 |
 | 2.10 | Auth: users table, JWT, three roles enforced in API | WEB-5 |
 | 2.11 | Hosting ADR + estimate of monthly cost | PLAT-6 |
