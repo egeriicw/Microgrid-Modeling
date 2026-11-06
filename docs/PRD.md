@@ -180,7 +180,8 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 - **FR-DATA-8 (MUST) Dataset identity and catalog.** A "dataset" is identified by **(product ResStock|ComStock, release,
   weather version e.g. TMY3|AMY2018, upgrade/scenario id, state)**. The system keeps a **dataset catalog** (database
   table plus data dictionary per release) recording for each: location on disk, manifest hash, size, license, and a
-  human label for the scenario (e.g. "Baseline", "High heat-pump penetration"). Every run stores the dataset ids it
+  human label and scenario family for the scenario (e.g. "Baseline", "Cold Climate Air-Source Heat Pump"; the owner-supplied
+  ResStock list is in [`reference/resstock-upgrade-measures.md`](./reference/resstock-upgrade-measures.md)). Every run stores the dataset ids it
   used. The MVP uses the **baseline** scenario only, currently believed to be `upgrade=0` **[verify in each release's
   documentation/data dictionary: upgrade numbering and meaning are release-specific]**. AC: the catalog can describe
   more than one upgrade for the same state; the engine takes dataset ids as inputs rather than hard-coded paths;
