@@ -63,7 +63,7 @@ tests/                    engine tests; api/tests; web tests; e2e/
 | Containers | Docker Compose: `db`, `redis`, `api`, `worker`, `web` (+ optional `jupyter`) | REQUIRED | Watch disk: pin slim base images; prune. |
 | CI | GitHub Actions: lint, mypy, tests, coverage, build images, e2e smoke | RECOMMENDED | Existing workflow has most jobs disabled / non-blocking; fix. |
 | Observability | structlog JSON logs, `/health` `/ready`; Sentry optional | RECOMMENDED | |
-| Hosting (demo) | **$0 budget.** Proposed: static export of precomputed demo results + React build on a free static host; full app local-only | PROPOSED, needs owner OK | Agent verifies free-tier terms; no spending without approval. |
+| Hosting (demo) | **Local first.** Public hosting later within a **$100/month total ceiling**; agent produces a costed recommendation | OPEN, deferred by owner | No spending without approval. |
 | Object storage | Local filesystem for MVP; S3-compatible interface | RECOMMENDED | The old plan's MinIO is dropped for MVP to save moving parts and disk. |
 | SEED integration | Adapter interface only | REQUIRED placeholder | Real coupling later **[verify]** SEED API. |
 | Energy tools | REopt, SAM/PySAM, dGen, PyPSA/pandapower | LATER | Adapters behind interfaces. |

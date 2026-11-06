@@ -257,15 +257,14 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   callable from an IPython notebook; example notebooks are maintained and tested.
 - **FR-PLAT-4 (MUST)** One command starts the whole stack locally (Docker Compose); one command runs all tests.
 - **FR-PLAT-5 (MUST)** CI runs lint, type-check, tests and coverage on every push; lint failures block merge.
-- **FR-PLAT-6 (SHOULD) Public demo with live computation, at $0 hosting cost.** Owner requirements: the public demo
-  computes results in real time (capped, per §4), and hosting costs $0. These conflict unless a free host can run the
-  engine, so: an agent evaluates free options (e.g. an always-free cloud VM, a free container/Spaces tier, or the
-  owner's own machine exposed through a free tunnel) against real requirements (RAM, disk, CPU time per run, sleep
-  behavior, terms of service) **[verify all; free-tier terms change]** and reports at the week-2 checkpoint. Safeguards
-  whatever the host: caps, rate limiting, queue, request size limits, HTTPS, no secrets in the repo, no uploads, and a
-  kill switch. **Fallback if no $0 host can run live computation:** publish a static site of precomputed results, and
-  offer live computation only when the owner runs the app locally (optionally through a tunnel). Nothing is published
-  without the owner's approval.
+- **FR-PLAT-6 (SHOULD) Public demo with live capped computation.** Development and the first demo run **on the owner's
+  machine**; public hosting is decided later. Owner budget: **$100 per month total** for all hosting and services
+  (ceiling, not authorization: any spending needs the owner's approval first). An agent produces a costed hosting
+  recommendation (instance size from measured run cost, database, storage, domain, monitoring) **[verify current
+  pricing]** at the Day-14 checkpoint, or later if the owner defers it. Safeguards whatever the host: hard caps (§4),
+  rate limiting, queue, request size limits, HTTPS, no secrets in the repo, no uploads, spend alerts at the ceiling,
+  and a kill switch. A static site of precomputed results remains the fallback. Nothing is published without the
+  owner's approval.
 - **FR-PLAT-7 (SHOULD)** Public repo readiness: license (owner decision), README that works on a clean machine,
   CONTRIBUTING, no secrets or large data in history, data attribution notices.
 
@@ -325,11 +324,11 @@ boundaries; cloud agents work on fixtures only unless data is made available.
 | R2 | Real data can't be used in the cloud | Fixtures; local-only integration tests marked and documented. |
 | R3 | Convergence definition is scientifically weak | Owner-approved criteria (O3); tests on synthetic ensembles. |
 | R4 | Untrusted numbers published | Visible caveat; calibration screen; benchmark checks; honest messaging (FR-WEB-8). |
-| R5 | Public link abused, costly, or unable to run live at $0 | Locked demo role with hard caps, rate limits, kill switch; compact profile library (FR-DATA-9); static fallback (FR-PLAT-6). |
+| R5 | Public link abused or costs exceed the $100/month ceiling | Locked demo role with hard caps, rate limits, kill switch; compact profile library (FR-DATA-9); static fallback (FR-PLAT-6). |
 | R6 | 30 GB disk exhausted | Raw Parquet outside the DB; image and cache budgets; ingestion reports disk use. |
 | R7 | Data licensing/attribution missed | Per-dataset license review before public release. |
 | R8 | Dormant/ignored config silently misleads | FR-ENG-3 (strict config) in Sprint 1. |
 
 **Open items (owner input needed):** O1 DC data size/completeness (parked) · O2 footprint source choice · O3 convergence
-criteria (approved provisionally) · O4 public repo license · O5 hosting: budget is $0, provider to be chosen by agent recommendation · O6 week-2 rule if the date is at risk
+criteria (approved provisionally) · O4 public repo license · O5 hosting: budget ceiling $100/month total; provider chosen by agent recommendation after local MVP · O6 week-2 rule if the date is at risk
 (default: owner decides at the checkpoint) · O7 confirm "CBEX" means CBECS · O8 name of the product.
