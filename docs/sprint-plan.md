@@ -33,6 +33,7 @@ tuning (FR-CAL-4, already LATER), admin console (FR-WEB-9), public repo (FR-PLAT
 | 1.9 | Engine facade `run_scenario(config, progress=cb)` + typed progress events | ENG-8 | Modeling |
 | 1.10 | Worker task runs the facade, writes progress and summary metrics (no UI yet) | PLAT-2 | Backend |
 | 1.11 | Performance baseline on owner's data/hardware (run time vs buildings × variations; memory) | NFR | Modeling/QA |
+| 1.11b | Dataset catalog + data dictionary per release; confirm what `upgrade=0` and other upgrade ids mean in the release(s) the owner holds; engine takes dataset ids | DATA-8 | Data/Modeling |
 | 1.12 | Spikes: UI kit (MUI vs shadcn) and charts (ECharts) with a 35k-point series; footprint source evaluation | ADR-007/010 | Frontend/Data |
 
 **Exit criteria:** `make up` works; a fixture composition runs through API→worker→DB with progress rows; notebook example

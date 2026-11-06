@@ -76,7 +76,9 @@ manager* (aggregating many meters), *a policy audience* (reading the public demo
 - **Load profile** — the aggregated electric demand time series (kW) at hourly and 15-minute resolution.
 - **Meter** — a measurement point (placeholder in MVP; see FR-DATA-3).
 - **Calibration / validation** — comparing synthetic output with measured or benchmark data.
-- **Run** — one execution of an ensemble for a composition and settings; reproducible by stored seeds + version.
+- **Run** — one execution of an ensemble for a composition and settings; replayable by stored seeds + version.
+- **Dataset / scenario** — a ResStock or ComStock data package identified by release, weather version, upgrade id and state;
+  the baseline is the default scenario, and upgrade scenarios simulate other configurations (e.g. high heat-pump or EV penetration).
 
 ## 6. Functional requirements
 
@@ -138,6 +140,18 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   Dependencies: FR-ENG-1 (registry types carry default filters), FR-ENG-3 (no silently ignored keys), FR-DATA-7
   (characteristics available for fast filtering), FR-WEB-1 (filter UI), FR-WEB-9 (admin screen), FR-WEB-7/DATA-6
   (mapped buildings' stories/units/year built can seed filter values), FR-CAL (calibration may constrain pools).
+- **FR-ENG-12 (LATER; design now) Scenario switching and mixing.** ResStock and ComStock also simulate other
+  configurations (upgrades such as heat pumps, EV charging, efficiency measures) as separate datasets. The engine must
+  be able to draw each sampled building from the **baseline or from a scenario dataset** according to a **scenario
+  rule**. Example: when a target characteristic penetration (e.g. share of homes with heat pumps or EV charging)
+  reaches a threshold, draw that share from the matching upgrade dataset and the rest from baseline; or switch a whole
+  category to a different dataset. How penetration maps to datasets, how thresholds are defined, and how consistency
+  is kept (e.g. pairing the same building across baseline and upgrade) are **methodology decisions for the owner**
+  **[verify with ResStock/ComStock documentation how upgrade files relate to baseline buildings]**. MVP obligations
+  (so this is not a refactor later): dataset ids as inputs (FR-DATA-8); a `scenario` field in the composition schema
+  that defaults to baseline; the pool builder keyed by dataset; run records that store which dataset each sampled
+  building came from. AC (MVP part): a test builds pools from two fixture datasets labeled baseline and "upgrade" and
+  the run record shows per-building dataset ids, even though no UI exposes it yet.
 
 ### 6.2 Data — `DATA`
 - **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision DC ResStock/ComStock inputs into the
@@ -163,6 +177,14 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   commonly filtered columns) so filtering and pool previews are fast and queryable from the API. Raw 15-minute Parquet
   stays on disk. AC: loading is repeatable from the manifest; a pool preview over DC returns in well under a second;
   column names and value meanings are documented in a generated data dictionary shown in the UI.
+- **FR-DATA-8 (MUST) Dataset identity and catalog.** A "dataset" is identified by **(product ResStock|ComStock, release,
+  weather version e.g. TMY3|AMY2018, upgrade/scenario id, state)**. The system keeps a **dataset catalog** (database
+  table plus data dictionary per release) recording for each: location on disk, manifest hash, size, license, and a
+  human label for the scenario (e.g. "Baseline", "High heat-pump penetration"). Every run stores the dataset ids it
+  used. The MVP uses the **baseline** scenario only, currently believed to be `upgrade=0` **[verify in each release's
+  documentation/data dictionary: upgrade numbering and meaning are release-specific]**. AC: the catalog can describe
+  more than one upgrade for the same state; the engine takes dataset ids as inputs rather than hard-coded paths;
+  ingesting an extra upgrade adds catalog rows without code changes; ingestion shows progress and disk use.
 
 ### 6.3 Web application — `WEB`
 - **FR-WEB-1 (MUST) Composition form.** Define total buildings and per-type fractions/fixed counts, seeds, `max_runs`,
@@ -237,7 +259,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 ## 9. Extension points the MVP must preserve (do not build)
 
 Weather normalization using Kissock-style multivariate change-point models fitted per building or group, driven by
-future or typical weather · EV / heat-pump / efficiency / solar scenarios from ResStock/ComStock upgrade datasets ·
+future or typical weather · EV / heat-pump / efficiency / solar scenarios from ResStock/ComStock upgrade datasets (design hooks: FR-DATA-8, FR-ENG-12) ·
 submeters, virtual power plant and virtual net metering, aggregate point-of-interconnection meter · network as
 one-line diagram; capacity checks; power flow (PyPSA / pandapower **[verify]**) · DER sizing and dispatch; REopt/SAM
 input/output files; economics (PJM energy, capacity, ancillary) · **policy constraints** (e.g. a utility's maximum

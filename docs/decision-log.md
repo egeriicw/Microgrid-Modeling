@@ -10,3 +10,4 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 | 2026-11-03 | Week-2 slip/cut rule: owner decides at checkpoint | Auto-cut | Owner did not specify; default chosen | Yes | Default |
 | 2026-11-03 | New dependencies allowed without approval but logged | Require approval | Interpretation of owner statement; confirm | Yes | Confirm |
 | 2026-11-03 | Celery + Redis recommended for jobs | RQ, Dramatiq, Arq | Maturity, cancel/progress support | Yes | Proposed (ADR-005) |
+| 2026-11-06 | Dataset = (product, release, weather, upgrade, state); MVP baseline only; scenario switching designed (FR-ENG-12) but LATER | Hard-code upgrade=0 | Owner: scenarios like high EV/heat-pump penetration require switching datasets | Yes | Owner-stated; thresholds/method need owner approval |
