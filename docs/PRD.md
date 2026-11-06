@@ -77,6 +77,7 @@ manager* (aggregating many meters), *a policy audience* (reading the public demo
 - **Meter** — a measurement point (placeholder in MVP; see FR-DATA-3).
 - **Calibration / validation** — comparing synthetic output with measured or benchmark data.
 - **Run** — one execution of an ensemble for a composition and settings; replayable by stored seeds + version.
+- **Weather year** — AMY2018 datasets represent buildings under the *actual weather of 2018*, not a long-run typical year (TMY3). The MVP's "typical year" is therefore "the 2018 weather year"; the UI and exports must label it that way (FR-WEB-8). Genuine typical-year results would need TMY3 datasets or the weather-normalization work in §9.
 - **Dataset / scenario** — a ResStock or ComStock data package identified by release, weather version, upgrade id and state;
   the baseline is the default scenario, and upgrade scenarios simulate other configurations (e.g. high heat-pump or EV penetration).
 
@@ -185,7 +186,10 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   [`reference/comstock-upgrade-measures.md`](./reference/comstock-upgrade-measures.md); ComStock scenario ids are strings, so the
   catalog keeps an internal scenario key plus the on-disk partition id). Each dataset also records whether its load is **gross demand
   or net of on-site generation** (some ComStock scenarios include PV/battery), and gross and net must never be mixed silently Every run stores the dataset ids it
-  used. The MVP uses the **baseline** scenario only, currently believed to be `upgrade=0` **[verify in each release's
+  used. **MVP datasets (owner decision, 2026-11-06):** ResStock **2025 Release 1, AMY2018** and ComStock **2025 Release 3, AMY2018**
+  (newest releases, shared 2018 weather year, full measure lists), DC only, subject to an agent confirming their OEDI
+  folder names, DC coverage, and known issues; if the owner's local files come from other releases, the data must be
+  re-ingested or the choice revisited with the owner. The MVP uses the **baseline** scenario only, currently believed to be `upgrade=0` **[verify in each release's
   documentation/data dictionary: upgrade numbering and meaning are release-specific]**. AC: the catalog can describe
   more than one upgrade for the same state; the engine takes dataset ids as inputs rather than hard-coded paths;
   ingesting an extra upgrade adds catalog rows without code changes; ingestion shows progress and disk use.
