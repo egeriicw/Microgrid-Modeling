@@ -46,8 +46,10 @@ Energy Analyst **[verify]**) mostly assume a load profile is already known.
 
 ### 3.2 Non-goals for the 30-day MVP
 Power-flow physics, capacity checks, DER sizing and dispatch, revenue/economics, REopt/SAM file export, weather-driven
-forecasting, EV/heat-pump scenarios, multi-region data, billing, full user administration, industrial buildings,
+forecasting, EV/heat-pump scenarios, multi-region data, billing, full user administration,
 arbitrary GIS uploads, open public simulation. These are **LATER** — see §9 for the hooks the MVP must leave.
+Separately, heavy industrial/manufacturing buildings are **out of scope** (not merely later) unless ComStock defines them;
+community-scale warehouses are **in scope** (FR-ENG-1).
 
 ## 4. Users and access tiers
 
@@ -66,8 +68,9 @@ manager* (aggregating many meters), *a policy audience* (reading the public demo
 - **Composition** — a recipe for a neighborhood: total buildings plus, per building type, either a fraction range or a
   fixed count. May mix both (hybrid of hypothetical and mapped).
 - **Building type / category** — an entry in an extensible **registry** (e.g. `sf_detached`, `sf_attached`, `mf_small`,
-  `mf_mid`, `mf_large`, `commercial_small_office`, `institutional_school`, `institutional_hospital`, `civic`), each
-  mapped to ResStock/ComStock filters. Industrial is excluded for MVP.
+  `mf_mid`, `mf_large`, `commercial_small_office`, `institutional_school`, `institutional_hospital`, `civic`, `commercial_warehouse`), each
+  mapped to ResStock/ComStock filters. Heavy industrial/manufacturing is excluded; a community-scale warehouse is
+  included **only if ComStock defines it** (agent confirms against the DC dataset **[verify]**).
 - **Variation / realization** — one sampled neighborhood (one Monte-Carlo draw).
 - **Ensemble** — the set of accepted variations in a run. **Converged** — see FR-ENG-6.
 - **Load profile** — the aggregated electric demand time series (kW) at hourly and 15-minute resolution.
@@ -82,7 +85,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 ### 6.1 Engine (existing code, hardened) — `ENG`
 - **FR-ENG-1 (MUST) Building-type registry.** Types are data, not code. AC: adding a type means adding a registry entry
   and mapping rules; a test adds a fake type without changing engine code. MVP types: single-family detached/attached,
-  multifamily (small/mid/large), small commercial (office etc.), institutional (school, hospital), civic.
+  multifamily (small/mid/large), small commercial (office etc.), institutional (school, hospital), civic, and community-scale warehouse (if defined in ComStock).
 - **FR-ENG-2 (MUST) Composition modes.** Support fraction ranges, fixed counts, and a hybrid. AC: a composition with
   3 fixed mapped counts + 2 ranged categories yields integer counts summing exactly to `total_buildings`.
 - **FR-ENG-3 (MUST) Config honesty.** Unknown or unsupported config keys raise an error listing them; none are silently
