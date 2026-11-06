@@ -23,3 +23,5 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 | 2026-11-06 | Public demo must compute live (capped), still $0; conflict flagged; compact profile library + free-host evaluation + static fallback | Static only | Owner requirement | Yes | Owner-stated; host feasibility unresolved |
 | 2026-11-06 | Start by running on owner's machine; hosting budget ceiling $100/month total (supersedes $0); public hosting deferred | $0 budget; static only | Owner direction | Yes | Owner-stated |
 | 2026-11-06 | Day-30 minimum = full demo on owner's machine via Docker Compose; public live link is a stretch goal | Live link required | Owner direction | Yes | Owner-stated |
+| 2026-11-06 | Test fixtures are synthetic, script-generated profiles with the real column layout; no real ResStock/ComStock files committed | Commit a real subset | Avoids licensing questions; cloud agents need fixtures | Yes | Agent default under autonomy rule |
+| 2026-11-06 | Owner's old runs in data/output are left untouched | Clean up | Rule: no deletion without approval | Yes | Policy |
