@@ -153,6 +153,22 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   that defaults to baseline; the pool builder keyed by dataset; run records that store which dataset each sampled
   building came from. AC (MVP part): a test builds pools from two fixture datasets labeled baseline and "upgrade" and
   the run record shows per-building dataset ids, even though no UI exposes it yet.
+- **FR-ENG-13 (LATER; design now) Weather normalization before weather-driven use.** The datasets are AMY2018: each
+  building's load reflects actual 2018 weather. Before any load is driven by other weather (future years, TMY, or
+  actual observed weather), the loads are **weather-normalized**: for each building (or building group), fit a
+  **multivariate change-point regression** (Kissock-style; variants such as 3-, 4- or 5-parameter models, with
+  temperature and optionally other weather variables and time-of-day/day-type terms) of load against the **2018
+  weather the dataset was simulated with**; judge fit quality (e.g. R², CV(RMSE)); derive normalized annual
+  consumption patterns; then predict load under the target weather. Hourly/15-minute shape handling, grouping choices,
+  fit thresholds, and which weather variables to use are **methodology decisions for the owner**. Only after
+  normalization may any weather-driven forecast be produced. MVP obligations so this is not a refactor:
+  (a) the weather series used by each dataset is ingested, catalogued and stored with the dataset (FR-DATA-8,
+  FR-ENG-10) **[verify where NREL publishes the AMY2018 weather files for each release]**;
+  (b) building-level hourly/15-minute load is retrievable per sampled building, not only as neighborhood totals;
+  (c) the engine has an empty `weather` module with a documented interface (fit, predict, quality report);
+  (d) the same module can later weather-normalize measured/calibration data so calibration compares like with like.
+  Known limits to state in the docs: one weather year gives limited coverage of extremes, and fits on simulated loads
+  describe the simulation model, not necessarily real building behavior.
 
 ### 6.2 Data — `DATA`
 - **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision DC ResStock/ComStock inputs into the
@@ -266,8 +282,8 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 
 ## 9. Extension points the MVP must preserve (do not build)
 
-Weather normalization using Kissock-style multivariate change-point models fitted per building or group, driven by
-future or typical weather · EV / heat-pump / efficiency / solar scenarios from ResStock/ComStock upgrade datasets (design hooks: FR-DATA-8, FR-ENG-12) ·
+Weather normalization (FR-ENG-13) using Kissock-style multivariate change-point models fitted per building or group on
+the AMY2018 loads and weather, **before** loads are driven by future, typical or observed weather · EV / heat-pump / efficiency / solar scenarios from ResStock/ComStock upgrade datasets (design hooks: FR-DATA-8, FR-ENG-12) ·
 submeters, virtual power plant and virtual net metering, aggregate point-of-interconnection meter · network as
 one-line diagram; capacity checks; power flow (PyPSA / pandapower **[verify]**) · DER sizing and dispatch; REopt/SAM
 input/output files; economics (PJM energy, capacity, ancillary) · **policy constraints** (e.g. a utility's maximum

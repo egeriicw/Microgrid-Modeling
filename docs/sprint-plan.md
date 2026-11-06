@@ -48,7 +48,7 @@ calls the same facade; determinism test green; baseline timing recorded; decisio
 | 2.1 | Adaptive convergence + `max_runs` + configurable criteria (provisional defaults, tests on synthetic ensembles) | ENG-6 |
 | 2.2 | Results model: residential/commercial/type splits, P10/P50/P90, 15-min and hourly, diversity factors attached | ENG-5/7 |
 | 2.3 | Meter hierarchy placeholder (building→class→total) persisted | DATA-3 |
-| 2.4 | Temperature series attached to results | ENG-10 |
+| 2.4 | Temperature series attached to results; weather series ingested/catalogued per dataset; empty `weather` module with interface | ENG-10, ENG-13 |
 | 2.5 | Load results in Timescale hypertable; results endpoints | DATA-4 |
 | 2.6 | Cancel run; SSE progress; run list/detail | WEB-2 / PLAT-2 |
 | 2.7 | React app shell, typed API client from OpenAPI, login placeholder | WEB |
