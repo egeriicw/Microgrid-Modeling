@@ -1,3 +1,6 @@
+> **Note (2026-11-07):** the current plan lives in `PRD.md`, `architecture-and-stack.md`, `sprint-plan.md`, `agent-team.md`,
+> `decision-log.md`, `traceability-matrix.md` and `handoff/`. The specs listed below predate it; where they disagree, the PRD wins.
+
 # SNLG Platform — Documentation Set
 
 Start here. Read in this order.

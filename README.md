@@ -1,77 +1,52 @@
-# Microgrid Planner
+# Community Energy Profiler (working title: Microgrid Planner)
 
-Planning software for community microgrids. Its first component, the Community
-Load Profiler, builds a neighborhood from GIS footprints and produces
-uncertainty-aware hourly load using SNLG (Synthetic Neighborhood Load
-Generation): Monte-Carlo profiles built from NREL ResStock / ComStock stock.
+Estimates the hourly and 15-minute electricity load of a community, with uncertainty, before any meters exist. It builds
+many plausible neighborhoods by sampling real buildings from NREL **ResStock** (residential) and **ComStock**
+(commercial), repeats until the average load converges, and reports the result as percentile envelopes. The first
+region is Washington, DC. The goal is a web app (FastAPI + React) for microgrid planning, RFP support and policy
+analysis; today the engine exists and the web platform is being built.
+
+## Status (see `docs/handoff/session-handoff.md` for the live picture)
+- **Built and tested:** the load engine (`src/microgrid/community_load/synthetic/`), a building-type registry, the
+  GIS-to-engine bridge, strict configuration, and replayable random seeding. Tests: 192 passing.
+- **Not built yet:** API, background worker, database, web UI, calibration module, Docker stack (specified in `docs/`,
+  scheduled in `docs/sprint-plan.md`).
+- **Goal:** a complete demo on the owner's machine in 30 days; a public live link is a stretch.
 
 ## Structure
-
 ```
-microgrid                     Microgrid Planner (this repository)
-|-- core                      cross-cutting contract: LoadResult
-|-- geo                       geography: Structure, Neighborhood, footprints, boundaries
-|-- community_load            Community Load Profiler (reads geo; parallel to it)
-|   |-- synthetic             SNLG engine: Monte-Carlo ResStock/ComStock ensembles
-|   |-- categorize            geography -> SNLG archetype categories
-|   `-- sources               LoadSource adapters (synthetic, measured)
-|-- der / dispatch / economics   interfaces; they read geo, not community_load
-`-- study                     pipeline chaining the layers
+src/microgrid/
+  core/            LoadResult contract
+  geo/             structures, neighborhoods, GeoJSON reading, use classification
+  community_load/  registry (building types), categorize, sources, synthetic (the Monte-Carlo engine)
+  der/ dispatch/ economics/   interfaces only
+  study.py         chains neighborhood -> load -> DER
+tests/  configs/scenarios/  notebooks/  docs/  api/ (scaffold)  web/ (scaffold)  deploy/
 ```
+Dependencies point downward only (enforced by `tests/test_architecture.py`).
 
-Dependencies point downward only (`tests/test_architecture.py`). The engine's
-`snlg` name survives as prose ("SNLG") and in the `snlg-ensemble` source label.
-
-## Status
-
-- **`src/microgrid/community_load/synthetic/`** — the load-generation engine (methodology-driven, typed,
-  **50 passing tests**). Runs today via
-  `notebooks/community_microgrid_load_profiles.ipynb`.
-- **Platform (planned)** — REST API + async workers + Next.js UI +
-  Postgres/MinIO + Docker Compose. Specified in [`docs/`](./docs/README.md).
-
-## Documentation
-
-- [`docs/prd-suite-4d.md`](./docs/prd-suite-4d.md) — **suite PRD v2** (4D template structure) and [`docs/prd-gap-analysis.md`](./docs/prd-gap-analysis.md) — gaps in `PRD.md`.
-
-Everything starts at **[`docs/README.md`](./docs/README.md)**:
-
-- [`docs/archive/PRD-v1-snlg-platform.md` (archived)](./docs/archive/PRD-v1-snlg-platform.md) — product requirements, the 4 locked design
-  decisions, scope, success criteria.
-- [`docs/engine-reference.md`](./docs/engine-reference.md) — reference for
-  the existing SNLG engine + known gaps.
-- [`docs/architecture.md`](./docs/architecture.md),
-  [`docs/requirements.md`](./docs/requirements.md),
-  [`docs/api-spec.md`](./docs/api-spec.md),
-  [`docs/data-model.md`](./docs/data-model.md),
-  [`docs/frontend-spec.md`](./docs/frontend-spec.md),
-  [`docs/infrastructure.md`](./docs/infrastructure.md).
-- [`docs/test-plan.md`](./docs/test-plan.md) — **binding** TDD methodology +
-  full test-file index.
-- [`docs/implementation-plan.md`](./docs/implementation-plan.md) — phased
-  build plan.
-
-## Run the engine tests today
-
+## Develop
 ```bash
-PYTHONPATH=src uv run pytest -q          # 50 pass (+ RED placeholders skip/xfail)
+uv run --extra dev pytest -q
+uv run --extra dev ruff check src tests
+uv run --extra dev ruff format --check src tests
+uv run --extra dev mypy
 ```
+The ResStock/ComStock data lives under `data/` and is git-ignored (it is large and stays on the owner's machine). Tests
+use synthetic fixtures only.
 
-`pytest` now runs from the repo root with no `PYTHONPATH`; packaging for release is Phase 1.1 in
-`docs/implementation-plan.md` (Phase 1.1).
-
-## Repo map
-
-| Path | What |
+## Documentation map
+| Read | For |
 |---|---|
-| `src/microgrid/community_load/synthetic/` | the engine (see `docs/engine-reference.md`) |
-| `src/microgrid/` | the planner: `core`, `geo`, `community_load/{categorize,sources}`, `study`; `der`/`dispatch`/`economics` are interfaces (see `docs/prd-suite-4d.md`) |
-| `tests/` | engine tests + new RED placeholders (`test_packaging.py`, `test_run_facade.py`, `test_determinism.py`) |
-| `configs/scenarios/` | scenario YAMLs (also import/parity fixtures) |
-| `notebooks/` | the orchestration notebook |
-| `api/` | **(scaffold)** FastAPI service + RQ worker + test skeletons |
-| `web/` | **(scaffold)** Next.js app + test skeletons |
-| `deploy/` | `docker-compose.yml` (+ CI override), `.env.example`, smoke test |
-| `scripts/` | OEDI downloader + seed (planned) + test skeletons |
-| `docs/` | PRD + all specs |
-| `Makefile` | `up`, `test`, `db-upgrade`, `seed`, ... |
+| `docs/PRD.md` | What we are building and why (requirements with acceptance criteria) |
+| `docs/architecture-and-stack.md` | Technology choices and structure |
+| `docs/sprint-plan.md`, `docs/sprints/` | The 30-day plan and sprint records |
+| `docs/agent-team.md`, `.claude/agents/` | How the agent team works and its roles |
+| `docs/decision-log.md`, `docs/adr/` | Decisions made and why |
+| `docs/traceability-matrix.md` | Requirement -> tests -> code |
+| `docs/codebase-review.md` | Honest review of where the project started |
+| `docs/handoff/` | Resume instructions for a new session |
+| `docs/archive/` | Superseded documents kept for history |
+
+Older specs in `docs/` (api-spec, data-model, frontend-spec, infrastructure, implementation-plan, test-plan,
+requirements, engine-reference) predate the new PRD and are being reconciled; where they disagree, the PRD wins.
