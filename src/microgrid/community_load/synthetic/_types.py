@@ -120,3 +120,4 @@ class EnsembleResult:
     percentile_envelopes: dict[str, LoadProfile] = field(default_factory=dict)
     diversity_metrics: dict[str, float] = field(default_factory=dict)
     representative_cases: dict[str, NeighborhoodResult] = field(default_factory=dict)
+    seeds: dict[str, int] = field(default_factory=dict)  # seeds actually used; supply them to replay the run

@@ -4,6 +4,7 @@
 |---|---|---|
 | 2026-11-07 | 1.1 Packaging and dependency cleanup (FR-PLAT-3) | **Done.** Build backend added; runtime deps reduced to numpy, pandas, pyarrow, pyyaml, openpyxl; dev and notebooks extras; Python floor 3.12 (pinned 3.13); one version source (`microgrid.__version__`); public surface pinned; clean-interpreter import test. |
 | 2026-11-07 | 1.2 CI that blocks (FR-PLAT-5) | **Done in repo; not yet run on GitHub.** Lint, format check and mypy now block; engine job installs the package, no `PYTHONPATH`, reports coverage. Ruff replaces black. One-time reformat of 41 files (no behavior change; tests identical). Fixed real findings: undefined name in a type hint, loop-variable closure, `zip` strictness, two misnamed variables, awkward error strings from an earlier global rename. |
+| 2026-11-07 | 1.4 RNG and replayability (FR-ENG-4) | **Done (engine level).** Stateless `SeedSequence` derivation; 10,000 distinct run streams; no root consumption; independent layers even with equal seeds; no neighbouring-seed collisions; fresh random seeds by default, always recorded in `EnsembleResult.seeds`; sampling-level seed-robustness test. **Still pending:** golden determinism test and full-ensemble seed-robustness test (need the run facade, story 1.9, and fixtures, story 1.6); UI replay (Sprint 2). **[numbers change]** noted in CHANGELOG. |
 
 ## Metrics (end of day 1)
 - Tests: 116 passed, 2 skipped, 1 expected failure (run facade, story 1.9).

@@ -30,7 +30,13 @@ from microgrid.community_load.synthetic._types import (
 from microgrid.community_load.synthetic.composition import sample_buildings, sample_composition
 from microgrid.community_load.synthetic.config import ConvergenceConfig, ScenarioConfig
 from microgrid.community_load.synthetic.loader import load_and_scale_profile
-from microgrid.community_load.synthetic.rng import RNGBundle, derive_run_rng, make_rng_bundle
+from microgrid.community_load.synthetic.rng import (
+    RNGBundle,
+    derive_run_rng,
+    make_rng_bundle,
+    resolve_seeds,
+    seed_triple,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -262,11 +268,9 @@ def run_ensemble(
     Returns an EnsembleResult containing all feasible runs, convergence
     history, percentile envelopes, and representative cases.
     """
-    root_rng = make_rng_bundle(
-        cfg.rng.composition_seed,
-        cfg.rng.archetype_seed,
-        cfg.rng.perturbation_seed,
-    )
+    # Random seeds unless the config fixes them; always recorded in the result so the run can be replayed.
+    used = seed_triple(resolve_seeds(cfg.rng))
+    root_rng = make_rng_bundle(*used)
 
     ens_cfg = cfg.ensemble
     all_runs: list[NeighborhoodResult] = []
@@ -298,4 +302,6 @@ def run_ensemble(
     if not converged and ens_cfg.mode == "fixed":
         converged = True  # fixed mode always "completes"
 
-    return _build_ensemble_result(all_runs, converged, n_attempted, cfg)
+    ensemble_result = _build_ensemble_result(all_runs, converged, n_attempted, cfg)
+    ensemble_result.seeds = dict(zip(("composition_seed", "archetype_seed", "perturbation_seed"), used, strict=True))
+    return ensemble_result

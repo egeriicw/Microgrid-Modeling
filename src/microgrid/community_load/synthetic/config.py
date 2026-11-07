@@ -19,9 +19,9 @@ import yaml
 
 @dataclass
 class RNGConfig:
-    composition_seed: int = 1001
-    archetype_seed: int = 2002
-    perturbation_seed: int = 3003
+    composition_seed: int | None = None  # None = draw a fresh random seed (recorded with the run)
+    archetype_seed: int | None = None
+    perturbation_seed: int | None = None
 
 
 @dataclass
