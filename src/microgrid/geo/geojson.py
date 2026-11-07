@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from microgrid.geo.classify import AttributeMapping, classify_use
+from microgrid.geo.classify import AttributeMapping, classify_use, normalize_label
 from microgrid.geo.geometry import ring_area_m2, ring_centroid
 from microgrid.geo.types import Ring, Structure
 
@@ -67,6 +67,7 @@ def read_structures(path: Path | str, mapping: AttributeMapping | None = None) -
                     height_m=_num(_prop(props, mapping.height_m)),
                     units=_int(_prop(props, mapping.units)),
                     year_built=_year(_prop(props, mapping.year_built)),
+                    subtype=normalize_label(_prop(props, mapping.use)),
                 )
             )
     return out

@@ -47,7 +47,14 @@ def test_scenario_bridge_does_not_mutate_base():
 
 def test_scenario_bridge_rejects_unmodelable_neighborhood():
     with pytest.raises(ValueError, match="no structures"):
-        scenario_for_neighborhood(load_config(BASELINE), _nbhd((UseClass.RESIDENTIAL_SF, 1)))
+        scenario_for_neighborhood(load_config(BASELINE), _nbhd((UseClass.INDUSTRIAL, 1)))
+
+
+def test_scenario_bridge_models_single_family_with_registry_filters():
+    cfg, skipped = scenario_for_neighborhood(load_config(BASELINE), _nbhd((UseClass.RESIDENTIAL_SF, 1)))
+    assert {c: b.fixed_count for c, b in cfg.composition.categories.items()} == {"sf_detached": 1}
+    assert cfg.archetype_filters.resstock["sf_detached"].building_type_heights == ["Single-Family Detached"]
+    assert skipped == {}
 
 
 def test_measured_source_resamples_to_hourly(tmp_path):

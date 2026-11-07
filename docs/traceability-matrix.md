@@ -5,7 +5,7 @@ test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06;
 
 | ID | Priority | Title | Sprint | Tests | Code | Docs | Status |
 |---|---|---|---|---|---|---|---|
-| FR-ENG-1 | MUST | Building-type registry | 1 |  |  |  | Not started |
+| FR-ENG-1 | MUST | Building-type registry | 1 | tests/test_registry.py, test_community_load_categorize.py, test_geo.py | community_load/registry.py, building_types.yaml, categorize.py | CHANGELOG | Done (ComStock names to verify on real data) |
 | FR-ENG-2 | MUST | Composition modes | TBD |  |  |  | Not started |
 | FR-ENG-3 | MUST | Config honesty | 1 | tests/test_config_strict.py | synthetic/config.py | CHANGELOG | Done |
 | FR-ENG-4 | MUST | Seeding: random by default, replayable | 1 | tests/test_rng.py | synthetic/rng.py, ensemble.py | CHANGELOG | Partly done (golden + full-ensemble robustness need 1.6/1.9) |

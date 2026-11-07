@@ -1,0 +1,97 @@
+# Building-type registry (FR-ENG-1): which kinds of buildings the load profiler can model, how a mapped (GIS)
+# structure is assigned to a type, and which ResStock/ComStock buildings each type samples from.
+#
+# Adding a type = adding an entry here (or passing one to BuildingTypeRegistry.extended). No engine code changes.
+#
+# Fields
+#   key        stable identifier used in scenario files and results (never rename once published)
+#   label      human-readable name
+#   source     resstock | comstock
+#   use        geo UseClass value a mapped structure must have (see microgrid/geo/types.py)
+#   subtypes   optional: structure.subtype values this type applies to (empty = any)
+#   min_stories / max_stories   optional story range (inclusive) for mapped structures
+#   resstock_building_type_heights   ResStock `in.geometry_building_type_height` values to sample from
+#   comstock_building_types          ComStock `in.comstock_building_type` values to sample from [verify names per release]
+#   include_public   ComStock only: allow public-sector types such as schools
+#   active     false = listed but not yet usable (mapped structures of this type are reported as unmodeled)
+#
+# Heavy industrial and manufacturing buildings are intentionally absent (out of scope).
+
+version: 1
+assumed_stories_when_unknown: 3   # used for multifamily structures with no story count; documented assumption
+
+building_types:
+  - key: sf_detached
+    label: Single-family detached
+    source: resstock
+    use: residential_sf
+    resstock_building_type_heights: ["Single-Family Detached"]
+
+  - key: sf_attached
+    label: Single-family attached (townhouse, row house)
+    source: resstock
+    use: residential_sfa
+    resstock_building_type_heights: ["Single-Family Attached"]
+
+  - key: mf_small
+    label: Multifamily, 1-3 stories
+    source: resstock
+    use: residential_mf
+    max_stories: 3
+    resstock_building_type_heights:
+      - "Multi-Family with 2 - 4 Units"
+      - "Multi-Family with 5+ Units, 1-3 Stories"
+
+  - key: mf_mid
+    label: Multifamily, 4-7 stories
+    source: resstock
+    use: residential_mf
+    min_stories: 4
+    max_stories: 7
+    resstock_building_type_heights: ["Multi-Family with 5+ Units, 4-7 Stories"]
+
+  - key: mf_large
+    label: Multifamily, 8+ stories
+    source: resstock
+    use: residential_mf
+    min_stories: 8
+    resstock_building_type_heights: ["Multi-Family with 5+ Units, 8+ Stories"]
+
+  - key: commercial_private
+    label: Private commercial (small and medium office, outpatient)
+    source: comstock
+    use: commercial
+    comstock_building_types: [SmallOffice, MediumOffice, Outpatient]
+
+  - key: commercial_warehouse
+    label: Community-scale warehouse
+    source: comstock
+    use: warehouse
+    comstock_building_types: [Warehouse]
+
+  - key: institutional_school
+    label: School
+    source: comstock
+    use: institutional
+    subtypes: [school]
+    comstock_building_types: [PrimarySchool, SecondarySchool]
+    include_public: true
+
+  - key: institutional_hospital
+    label: Hospital
+    source: comstock
+    use: institutional
+    subtypes: [hospital]
+    comstock_building_types: [Hospital]
+    include_public: true
+
+  # Civic buildings (government, fire station, religious, other public) have no obvious single ComStock type.
+  # Kept inactive until the owner decides which ComStock types represent them.
+  - key: civic
+    label: Civic and public buildings
+    source: comstock
+    use: institutional
+    subtypes: [civic, government, church, public, fire_station]
+    comstock_building_types: []
+    include_public: true
+    active: false

@@ -12,10 +12,12 @@ Ring = tuple[LonLat, ...]  # closed or open ring of (lon, lat), WGS84
 
 
 class UseClass(str, Enum):
-    RESIDENTIAL_SF = "residential_sf"  # single-family / townhouse
+    RESIDENTIAL_SF = "residential_sf"  # single-family detached
+    RESIDENTIAL_SFA = "residential_sfa"  # single-family attached: townhouse, row house, semi-detached
     RESIDENTIAL_MF = "residential_mf"  # multifamily
     COMMERCIAL = "commercial"
-    INDUSTRIAL = "industrial"
+    WAREHOUSE = "warehouse"  # community-scale warehouse/storage (modeled when ComStock defines it)
+    INDUSTRIAL = "industrial"  # manufacturing, factories: out of scope
     INSTITUTIONAL = "institutional"  # schools, hospitals, civic
     OTHER = "other"  # garages, sheds: no modeled load
     UNKNOWN = "unknown"
@@ -33,6 +35,7 @@ class Structure:
     height_m: float | None = None
     units: int | None = None  # dwelling units, when known
     year_built: int | None = None
+    subtype: str | None = None  # normalised raw label (e.g. "school"), used to tell apart institutional uses
     attrs: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
 
 

@@ -6,6 +6,14 @@ marked **[numbers change]**.
 ## [Unreleased]
 
 ### Added
+- **Building-type registry (FR-ENG-1).** Building types are now data (`community_load/building_types.yaml`):
+  single-family detached and attached, multifamily small/mid/large, private commercial, community-scale warehouse,
+  school and hospital. `civic` is listed but inactive until its ComStock mapping is decided. A type is added by adding
+  an entry (`BuildingTypeRegistry.extended` in code), with no engine change; `with_default_filters` supplies sampling
+  filters for categories the scenario file does not define.
+- GIS: new use classes `residential_sfa` (townhouse, row house, semi-detached) and `warehouse`; `Structure.subtype`
+  keeps the normalised raw label so schools, hospitals and civic buildings can be told apart. `warehouse` used to be
+  lumped with `industrial`; factories and manufacturing stay unmodeled.
 - **Strict configuration (FR-ENG-3).** Unknown keys at any level of a scenario YAML now raise a single error that lists
   every problem with its path and a "did you mean" hint. Enumerations, counts, fractions and percentiles are
   validated.
@@ -23,6 +31,8 @@ marked **[numbers change]**.
 - `scenario.name` / `description` given as a YAML list are now normalised to a string.
 
 ### Changed
+- `categorize` and `scenario_for_neighborhood` take a registry instead of `CategoryRules`. Single-family structures are
+  now modeled (previously reported as unmodeled).
 - **[numbers change] RNG derivation (FR-ENG-4).** Per-run random streams are now built with
   `numpy.random.SeedSequence` as a pure function of (seed, layer, run index). The old scheme drew a value from the root
   generator and added the run index, which depended on call order and could collide across neighbouring seeds. The same
