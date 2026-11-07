@@ -1,28 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "microgrid-planner"
 version = "0.1.0"
-requires-python = ">=3.10"
+description = "Community energy profiling: Monte-Carlo neighborhood load from NREL ResStock/ComStock."
+readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
-    "boto3>=1.42.30",
-    "dataclasses>=0.8",
-    "ipykernel>=7.1.0",
-    "matplotlib>=3.10.8",
     "numpy>=2.2.6",
-    "openpyxl>=3.1.5",
     "pandas>=2.3.3",
-    "pvlib>=0.13.1",
     "pyarrow>=22.0.0",
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
     "pyyaml>=6.0",
-    "scipy>=1.13",
-    "xlsxwriter>=3.2.9",
+    "openpyxl>=3.1.5",   # pandas.read_excel for the ResStock/ComStock characteristics workbooks
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "black>=24.0",
+    "mypy>=1.10",
+]
+notebooks = [
+    "ipykernel>=7.1.0",
+    "matplotlib>=3.10.8",
 ]
 
 [tool.setuptools.packages.find]
