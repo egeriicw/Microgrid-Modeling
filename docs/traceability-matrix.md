@@ -7,8 +7,8 @@ test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06;
 |---|---|---|---|---|---|---|---|
 | FR-ENG-1 | MUST | Building-type registry | 1 |  |  |  | Not started |
 | FR-ENG-2 | MUST | Composition modes | TBD |  |  |  | Not started |
-| FR-ENG-3 | MUST | Config honesty | 1 |  |  |  | Not started |
-| FR-ENG-4 | MUST | Seeding: random by default, replayable always | 1 |  |  |  | Not started |
+| FR-ENG-3 | MUST | Config honesty | 1 | tests/test_config_strict.py | synthetic/config.py | CHANGELOG | Done |
+| FR-ENG-4 | MUST | Seeding: random by default, replayable | 1 | tests/test_rng.py | synthetic/rng.py, ensemble.py | CHANGELOG | Partly done (golden + full-ensemble robustness need 1.6/1.9) |
 | FR-ENG-5 | MUST | Resolutions | 2 |  |  |  | Not started |
 | FR-ENG-6 | MUST | Adaptive convergence | 2 |  |  |  | Not started |
 | FR-ENG-7 | MUST | Outputs | 2 |  |  |  | Not started |

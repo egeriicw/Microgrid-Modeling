@@ -6,7 +6,8 @@ file into a ScenarioConfig dataclass that every other module receives.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import difflib
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Literal
 
@@ -47,7 +48,6 @@ class ResidentialFilterConfig:
     hvac_types_exclude: list[str] | None = None
     max_sqft: float | None = None
     require_no_garage: bool = False
-    require_data_complete: bool = True
 
 
 @dataclass
@@ -217,7 +217,6 @@ def _parse_res_filter(d: dict) -> ResidentialFilterConfig:
         hvac_types_exclude=d.get("hvac_types_exclude"),
         max_sqft=d.get("max_sqft"),
         require_no_garage=bool(d.get("require_no_garage", False)),
-        require_data_complete=bool(d.get("require_data_complete", True)),
     )
 
 
@@ -300,15 +299,136 @@ def _parse_output(d: dict) -> OutputConfig:
     )
 
 
+# ---------------------------------------------------------------------------
+# Strict key checking: nothing in a config file is silently ignored
+# ---------------------------------------------------------------------------
+
+_METRICS = ("peak_kw", "annual_energy_kwh", "load_factor")
+
+#: Keys that older configs carried but that the engine never applied. They are rejected, with a pointer.
+_UNSUPPORTED_KEYS = {
+    "arealimit": "not supported; the supported filter is `max_sqft` (floor-area cap)",
+    "garage": "not supported; the supported filter is `require_no_garage`",
+    "heatpump": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
+    "electric_vehicle": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
+    "solar_pv": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
+    "require_data_complete": "not supported yet (it had no effect before); planned as an attribute filter (FR-ENG-11)",
+}
+
+_TOP_KEYS = {
+    "scenario",
+    "rng",
+    "data",
+    "composition",
+    "archetype_filters",
+    "perturbation",
+    "feasibility",
+    "ensemble",
+    "convergence",
+    "validation",
+    "output",
+}
+_SECTION_KEYS = {
+    "scenario": {"name", "description"},
+    "rng": {"composition_seed", "archetype_seed", "perturbation_seed"},
+    "data": {f.name for f in fields(DataConfig)},
+    "composition": {"total_buildings", "method", "dirichlet_concentration", "categories"},
+    "perturbation": {"enabled", "max_temporal_shift_hours", "energy_tolerance", "end_use_factors"},
+    "feasibility": {"hard", "soft"},
+    "ensemble": {"mode", "min_runs", "max_runs", "check_every"},
+    "convergence": {"lookback_window", "min_stable_window", "epsilon", "metrics"},
+    "validation": {"benchmarks", "min_cv_peak"},
+    "output": {f.name for f in fields(OutputConfig)},
+    "archetype_filters": {"resstock", "comstock"},
+}
+_CATEGORY_KEYS = {"min_fraction", "max_fraction", "fixed_count", "source"}
+_RES_FILTER_KEYS = {f.name for f in fields(ResidentialFilterConfig)}
+_COM_FILTER_KEYS = {f.name for f in fields(CommercialFilterConfig)}
+_MIN_MAX = {"min", "max"}
+
+
+def _check_keys(path: str, value: object, allowed: set[str], errors: list[str]) -> dict | None:
+    """Record an error for every key of ``value`` not in ``allowed``; return it if it is a mapping."""
+    if not isinstance(value, dict):
+        errors.append(f"{path or 'top level'}: expected a mapping, got {type(value).__name__}")
+        return None
+    for key in value:
+        where = f"{path}.{key}" if path else str(key)
+        if key in _UNSUPPORTED_KEYS:
+            errors.append(f"{where}: {_UNSUPPORTED_KEYS[key]}")
+        elif key not in allowed:
+            hint = difflib.get_close_matches(str(key), sorted(allowed), n=1)
+            suffix = f" (did you mean `{hint[0]}`?)" if hint else ""
+            errors.append(f"{where}: unknown key{suffix}")
+    return value
+
+
+def _check_raw_config(raw: dict) -> list[str]:
+    """Walk the raw YAML mapping and return every unknown/unsupported key as a readable error."""
+    errors: list[str] = []
+    _check_keys("", raw, _TOP_KEYS, errors)
+    for section, allowed in _SECTION_KEYS.items():
+        if section in raw:
+            _check_keys(section, raw[section], allowed, errors)
+
+    comp = raw.get("composition")
+    if isinstance(comp, dict) and isinstance(comp.get("categories"), dict):
+        for name, bounds in comp["categories"].items():
+            _check_keys(f"composition.categories.{name}", bounds, _CATEGORY_KEYS, errors)
+
+    filters = raw.get("archetype_filters")
+    if isinstance(filters, dict):
+        for kind, allowed in (("resstock", _RES_FILTER_KEYS), ("comstock", _COM_FILTER_KEYS)):
+            group = filters.get(kind)
+            if isinstance(group, dict):
+                for name, body in group.items():
+                    _check_keys(f"archetype_filters.{kind}.{name}", body, allowed, errors)
+
+    feas = raw.get("feasibility")
+    if isinstance(feas, dict):
+        hard = feas.get("hard")
+        if isinstance(hard, dict):
+            for metric, body in hard.items():
+                if metric not in _METRICS:
+                    errors.append(f"feasibility.hard.{metric}: unknown metric (one of {', '.join(_METRICS)})")
+                else:
+                    _check_keys(f"feasibility.hard.{metric}", body, _MIN_MAX, errors)
+        soft = feas.get("soft")
+        if isinstance(soft, dict):
+            _check_keys("feasibility.soft", soft, {"weights", "bounds"}, errors)
+            bounds = soft.get("bounds")
+            if isinstance(bounds, dict):
+                for metric, body in bounds.items():
+                    _check_keys(f"feasibility.soft.bounds.{metric}", body, _MIN_MAX, errors)
+
+    pert = raw.get("perturbation")
+    if isinstance(pert, dict) and isinstance(pert.get("end_use_factors"), dict):
+        for group, body in pert["end_use_factors"].items():
+            _check_keys(f"perturbation.end_use_factors.{group}", body, {"sigma"}, errors)
+    return errors
+
+
+def _text(value: object) -> str:
+    """A YAML text field may be a string or a list of strings (joined with spaces)."""
+    if isinstance(value, list):
+        return " ".join(str(v) for v in value)
+    return "" if value is None else str(value)
+
+
 def load_config(path: Path | str) -> ScenarioConfig:
     """Load a YAML scenario config file and return a typed ScenarioConfig."""
     path = Path(path)
     with path.open() as f:
         raw = yaml.safe_load(f) or {}
 
+    problems = _check_raw_config(raw) if isinstance(raw, dict) else ["top level: expected a mapping"]
+    if problems:
+        raise ValueError(f"{path}: invalid configuration:\n" + "\n".join(f"  - {p}" for p in problems))
+
+    scenario = raw.get("scenario", {})
     cfg = ScenarioConfig(
-        name=raw.get("scenario", {}).get("name", path.stem),
-        description=raw.get("scenario", {}).get("description", ""),
+        name=_text(scenario.get("name")) or path.stem,
+        description=_text(scenario.get("description")),
     )
     if "rng" in raw:
         cfg.rng = _parse_rng(raw["rng"])
@@ -331,13 +451,40 @@ def load_config(path: Path | str) -> ScenarioConfig:
     if "output" in raw:
         cfg.output = _parse_output(raw["output"])
 
-    validate_config(cfg)
+    try:
+        validate_config(cfg)
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from None
     return cfg
 
 
 def validate_config(cfg: ScenarioConfig) -> None:
     """Raise ValueError if any config invariants are violated."""
-    errors = []
+    errors: list[str] = []
+
+    if cfg.composition.total_buildings < 1:
+        errors.append(f"composition.total_buildings must be at least 1, got {cfg.composition.total_buildings}")
+    if cfg.composition.method not in ("dirichlet", "uniform_renorm"):
+        errors.append(f"composition.method must be 'dirichlet' or 'uniform_renorm', got {cfg.composition.method!r}")
+    if cfg.ensemble.mode not in ("fixed", "adaptive"):
+        errors.append(f"ensemble.mode must be 'fixed' or 'adaptive', got {cfg.ensemble.mode!r}")
+    if cfg.ensemble.max_runs < 1:
+        errors.append(f"ensemble.max_runs must be at least 1, got {cfg.ensemble.max_runs}")
+    if cfg.convergence.epsilon <= 0 or cfg.convergence.lookback_window < 1:
+        errors.append("convergence.epsilon must be positive and lookback_window at least 1")
+    bad_pct = [p for p in cfg.output.percentiles if not 0.0 < p < 1.0]
+    if bad_pct:
+        errors.append(f"output.percentiles must be between 0 and 1 (exclusive), got {bad_pct}")
+    for name, c in cfg.composition.categories.items():
+        where = f"composition.categories.{name}"
+        if c.source not in ("resstock", "comstock"):
+            errors.append(f"{where}.source must be 'resstock' or 'comstock', got {c.source!r}")
+        if c.fixed_count is not None and c.fixed_count < 0:
+            errors.append(f"{where}.fixed_count must be 0 or more, got {c.fixed_count}")
+        if c.fixed_count is None and not 0.0 <= c.min_fraction <= c.max_fraction <= 1.0:
+            errors.append(
+                f"{where}: need 0 <= min_fraction <= max_fraction <= 1, got {c.min_fraction}..{c.max_fraction}"
+            )
 
     # Composition bounds feasibility
     cats = cfg.composition.categories

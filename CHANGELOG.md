@@ -5,6 +5,20 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added
+- **Strict configuration (FR-ENG-3).** Unknown keys at any level of a scenario YAML now raise a single error that lists
+  every problem with its path and a "did you mean" hint. Enumerations, counts, fractions and percentiles are
+  validated.
+
+### Removed / rejected
+- Keys that older configs carried but the engine never applied are now **rejected with a message**: `arealimit`,
+  `garage`, `heatpump`, `electric_vehicle`, `solar_pv`, `require_data_complete`. The shipped scenario YAMLs had them
+  commented out; behavior is unchanged (the engine ignored them before). `ResidentialFilterConfig.require_data_complete`
+  (a field with no effect) was removed.
+
+### Fixed
+- `scenario.name` / `description` given as a YAML list are now normalised to a string.
+
 ### Changed
 - **[numbers change] RNG derivation (FR-ENG-4).** Per-run random streams are now built with
   `numpy.random.SeedSequence` as a pure function of (seed, layer, run index). The old scheme drew a value from the root
