@@ -12,11 +12,14 @@ marked **[numbers change]**.
 
 ### Removed / rejected
 - Keys that older configs carried but the engine never applied are now **rejected with a message**: `arealimit`,
-  `garage`, `heatpump`, `electric_vehicle`, `solar_pv`, `require_data_complete`. The shipped scenario YAMLs had them
-  commented out; behavior is unchanged (the engine ignored them before). `ResidentialFilterConfig.require_data_complete`
-  (a field with no effect) was removed.
+  `garage`, `heatpump`, `electric_vehicle`, `solar_pv`. The shipped scenario YAMLs have them commented out; behavior
+  is unchanged (the engine ignored them before).
 
 ### Fixed
+- **[numbers may change] `require_data_complete` now works (owner decision 2026-11-07).** It was parsed but never applied.
+  With the default `true`, only buildings with `completed_status == "Success"` and `applicability == true` are
+  sampled. If your characteristics files contain only successful, applicable buildings, nothing changes. A missing
+  column is an error, not a silent skip. Column meanings are to be confirmed against the release data dictionary.
 - `scenario.name` / `description` given as a YAML list are now normalised to a string.
 
 ### Changed

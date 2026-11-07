@@ -57,9 +57,7 @@ def test_error_names_the_file(tmp_path):
     assert "cfg.yaml" in _err(tmp_path, "bogus: 1\n")
 
 
-@pytest.mark.parametrize(
-    "key", ["arealimit", "garage", "heatpump", "electric_vehicle", "solar_pv", "require_data_complete"]
-)
+@pytest.mark.parametrize("key", ["arealimit", "garage", "heatpump", "electric_vehicle", "solar_pv"])
 def test_legacy_ignored_keys_are_rejected_with_a_helpful_message(tmp_path, key):
     cfg = (
         BASE
@@ -170,3 +168,24 @@ def test_omitted_rng_section_means_fresh_seeds(tmp_path):
 @pytest.mark.parametrize("name", sorted(p.name for p in SCENARIOS.glob("*.yaml")))
 def test_shipped_scenarios_load_cleanly(name):
     assert load_config(SCENARIOS / name).composition.categories
+
+
+# --- require_data_complete is a real, working setting (owner decision 2026-11-07) -------------
+
+
+def test_require_data_complete_is_accepted_and_defaults_to_true(tmp_path):
+    cfg = (
+        BASE
+        + """
+archetype_filters:
+  resstock:
+    mf_small:
+      building_type_heights: ["Multi-Family with 2 - 4 Units"]
+    mf_mid:
+      building_type_heights: ["Multi-Family with 5+ Units, 4-7 Stories"]
+      require_data_complete: false
+"""
+    )
+    loaded = load_config(_write(tmp_path, base=cfg))
+    assert loaded.archetype_filters.resstock["mf_small"].require_data_complete is True
+    assert loaded.archetype_filters.resstock["mf_mid"].require_data_complete is False

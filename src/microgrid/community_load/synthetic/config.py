@@ -48,6 +48,7 @@ class ResidentialFilterConfig:
     hvac_types_exclude: list[str] | None = None
     max_sqft: float | None = None
     require_no_garage: bool = False
+    require_data_complete: bool = True  # keep only buildings whose simulation completed and applies (see archetype.py)
 
 
 @dataclass
@@ -217,6 +218,7 @@ def _parse_res_filter(d: dict) -> ResidentialFilterConfig:
         hvac_types_exclude=d.get("hvac_types_exclude"),
         max_sqft=d.get("max_sqft"),
         require_no_garage=bool(d.get("require_no_garage", False)),
+        require_data_complete=bool(d.get("require_data_complete", True)),
     )
 
 
@@ -312,7 +314,6 @@ _UNSUPPORTED_KEYS = {
     "heatpump": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
     "electric_vehicle": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
     "solar_pv": "not supported: adoption rates need scenario datasets (planned, FR-ENG-12)",
-    "require_data_complete": "not supported yet (it had no effect before); planned as an attribute filter (FR-ENG-11)",
 }
 
 _TOP_KEYS = {

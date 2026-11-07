@@ -37,6 +37,24 @@ def load_comstock_characteristics(path: Path) -> pd.DataFrame:
     return pd.read_excel(path, sheet_name="building_characteristics")
 
 
+def _completed_and_applicable(df: pd.DataFrame) -> pd.Series:
+    """Rows whose simulation completed successfully and that apply to the scenario.
+
+    Uses ResStock's ``completed_status`` (must equal "Success") and ``applicability`` (must be true).
+    Both columns must exist; a missing column is an error rather than a silent no-op.
+    The exact meaning of these columns should be confirmed against the release's data dictionary.
+    """
+    missing = [c for c in ("completed_status", "applicability") if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"require_data_complete needs column(s) {', '.join(missing)} in the characteristics file; "
+            "add them or set require_data_complete: false"
+        )
+    status_ok = df["completed_status"].astype(str).str.strip().str.lower() == "success"
+    applicable = df["applicability"].astype(str).str.strip().str.lower() == "true"
+    return status_ok & applicable
+
+
 def _filter_resstock_category(df: pd.DataFrame, cat_cfg: ResidentialFilterConfig) -> list[BuildingId]:
     """Apply one residential category's hard-gate filters, return bldg_id list."""
     mask = pd.Series(True, index=df.index)
@@ -52,6 +70,9 @@ def _filter_resstock_category(df: pd.DataFrame, cat_cfg: ResidentialFilterConfig
 
     if cat_cfg.max_sqft is not None:
         mask &= df["in.sqft..ft2"] <= cat_cfg.max_sqft
+
+    if cat_cfg.require_data_complete:
+        mask &= _completed_and_applicable(df)
 
     if cat_cfg.require_no_garage:
         mask &= df["in.geometry_garage"].isnull()
