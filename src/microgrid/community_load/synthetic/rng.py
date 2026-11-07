@@ -9,6 +9,7 @@ Each layer has its own seed so they never interfere. Every run index
 forks a fresh sub-bundle from the root, ensuring full reproducibility
 from the three root seeds.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ import numpy as np
 @dataclass
 class RNGBundle:
     """Three independent numpy random Generators."""
+
     composition: np.random.Generator
     archetype: np.random.Generator
     perturbation: np.random.Generator
@@ -45,13 +47,7 @@ def derive_run_rng(root: RNGBundle, run_index: int) -> RNGBundle:
     sequence across runs is also reproducible.
     """
     return RNGBundle(
-        composition=np.random.default_rng(
-            int(root.composition.integers(2**31)) + run_index
-        ),
-        archetype=np.random.default_rng(
-            int(root.archetype.integers(2**31)) + run_index
-        ),
-        perturbation=np.random.default_rng(
-            int(root.perturbation.integers(2**31)) + run_index
-        ),
+        composition=np.random.default_rng(int(root.composition.integers(2**31)) + run_index),
+        archetype=np.random.default_rng(int(root.archetype.integers(2**31)) + run_index),
+        perturbation=np.random.default_rng(int(root.perturbation.integers(2**31)) + run_index),
     )

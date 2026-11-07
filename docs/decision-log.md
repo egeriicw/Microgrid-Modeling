@@ -25,3 +25,4 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 | 2026-11-06 | Day-30 minimum = full demo on owner's machine via Docker Compose; public live link is a stretch goal | Live link required | Owner direction | Yes | Owner-stated |
 | 2026-11-06 | Test fixtures are synthetic, script-generated profiles with the real column layout; no real ResStock/ComStock files committed | Commit a real subset | Avoids licensing questions; cloud agents need fixtures | Yes | Agent default under autonomy rule |
 | 2026-11-06 | Owner's old runs in data/output are left untouched | Clean up | Rule: no deletion without approval | Yes | Policy |
+| 2026-11-07 | Python floor 3.12, pinned 3.13; ruff for lint and format (black dropped); line length 120 | Keep 3.10; keep black | PRD says 3.12+; fewer tools | Yes | Agent default under autonomy rule |

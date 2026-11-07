@@ -10,21 +10,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install ruff black
-      - run: ruff check src tests || true          # TODO Phase 6: drop `|| true`
-      - run: black --check src tests || true
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy
 
   engine:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install uv
-      # Phase 1: replace with `pip install -e .` once packaged (FR-E1)
-      - run: PYTHONPATH=src uv run --with pytest --with pytest-cov pytest -q tests
-      # Phase 1 exit: add --cov=microgrid --cov-fail-under=90 and `-m "not integration"` + a separate integration run
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      # Engine tests run on the installed package and synthetic fixtures only (no real data in CI).
+      - run: pytest -q --cov=microgrid --cov-report=term-missing -m "not integration"
 
   api:
     runs-on: ubuntu-latest

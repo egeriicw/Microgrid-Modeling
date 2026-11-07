@@ -1,4 +1,5 @@
 """Cross-cutting contracts shared by every layer."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,8 +10,9 @@ import pandas as pd
 @dataclass
 class LoadResult:
     """Output of any load source: central hourly profile plus optional uncertainty band."""
-    profile_kw: pd.Series                   # DatetimeIndex, hourly, central estimate
-    source: str                             # "snlg-ensemble", "measured", ...
+
+    profile_kw: pd.Series  # DatetimeIndex, hourly, central estimate
+    source: str  # "snlg-ensemble", "measured", ...
     p10_kw: pd.Series | None = None
     p90_kw: pd.Series | None = None
     metadata: dict[str, object] = field(default_factory=dict)

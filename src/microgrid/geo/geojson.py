@@ -1,12 +1,13 @@
 """Read building footprints from a GeoJSON FeatureCollection (WGS84)."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from microgrid.geo.types import Ring, Structure
 from microgrid.geo.classify import AttributeMapping, classify_use
 from microgrid.geo.geometry import ring_area_m2, ring_centroid
+from microgrid.geo.types import Ring, Structure
 
 
 def _num(v: object) -> float | None:
@@ -24,6 +25,11 @@ def _int(v: object) -> int | None:
 def _year(v: object) -> int | None:
     y = _int(str(v)[:4]) if v is not None else None
     return y if y and 1600 <= y <= 2100 else None
+
+
+def _prop(props: dict, key: str | None) -> object:
+    """Value of a GeoJSON property, or None when the layer has no such field."""
+    return props.get(key) if key else None
 
 
 def _outer_rings(geom: dict) -> list[Ring]:
@@ -51,15 +57,16 @@ def read_structures(path: Path | str, mapping: AttributeMapping | None = None) -
             area = ring_area_m2(ring)
             if area <= 0:
                 continue
-            get = lambda key: props.get(key) if key else None  # noqa: E731
-            out.append(Structure(
-                id=base_id if len(rings) == 1 else f"{base_id}#{j}",
-                use=classify_use(get(mapping.use)),
-                footprint_m2=area,
-                centroid=ring_centroid(ring),
-                stories=_int(get(mapping.stories)),
-                height_m=_num(get(mapping.height_m)),
-                units=_int(get(mapping.units)),
-                year_built=_year(get(mapping.year_built)),
-            ))
+            out.append(
+                Structure(
+                    id=base_id if len(rings) == 1 else f"{base_id}#{j}",
+                    use=classify_use(_prop(props, mapping.use)),
+                    footprint_m2=area,
+                    centroid=ring_centroid(ring),
+                    stories=_int(_prop(props, mapping.stories)),
+                    height_m=_num(_prop(props, mapping.height_m)),
+                    units=_int(_prop(props, mapping.units)),
+                    year_built=_year(_prop(props, mapping.year_built)),
+                )
+            )
     return out

@@ -1,4 +1,5 @@
 """Bridge from geography to SNLG archetype categories."""
+
 from __future__ import annotations
 
 from microgrid.community_load.categorize import CategoryRules, category_counts
@@ -11,8 +12,10 @@ def _s(i, use, stories=None):
 
 def test_category_counts_follow_story_thresholds_and_report_skipped():
     structures = [
-        _s(0, UseClass.RESIDENTIAL_MF, 2), _s(1, UseClass.RESIDENTIAL_MF, 5),
-        _s(2, UseClass.RESIDENTIAL_MF, 12), _s(3, UseClass.COMMERCIAL),
+        _s(0, UseClass.RESIDENTIAL_MF, 2),
+        _s(1, UseClass.RESIDENTIAL_MF, 5),
+        _s(2, UseClass.RESIDENTIAL_MF, 12),
+        _s(3, UseClass.COMMERCIAL),
         _s(4, UseClass.RESIDENTIAL_SF),
     ]
     counts, skipped = category_counts(structures)

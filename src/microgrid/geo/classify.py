@@ -1,4 +1,5 @@
 """Map raw GIS building attributes onto microgrid's UseClass."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,20 +9,34 @@ from microgrid.geo.types import UseClass
 # Covers OpenStreetMap `building=*` values plus common municipal land-use words.
 _USE_TABLE: dict[str, UseClass] = {
     **dict.fromkeys(
-        ["house", "detached", "semidetached_house", "terrace", "rowhouse", "townhouse",
-         "bungalow", "single_family", "sf", "residential"], UseClass.RESIDENTIAL_SF),
+        [
+            "house",
+            "detached",
+            "semidetached_house",
+            "terrace",
+            "rowhouse",
+            "townhouse",
+            "bungalow",
+            "single_family",
+            "sf",
+            "residential",
+        ],
+        UseClass.RESIDENTIAL_SF,
+    ),
     **dict.fromkeys(
-        ["apartments", "apartment", "dormitory", "multifamily", "multi_family", "mf",
-         "condominium", "condo"], UseClass.RESIDENTIAL_MF),
+        ["apartments", "apartment", "dormitory", "multifamily", "multi_family", "mf", "condominium", "condo"],
+        UseClass.RESIDENTIAL_MF,
+    ),
     **dict.fromkeys(
-        ["commercial", "retail", "office", "supermarket", "hotel", "restaurant",
-         "mixed_use", "shop"], UseClass.COMMERCIAL),
+        ["commercial", "retail", "office", "supermarket", "hotel", "restaurant", "mixed_use", "shop"],
+        UseClass.COMMERCIAL,
+    ),
     **dict.fromkeys(["industrial", "warehouse", "factory", "manufacture"], UseClass.INDUSTRIAL),
     **dict.fromkeys(
-        ["school", "university", "college", "hospital", "civic", "government", "church",
-         "public", "fire_station"], UseClass.INSTITUTIONAL),
-    **dict.fromkeys(["garage", "garages", "shed", "carport", "roof", "hut", "greenhouse"],
-                    UseClass.OTHER),
+        ["school", "university", "college", "hospital", "civic", "government", "church", "public", "fire_station"],
+        UseClass.INSTITUTIONAL,
+    ),
+    **dict.fromkeys(["garage", "garages", "shed", "carport", "roof", "hut", "greenhouse"], UseClass.OTHER),
 }
 
 
@@ -36,6 +51,7 @@ def classify_use(raw: object) -> UseClass:
 @dataclass(frozen=True)
 class AttributeMapping:
     """Which GeoJSON property holds each field. None means 'not available in this layer'."""
+
     id: str | None = "id"
     use: str | None = "building"
     stories: str | None = "building:levels"

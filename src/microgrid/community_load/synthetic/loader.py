@@ -3,6 +3,7 @@
 All disk access is concentrated here. The lru_cache on load_building_profile
 prevents redundant reads when the same building appears in multiple runs.
 """
+
 from __future__ import annotations
 
 import functools
@@ -37,6 +38,7 @@ def _load_parquet_cached(path: str) -> pd.DataFrame:
     except Exception as e:
         if "type extension" in str(e) or "ExtensionType" in str(e):
             import pyarrow.parquet as pq
+
             table = pq.read_table(path, types_mapper=_no_extension_types_mapper)
             return table.to_pandas()
         raise

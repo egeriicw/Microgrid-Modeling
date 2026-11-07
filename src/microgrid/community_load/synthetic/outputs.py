@@ -4,9 +4,9 @@ Writes all CSVs in a format backward-compatible with the existing notebook
 output structure, plus new ensemble-level files (percentile envelopes,
 diversity metrics, representative cases, validation report).
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -14,10 +14,10 @@ import pandas as pd
 from microgrid.community_load.synthetic._types import EnsembleResult, NeighborhoodResult
 from microgrid.community_load.synthetic.config import ScenarioConfig
 
-
 # ---------------------------------------------------------------------------
 # Per-run outputs (backward-compatible with existing notebook format)
 # ---------------------------------------------------------------------------
+
 
 def write_run_outputs(
     result: NeighborhoodResult,
@@ -46,13 +46,15 @@ def write_run_outputs(
     # Building selections
     rows = []
     for sel in result.selections:
-        rows.append({
-            "run": run_label,
-            "category": sel.category,
-            "source": sel.source,
-            "bldg_id": sel.bldg_id,
-            "unit_count_multiplier": sel.unit_multiplier,
-        })
+        rows.append(
+            {
+                "run": run_label,
+                "category": sel.category,
+                "source": sel.source,
+                "bldg_id": sel.bldg_id,
+                "unit_count_multiplier": sel.unit_multiplier,
+            }
+        )
     pd.DataFrame(rows).to_csv(
         run_dir / f"{timestamp_str}_{run_label}_building_selections.csv",
         index=False,
@@ -62,6 +64,7 @@ def write_run_outputs(
 # ---------------------------------------------------------------------------
 # Ensemble-level outputs (new)
 # ---------------------------------------------------------------------------
+
 
 def write_compiled_runs(
     ensemble: EnsembleResult,
@@ -77,9 +80,7 @@ def write_compiled_runs(
     if frames:
         compiled = pd.concat(frames, axis=1)
         compiled.index.name = "timestamp"
-        compiled.to_csv(
-            out_dir / f"{timestamp_str}_merged_community_load_profile_total_compiled-runs.csv"
-        )
+        compiled.to_csv(out_dir / f"{timestamp_str}_merged_community_load_profile_total_compiled-runs.csv")
 
 
 def write_load_profile_total(
@@ -94,10 +95,12 @@ def write_load_profile_total(
     res_cols = pd.concat([r.residential_profile for r in ensemble.runs], axis=1)
     com_cols = pd.concat([r.commercial_profile for r in ensemble.runs], axis=1)
 
-    total = pd.DataFrame({
-        "Residential": res_cols.mean(axis=1),
-        "Commercial": com_cols.mean(axis=1),
-    })
+    total = pd.DataFrame(
+        {
+            "Residential": res_cols.mean(axis=1),
+            "Commercial": com_cols.mean(axis=1),
+        }
+    )
     total["Total"] = total["Residential"] + total["Commercial"]
     total.index.name = "timestamp"
     total.to_csv(out_dir / f"{timestamp_str}_load_profile_total.csv")
@@ -133,9 +136,7 @@ def write_ensemble_statistics(
         }
         for r in ensemble.runs
     ]
-    pd.DataFrame(rows).to_csv(
-        out_dir / f"{timestamp_str}_ensemble_statistics.csv", index=False
-    )
+    pd.DataFrame(rows).to_csv(out_dir / f"{timestamp_str}_ensemble_statistics.csv", index=False)
 
     # Summary diversity metrics
     if ensemble.diversity_metrics:
@@ -152,9 +153,7 @@ def write_convergence_history(
     """Write rolling metric means used for convergence tracking."""
     if not ensemble.convergence_history:
         return
-    pd.DataFrame(ensemble.convergence_history).to_csv(
-        out_dir / f"{timestamp_str}_convergence_history.csv", index=False
-    )
+    pd.DataFrame(ensemble.convergence_history).to_csv(out_dir / f"{timestamp_str}_convergence_history.csv", index=False)
 
 
 def write_representative_cases(
@@ -166,9 +165,7 @@ def write_representative_cases(
     for case_name, result in ensemble.representative_cases.items():
         profile = result.total_profile.copy()
         profile.name = case_name
-        profile.to_csv(
-            out_dir / f"{timestamp_str}_representative_{case_name}.csv"
-        )
+        profile.to_csv(out_dir / f"{timestamp_str}_representative_{case_name}.csv")
 
     # Summary table
     if ensemble.representative_cases:
@@ -182,9 +179,7 @@ def write_representative_cases(
             }
             for name, r in ensemble.representative_cases.items()
         ]
-        pd.DataFrame(rows).to_csv(
-            out_dir / f"{timestamp_str}_representative_cases_summary.csv", index=False
-        )
+        pd.DataFrame(rows).to_csv(out_dir / f"{timestamp_str}_representative_cases_summary.csv", index=False)
 
 
 def write_overview_txt(
@@ -224,6 +219,7 @@ def write_overview_txt(
 # ---------------------------------------------------------------------------
 # Top-level writer
 # ---------------------------------------------------------------------------
+
 
 def save_all_outputs(
     ensemble: EnsembleResult,

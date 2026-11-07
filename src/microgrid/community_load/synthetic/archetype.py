@@ -3,6 +3,7 @@
 Produces ArchetypePool (A_filtered) from raw building characteristics
 DataFrames. Does not touch parquet files; all I/O lives in loader.py.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,9 +37,7 @@ def load_comstock_characteristics(path: Path) -> pd.DataFrame:
     return pd.read_excel(path, sheet_name="building_characteristics")
 
 
-def _filter_resstock_category(
-    df: pd.DataFrame, cat_cfg: ResidentialFilterConfig
-) -> list[BuildingId]:
+def _filter_resstock_category(df: pd.DataFrame, cat_cfg: ResidentialFilterConfig) -> list[BuildingId]:
     """Apply one residential category's hard-gate filters, return bldg_id list."""
     mask = pd.Series(True, index=df.index)
 
@@ -60,9 +59,7 @@ def _filter_resstock_category(
     return df.loc[mask, "bldg_id"].tolist()
 
 
-def _filter_comstock_category(
-    df: pd.DataFrame, cat_cfg: CommercialFilterConfig
-) -> list[BuildingId]:
+def _filter_comstock_category(df: pd.DataFrame, cat_cfg: CommercialFilterConfig) -> list[BuildingId]:
     """Apply one commercial category's hard-gate filters, return bldg_id list."""
     mask = pd.Series(True, index=df.index)
 
@@ -92,14 +89,12 @@ def build_archetype_pool(
     filters: ArchetypeFilterConfig = cfg.archetype_filters
 
     residential: dict[str, list[BuildingId]] = {}
-    for cat_name, cat_cfg in filters.resstock.items():
-        pool = _filter_resstock_category(res_df, cat_cfg)
-        residential[cat_name] = pool
+    for cat_name, res_cfg in filters.resstock.items():
+        residential[cat_name] = _filter_resstock_category(res_df, res_cfg)
 
     commercial: dict[str, list[BuildingId]] = {}
-    for cat_name, cat_cfg in filters.comstock.items():
-        pool = _filter_comstock_category(com_df, cat_cfg)
-        commercial[cat_name] = pool
+    for cat_name, com_cfg in filters.comstock.items():
+        commercial[cat_name] = _filter_comstock_category(com_df, com_cfg)
 
     return ArchetypePool(
         residential=residential,

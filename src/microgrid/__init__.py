@@ -15,4 +15,5 @@
 geo and community_load are parallel siblings; everything else reads geo.
 Dependencies point downward only; enforced by tests/test_architecture.py.
 """
+
 __version__ = "0.1.0"

@@ -3,6 +3,7 @@
 The library must install cleanly, import without path hacks, expose one semver
 version, declare only the dependencies it actually uses, and pin its public surface.
 """
+
 from __future__ import annotations
 
 import os
@@ -19,13 +20,29 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
 # Names that must NOT be runtime dependencies of the library.
 NOT_RUNTIME = {
-    "pytest", "pytest-cov", "ipykernel", "dataclasses",  # dev/notebook tooling or stdlib backport
-    "boto3", "pvlib", "xlsxwriter", "matplotlib", "scipy",  # not imported anywhere in src/ (add back when used)
+    "pytest",
+    "pytest-cov",
+    "ipykernel",
+    "dataclasses",  # dev/notebook tooling or stdlib backport
+    "boto3",
+    "pvlib",
+    "xlsxwriter",
+    "matplotlib",
+    "scipy",  # not imported anywhere in src/ (add back when used)
 }
 
 EXPECTED_PUBLIC_SURFACE = {
-    "config", "rng", "archetype", "loader", "composition", "aggregation",
-    "perturbation", "feasibility", "ensemble", "validation", "outputs",
+    "config",
+    "rng",
+    "archetype",
+    "loader",
+    "composition",
+    "aggregation",
+    "perturbation",
+    "feasibility",
+    "ensemble",
+    "validation",
+    "outputs",
 }
 
 
@@ -42,7 +59,7 @@ def test_runtime_dependencies_are_only_what_src_uses():
 
 def test_dev_and_notebook_extras_exist():
     extras = PYPROJECT["project"]["optional-dependencies"]
-    assert {"pytest", "pytest-cov", "ruff", "black", "mypy"} <= _names(extras["dev"])
+    assert {"pytest", "pytest-cov", "ruff", "mypy", "pandas-stubs", "types-pyyaml"} <= _names(extras["dev"])
     assert {"ipykernel", "matplotlib"} <= _names(extras["notebooks"])
 
 
@@ -69,7 +86,10 @@ def test_import_works_in_a_clean_interpreter_without_pythonpath(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     result = subprocess.run(
         [sys.executable, "-I", "-c", "import microgrid.community_load.synthetic as s; print(s.__version__)"],
-        cwd=tmp_path, env=env, capture_output=True, text=True,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stderr
     assert re.fullmatch(r"\d+\.\d+\.\d+.*", result.stdout.strip())

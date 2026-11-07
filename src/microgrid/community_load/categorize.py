@@ -3,6 +3,7 @@
 This is the bridge between GIS and the synthetic load engine: a real neighborhood
 fixes the composition, so every SNLG category gets a `fixed_count`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,10 +14,11 @@ from microgrid.geo.types import Structure, UseClass
 @dataclass(frozen=True)
 class CategoryRules:
     """Thresholds matching configs/scenarios/dc_multifamily_baseline.yaml."""
-    mf_small_max_stories: int = 3        # 1-3 stories
-    mf_mid_max_stories: int = 7          # 4-7 stories; 8+ is mf_large
+
+    mf_small_max_stories: int = 3  # 1-3 stories
+    mf_mid_max_stories: int = 7  # 4-7 stories; 8+ is mf_large
     commercial_category: str = "commercial_private"
-    default_mf_stories: int = 3          # used only when stories unknown; counted in `assumed`
+    default_mf_stories: int = 3  # used only when stories unknown; counted in `assumed`
 
 
 def categorize(s: Structure, rules: CategoryRules = CategoryRules()) -> str | None:

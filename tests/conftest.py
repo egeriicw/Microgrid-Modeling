@@ -1,4 +1,5 @@
 """Shared pytest fixtures for the SNLG test suite."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,6 +10,7 @@ from microgrid.community_load.synthetic.config import (
     ArchetypeFilterConfig,
     CategoryBounds,
     CompositionConfig,
+    ConvergenceConfig,
     DataConfig,
     EnsembleConfig,
     FeasibilityConfig,
@@ -16,11 +18,9 @@ from microgrid.community_load.synthetic.config import (
     OutputConfig,
     PerturbationConfig,
     ResidentialFilterConfig,
-    CommercialFilterConfig,
     RNGConfig,
     ScenarioConfig,
     ValidationConfig,
-    ConvergenceConfig,
 )
 from microgrid.community_load.synthetic.rng import RNGBundle, make_rng_bundle
 
@@ -63,9 +63,12 @@ def minimal_cfg() -> ScenarioConfig:
         ),
         feasibility=FeasibilityConfig(
             hard=HardConstraints(
-                peak_kw_min=0.0, peak_kw_max=1e9,
-                annual_energy_kwh_min=0.0, annual_energy_kwh_max=1e12,
-                load_factor_min=0.0, load_factor_max=1.0,
+                peak_kw_min=0.0,
+                peak_kw_max=1e9,
+                annual_energy_kwh_min=0.0,
+                annual_energy_kwh_max=1e12,
+                load_factor_min=0.0,
+                load_factor_max=1.0,
             ),
         ),
         perturbation=PerturbationConfig(enabled=False),
@@ -91,13 +94,15 @@ def synthetic_15min_df() -> pd.DataFrame:
     """A synthetic 15-min resolution building DataFrame (35040 rows)."""
     rng = np.random.default_rng(42)
     idx = pd.date_range("2018-01-01", periods=35040, freq="15min")
-    return pd.DataFrame({
-        "timestamp": idx,
-        "bldg_id": 99999,
-        "in.sqft": 1500.0,
-        "out.electricity.total.energy_consumption..kwh": rng.uniform(0.1, 2.0, 35040).astype("float32"),
-        "out.electricity.lighting.energy_consumption..kwh": rng.uniform(0.01, 0.3, 35040).astype("float32"),
-        "out.electricity.plug_loads.energy_consumption..kwh": rng.uniform(0.01, 0.5, 35040).astype("float32"),
-        "out.electricity.cooling.energy_consumption..kwh": rng.uniform(0.0, 1.0, 35040).astype("float32"),
-        "out.electricity.heating.energy_consumption..kwh": rng.uniform(0.0, 0.8, 35040).astype("float32"),
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": idx,
+            "bldg_id": 99999,
+            "in.sqft": 1500.0,
+            "out.electricity.total.energy_consumption..kwh": rng.uniform(0.1, 2.0, 35040).astype("float32"),
+            "out.electricity.lighting.energy_consumption..kwh": rng.uniform(0.01, 0.3, 35040).astype("float32"),
+            "out.electricity.plug_loads.energy_consumption..kwh": rng.uniform(0.01, 0.5, 35040).astype("float32"),
+            "out.electricity.cooling.energy_consumption..kwh": rng.uniform(0.0, 1.0, 35040).astype("float32"),
+            "out.electricity.heating.energy_consumption..kwh": rng.uniform(0.0, 0.8, 35040).astype("float32"),
+        }
+    )

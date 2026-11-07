@@ -3,9 +3,9 @@
 Deterministic within a realization: L_k,t = Σ L_i,t
 Also computes peak, annual energy, load factor, and diversity metrics.
 """
+
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from microgrid.community_load.synthetic._types import PerturbedProfile

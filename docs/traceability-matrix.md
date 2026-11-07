@@ -43,8 +43,8 @@ test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06;
 | FR-CAL-5 | LATER | PJM node data | later |  |  |  | Not started |
 | FR-PLAT-1 | MUST |  | 1 |  |  |  | Not started |
 | FR-PLAT-2 | MUST |  | 1-2 |  |  |  | Not started |
-| FR-PLAT-3 | MUST |  | 1 |  |  |  | Not started |
+| FR-PLAT-3 | MUST | Notebook-first installable library | 1 | tests/test_packaging.py | pyproject.toml, src/microgrid/__init__.py | codebase-review, README | In progress (example notebook pending story 1.9) |
 | FR-PLAT-4 | MUST |  | 1 |  |  |  | Not started |
-| FR-PLAT-5 | MUST |  | 1 |  |  |  | Not started |
+| FR-PLAT-5 | MUST | CI gates merges | 1 | tests/test_ci_config.py | .github/workflows/ci.yml, pyproject tool config | sprint-1-backlog | Done (coverage gate pending) |
 | FR-PLAT-6 | SHOULD | Public demo with live capped computation | 4 (stretch) |  |  |  | Not started |
 | FR-PLAT-7 | SHOULD |  | 4 |  |  |  | Not started |

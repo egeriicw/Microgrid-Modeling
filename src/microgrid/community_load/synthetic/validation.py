@@ -5,6 +5,7 @@ Three validation levels:
   2. Distributional: ensemble statistics vs. configurable benchmark ranges
   3. Structural: no diversity collapse, no pathological synchronization
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,10 +13,10 @@ import numpy as np
 from microgrid.community_load.synthetic._types import EnsembleResult, NeighborhoodResult
 from microgrid.community_load.synthetic.config import ValidationConfig
 
-
 # ---------------------------------------------------------------------------
 # Per-sample validity
 # ---------------------------------------------------------------------------
+
 
 def validate_per_sample(result: NeighborhoodResult) -> list[str]:
     """Return warning strings for any implausible properties of one run.
@@ -31,9 +32,7 @@ def validate_per_sample(result: NeighborhoodResult) -> list[str]:
         warnings.append(f"Run {result.run_index}: annual_energy_kwh is non-positive.")
 
     if not (0.0 < result.load_factor <= 1.0):
-        warnings.append(
-            f"Run {result.run_index}: load_factor={result.load_factor:.4f} outside (0, 1]."
-        )
+        warnings.append(f"Run {result.run_index}: load_factor={result.load_factor:.4f} outside (0, 1].")
 
     if result.total_profile.isnull().any():
         n_null = int(result.total_profile.isnull().sum())
@@ -49,6 +48,7 @@ def validate_per_sample(result: NeighborhoodResult) -> list[str]:
 # ---------------------------------------------------------------------------
 # Distributional validation
 # ---------------------------------------------------------------------------
+
 
 def validate_ensemble(
     ensemble: EnsembleResult,
@@ -85,10 +85,7 @@ def validate_ensemble(
         ok = lo <= mean_val <= hi
         checks[metric] = ok
         if not ok:
-            msg = (
-                f"Benchmark check FAILED for {metric}: "
-                f"mean={mean_val:.4f} outside [{lo:.4f}, {hi:.4f}]"
-            )
+            msg = f"Benchmark check FAILED for {metric}: mean={mean_val:.4f} outside [{lo:.4f}, {hi:.4f}]"
             warnings.append(msg)
             report["passed"] = False
 

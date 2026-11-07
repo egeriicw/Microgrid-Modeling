@@ -1,20 +1,30 @@
 """Tests for feasibility evaluation."""
-import pytest
 
-from microgrid.community_load.synthetic.config import FeasibilityConfig, HardConstraints, SoftConstraintBound, SoftConstraints
+from microgrid.community_load.synthetic.config import (
+    FeasibilityConfig,
+    HardConstraints,
+    SoftConstraintBound,
+    SoftConstraints,
+)
 from microgrid.community_load.synthetic.feasibility import compute_soft_score, passes_hard_constraints
 
 
 def _make_cfg(
-    peak_min=10.0, peak_max=1000.0,
-    energy_min=10000.0, energy_max=1e8,
-    lf_min=0.1, lf_max=0.9,
+    peak_min=10.0,
+    peak_max=1000.0,
+    energy_min=10000.0,
+    energy_max=1e8,
+    lf_min=0.1,
+    lf_max=0.9,
 ) -> FeasibilityConfig:
     return FeasibilityConfig(
         hard=HardConstraints(
-            peak_kw_min=peak_min, peak_kw_max=peak_max,
-            annual_energy_kwh_min=energy_min, annual_energy_kwh_max=energy_max,
-            load_factor_min=lf_min, load_factor_max=lf_max,
+            peak_kw_min=peak_min,
+            peak_kw_max=peak_max,
+            annual_energy_kwh_min=energy_min,
+            annual_energy_kwh_max=energy_max,
+            load_factor_min=lf_min,
+            load_factor_max=lf_max,
         ),
     )
 
@@ -22,6 +32,7 @@ def _make_cfg(
 # ---------------------------------------------------------------------------
 # Hard constraints
 # ---------------------------------------------------------------------------
+
 
 def test_all_within_bounds_passes():
     cfg = _make_cfg()
@@ -60,6 +71,7 @@ def test_multiple_violations_all_reported():
 # ---------------------------------------------------------------------------
 # Soft score
 # ---------------------------------------------------------------------------
+
 
 def test_soft_score_zero_inside_bounds():
     cfg = FeasibilityConfig(

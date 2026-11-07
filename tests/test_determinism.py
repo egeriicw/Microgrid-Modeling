@@ -5,6 +5,7 @@ The determinism contract: same config + same 3 seeds + same engine_version
 Regenerate the golden ONLY via `--update-golden` alongside an intentional
 methodology change + a version bump (see test-plan.md §8).
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,9 @@ from pathlib import Path
 
 import pytest
 
-run = pytest.importorskip("microgrid.community_load.synthetic.run", reason="FR-E3: microgrid.community_load.synthetic.run not implemented")
+run = pytest.importorskip(
+    "microgrid.community_load.synthetic.run", reason="FR-E3: microgrid.community_load.synthetic.run not implemented"
+)
 
 pytestmark = pytest.mark.xfail(reason="FR-E4 not implemented", strict=False)
 
@@ -49,10 +52,7 @@ def data_dirs():
 
 
 def _scalars(result):
-    return [
-        {k: (bool(m[k]) if k == "feasible" else float(m[k])) for k in SCALAR_KEYS}
-        for m in result.metrics
-    ]
+    return [{k: (bool(m[k]) if k == "feasible" else float(m[k])) for k in SCALAR_KEYS} for m in result.metrics]
 
 
 def test_two_runs_are_identical(tiny_config, data_dirs):

@@ -1,6 +1,4 @@
 """Tests for the layered RNG architecture."""
-import numpy as np
-import pytest
 
 from microgrid.community_load.synthetic.rng import derive_run_rng, make_rng_bundle
 

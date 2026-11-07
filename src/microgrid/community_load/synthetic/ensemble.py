@@ -12,6 +12,7 @@ The main loop:
 Convergence check (adaptive mode):
   |μ^K - μ^{K-M}| < ε for each tracked metric
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Single-run helper
 # ---------------------------------------------------------------------------
 
+
 def _run_single(
     run_index: int,
     pool: ArchetypePool,
@@ -52,7 +54,10 @@ def _run_single(
 
     # --- Layer 2: select building instances ---
     selections = sample_buildings(
-        comp, pool, cfg, run_rng.archetype,
+        comp,
+        pool,
+        cfg,
+        run_rng.archetype,
         resstock_chars=pool.resstock_chars,
     )
 
@@ -72,14 +77,14 @@ def _run_single(
             building_type = ""
 
         loaded = load_and_scale_profile(
-            sel, data_dirs, cfg,
+            sel,
+            data_dirs,
+            cfg,
             resstock_chars=pool.resstock_chars,
             building_type=building_type,
         )
 
-        perturbed = perturbation.perturb_building(
-            loaded, cfg.perturbation, run_rng.perturbation
-        )
+        perturbed = perturbation.perturb_building(loaded, cfg.perturbation, run_rng.perturbation)
         profiles.append(perturbed)
         perturbation_logs.append(perturbed.perturbation_log)
 
@@ -138,6 +143,7 @@ def _run_single(
 # Convergence check
 # ---------------------------------------------------------------------------
 
+
 def _check_convergence(
     feasible_runs: list[NeighborhoodResult],
     conv_cfg: ConvergenceConfig,
@@ -162,7 +168,7 @@ def _check_convergence(
     for metric in conv_cfg.metrics:
         vals = get_values(metric)
         mu_recent = float(np.mean(vals[-M:]))
-        mu_prev = float(np.mean(vals[-2 * M:-M]))
+        mu_prev = float(np.mean(vals[-2 * M : -M]))
         # Relative change (guard against zero)
         denom = abs(mu_prev) if abs(mu_prev) > 1e-12 else 1.0
         if abs(mu_recent - mu_prev) / denom >= conv_cfg.epsilon:
@@ -174,6 +180,7 @@ def _check_convergence(
 # ---------------------------------------------------------------------------
 # Ensemble result construction
 # ---------------------------------------------------------------------------
+
 
 def _build_ensemble_result(
     all_runs: list[NeighborhoodResult],
@@ -197,9 +204,7 @@ def _build_ensemble_result(
     # Percentile envelopes
     percentile_envelopes: dict[str, pd.Series] = {}
     if feasible and not feasible[0].total_profile.empty:
-        stacked = pd.concat(
-            [r.total_profile for r in feasible], axis=1
-        )
+        stacked = pd.concat([r.total_profile for r in feasible], axis=1)
         for p in cfg.output.percentiles:
             label = f"p{int(p * 100):02d}"
             percentile_envelopes[label] = stacked.quantile(p, axis=1)
@@ -223,9 +228,7 @@ def _build_ensemble_result(
     if feasible:
         peaks_list = [r.peak_kw for r in feasible]
         median_peak = float(np.median(peaks_list))
-        representative_cases["median"] = min(
-            feasible, key=lambda r: abs(r.peak_kw - median_peak)
-        )
+        representative_cases["median"] = min(feasible, key=lambda r: abs(r.peak_kw - median_peak))
         representative_cases["high_peak"] = max(feasible, key=lambda r: r.peak_kw)
         representative_cases["low_load_factor"] = min(feasible, key=lambda r: r.load_factor)
 
@@ -244,6 +247,7 @@ def _build_ensemble_result(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def run_ensemble(
     pool: ArchetypePool,
@@ -281,15 +285,13 @@ def run_ensemble(
 
         if ens_cfg.mode == "adaptive":
             n_feasible = len(feasible_runs)
-            if (
-                n_feasible >= ens_cfg.min_runs
-                and n_feasible % ens_cfg.check_every == 0
-            ):
+            if n_feasible >= ens_cfg.min_runs and n_feasible % ens_cfg.check_every == 0:
                 if _check_convergence(feasible_runs, cfg.convergence):
                     converged = True
                     logger.info(
                         "Ensemble converged after %d attempts (%d feasible).",
-                        n_attempted, n_feasible,
+                        n_attempted,
+                        n_feasible,
                     )
                     break
 

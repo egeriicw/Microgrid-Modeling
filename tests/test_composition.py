@@ -1,6 +1,6 @@
 """Tests for composition sampling."""
+
 import numpy as np
-import pytest
 
 from microgrid.community_load.synthetic.composition import (
     _project_simplex_box,
@@ -11,10 +11,10 @@ from microgrid.community_load.synthetic.composition import (
 )
 from microgrid.community_load.synthetic.config import CategoryBounds
 
-
 # ---------------------------------------------------------------------------
 # _project_simplex_box
 # ---------------------------------------------------------------------------
+
 
 def test_project_simplex_box_identity():
     p = np.array([0.5, 0.5])
@@ -47,6 +47,7 @@ def test_project_simplex_box_respects_bounds():
 # _proportions_to_counts
 # ---------------------------------------------------------------------------
 
+
 def test_counts_sum_exactly_to_total():
     rng = np.random.default_rng(42)
     for total in [10, 50, 100, 73]:
@@ -59,6 +60,7 @@ def test_counts_sum_exactly_to_total():
 # ---------------------------------------------------------------------------
 # _sample_dirichlet
 # ---------------------------------------------------------------------------
+
 
 def test_dirichlet_counts_sum_to_total():
     cats = ["a", "b", "c"]
@@ -84,6 +86,7 @@ def test_dirichlet_counts_non_negative():
 # _sample_uniform_renorm
 # ---------------------------------------------------------------------------
 
+
 def test_uniform_renorm_counts_sum_to_total():
     cats = ["a", "b", "c"]
     p_min = np.array([0.1, 0.1, 0.1])
@@ -97,6 +100,7 @@ def test_uniform_renorm_counts_sum_to_total():
 # ---------------------------------------------------------------------------
 # sample_composition (public API)
 # ---------------------------------------------------------------------------
+
 
 def test_sample_composition_dirichlet(minimal_cfg, rng_bundle):
     for _ in range(10):
@@ -114,10 +118,7 @@ def test_sample_composition_uniform_renorm(minimal_cfg, rng_bundle):
 
 def test_sample_composition_fixed_count(minimal_cfg, rng_bundle):
     """Fixed-count categories should not be sampled stochastically."""
-    from microgrid.community_load.synthetic.config import CategoryBounds
-    minimal_cfg.composition.categories["commercial"] = CategoryBounds(
-        fixed_count=3, source="comstock"
-    )
+    minimal_cfg.composition.categories["commercial"] = CategoryBounds(fixed_count=3, source="comstock")
     comp = sample_composition(None, minimal_cfg, rng_bundle.composition)
     assert comp.counts["commercial"] == 3
     assert sum(comp.counts.values()) == minimal_cfg.composition.total_buildings

@@ -1,5 +1,4 @@
 """Tests for config loading and validation."""
-from pathlib import Path
 
 import pytest
 
@@ -81,7 +80,7 @@ ensemble:
 
 def test_validate_config_accepts_all_fixed_count_composition():
     """A GIS-derived neighborhood fixes every category; no stochastic bounds apply."""
-    from microgrid.community_load.synthetic.config import CategoryBounds, CompositionConfig, ScenarioConfig, validate_config
+    from microgrid.community_load.synthetic.config import CategoryBounds, validate_config
 
     cfg = ScenarioConfig(name="gis")
     cfg.composition = CompositionConfig(

@@ -4,6 +4,7 @@ Uses a local equirectangular projection about the ring's mean latitude. Error is
 well under 0.5% for neighborhood-scale extents (a few km); swap in pyproj/shapely
 behind these functions if larger extents or exact geodesy are ever required.
 """
+
 from __future__ import annotations
 
 import math
@@ -28,7 +29,7 @@ def ring_area_m2(ring: Ring) -> float:
     lat0 = sum(p[1] for p in ring) / len(ring)
     pts = _project(ring, lat0)
     s = 0.0
-    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]):
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1], strict=True):
         s += x1 * y2 - x2 * y1
     return abs(s) / 2.0
 
@@ -38,7 +39,7 @@ def ring_centroid(ring: Ring) -> LonLat:
     lat0 = sum(p[1] for p in ring) / len(ring)
     pts = _project(ring, lat0)
     a = cx = cy = 0.0
-    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]):
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1], strict=True):
         cross = x1 * y2 - x2 * y1
         a += cross
         cx += (x1 + x2) * cross

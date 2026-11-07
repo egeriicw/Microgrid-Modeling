@@ -1,13 +1,14 @@
 """GIS layer: geometry, classification, neighborhood build, microgrid.community_load.synthetic category bridge."""
+
 from __future__ import annotations
 
 import json
 
 import pytest
 
-from microgrid.geo.types import UseClass
 from microgrid.geo import build_neighborhood, classify_use, read_structures
 from microgrid.geo.geometry import point_in_ring, ring_area_m2, ring_centroid
+from microgrid.geo.types import UseClass
 
 LAT, LON, D = 38.90, -77.00, 0.0001  # D degrees ~ 11.1 m N-S, ~8.6 m E-W at this latitude
 
@@ -17,8 +18,11 @@ def _square(lon, lat, side=D):
 
 
 def _feature(fid, lon, lat, **props):
-    return {"type": "Feature", "properties": {"id": fid, **props},
-            "geometry": {"type": "Polygon", "coordinates": [_square(lon, lat)]}}
+    return {
+        "type": "Feature",
+        "properties": {"id": fid, **props},
+        "geometry": {"type": "Polygon", "coordinates": [_square(lon, lat)]},
+    }
 
 
 @pytest.fixture
@@ -29,17 +33,19 @@ def layer(tmp_path):
         _feature("c", LON + 0.002, LAT, building="apartments", **{"building:levels": "12"}),
         _feature("d", LON + 0.003, LAT, building="retail"),
         _feature("e", LON + 0.004, LAT, building="house"),
-        _feature("far", LON + 0.5, LAT, building="retail"),            # outside boundary
-        {"type": "Feature", "properties": {"id": "pt"},
-         "geometry": {"type": "Point", "coordinates": [LON, LAT]}},    # skipped
+        _feature("far", LON + 0.5, LAT, building="retail"),  # outside boundary
+        {
+            "type": "Feature",
+            "properties": {"id": "pt"},
+            "geometry": {"type": "Point", "coordinates": [LON, LAT]},
+        },  # skipped
     ]
     p = tmp_path / "structures.geojson"
     p.write_text(json.dumps({"type": "FeatureCollection", "features": feats}))
     return p
 
 
-BOUNDARY = ((LON - 0.001, LAT - 0.001), (LON + 0.01, LAT - 0.001),
-            (LON + 0.01, LAT + 0.01), (LON - 0.001, LAT + 0.01))
+BOUNDARY = ((LON - 0.001, LAT - 0.001), (LON + 0.01, LAT - 0.001), (LON + 0.01, LAT + 0.01), (LON - 0.001, LAT + 0.01))
 
 
 def test_ring_area_close_to_expected_metres():
@@ -56,12 +62,19 @@ def test_centroid_and_point_in_ring():
     assert not point_in_ring((LON + 1, LAT), ring)
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("Apartments", UseClass.RESIDENTIAL_MF), ("house", UseClass.RESIDENTIAL_SF),
-    ("retail", UseClass.COMMERCIAL), ("warehouse", UseClass.INDUSTRIAL),
-    ("school", UseClass.INSTITUTIONAL), ("garage", UseClass.OTHER),
-    ("spaceship", UseClass.UNKNOWN), (None, UseClass.UNKNOWN),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("Apartments", UseClass.RESIDENTIAL_MF),
+        ("house", UseClass.RESIDENTIAL_SF),
+        ("retail", UseClass.COMMERCIAL),
+        ("warehouse", UseClass.INDUSTRIAL),
+        ("school", UseClass.INSTITUTIONAL),
+        ("garage", UseClass.OTHER),
+        ("spaceship", UseClass.UNKNOWN),
+        (None, UseClass.UNKNOWN),
+    ],
+)
 def test_classify_use(raw, expected):
     assert classify_use(raw) is expected
 

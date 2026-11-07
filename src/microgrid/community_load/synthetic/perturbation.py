@@ -7,6 +7,7 @@ Two structured perturbation types (both off by default):
 When config.perturbation.enabled is False, this module is a no-op and
 returns the profile unchanged with an empty perturbation_log.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -41,7 +42,7 @@ def apply_temporal_shift(profile: pd.Series, shift_hours: int) -> pd.Series:
     """
     if shift_hours == 0:
         return profile
-    shifted = np.roll(profile.values, shift_hours)
+    shifted = np.roll(profile.to_numpy(), shift_hours)
     return pd.Series(shifted, index=profile.index, name=profile.name)
 
 
@@ -72,10 +73,7 @@ def apply_end_use_factors(
     # Recompute total from end-use columns when any were scaled
     if affected_cols and total_col in df.columns:
         # Sum all end-use columns that are numeric and represent consumption
-        kwh_cols = [
-            c for c in end_use_cols
-            if df[c].dtype in (float, "float32", "float64")
-        ]
+        kwh_cols = [c for c in end_use_cols if df[c].dtype in (float, "float32", "float64")]
         if kwh_cols:
             df[total_col] = df[kwh_cols].sum(axis=1)
 

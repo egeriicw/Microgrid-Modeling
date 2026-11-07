@@ -9,6 +9,7 @@
 never the reverse. The SNLG engine (`synthetic`) knows nothing about geography.
 Planner layers exchange load via core.LoadResult, so they never import community_load.
 """
+
 from __future__ import annotations
 
 import ast
@@ -30,8 +31,8 @@ FORBIDDEN = {
     "microgrid.core": _ban("core"),
     "microgrid.geo": _ban("core", "geo"),
     "microgrid.community_load": _ban("core", "geo", "community_load"),
-    "microgrid.community_load.synthetic": _ban("community_load") + [
-        "microgrid.community_load.sources", "microgrid.community_load.categorize"],
+    "microgrid.community_load.synthetic": _ban("community_load")
+    + ["microgrid.community_load.sources", "microgrid.community_load.categorize"],
     "microgrid.der": _ban("core", "geo", "der"),
     "microgrid.dispatch": _ban("core", "geo", "der", "dispatch"),
     "microgrid.economics": _ban("core", "geo", "der", "dispatch", "economics"),
@@ -63,7 +64,6 @@ def _under(name: str, prefix: str) -> bool:
 @pytest.mark.parametrize("path", sorted(SRC.rglob("*.py")), ids=lambda p: _module_name(p))
 def test_imports_respect_layers(path):
     mod = _module_name(path)
-    banned = next((b for pkg, b in sorted(FORBIDDEN.items(), key=lambda kv: -len(kv[0]))
-                   if _under(mod, pkg)), [])
+    banned = next((b for pkg, b in sorted(FORBIDDEN.items(), key=lambda kv: -len(kv[0])) if _under(mod, pkg)), [])
     bad = sorted(i for i in _imports(path) if any(_under(i, b) for b in banned))
     assert not bad, f"{mod} must not import {bad}"

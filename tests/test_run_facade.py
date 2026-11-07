@@ -4,15 +4,16 @@ Specifies the `microgrid.community_load.synthetic.run.run_scenario` facade: the 
 platform worker calls. Covers progress callbacks, cooperative cancellation,
 incremental artifact sink, and dict-or-dataclass config input.
 """
+
 from __future__ import annotations
 
 import pytest
 
-run = pytest.importorskip("microgrid.community_load.synthetic.run", reason="FR-E3: microgrid.community_load.synthetic.run not implemented")
-
-pytestmark = pytest.mark.xfail(
-    reason="FR-E3/E8 not implemented", strict=False
+run = pytest.importorskip(
+    "microgrid.community_load.synthetic.run", reason="FR-E3: microgrid.community_load.synthetic.run not implemented"
 )
+
+pytestmark = pytest.mark.xfail(reason="FR-E3/E8 not implemented", strict=False)
 
 
 @pytest.fixture
@@ -74,9 +75,7 @@ def test_cooperative_cancel_stops_early(tiny_config, data_dirs):
         calls["n"] += 1
         return calls["n"] >= 2  # cancel before the 2nd run
 
-    result = run.run_scenario(
-        tiny_config, data_dirs=data_dirs, should_cancel=should_cancel
-    )
+    result = run.run_scenario(tiny_config, data_dirs=data_dirs, should_cancel=should_cancel)
     assert result.cancelled is True
     assert len(result.metrics) < 6
 
@@ -100,6 +99,6 @@ def test_accepts_prebuilt_scenarioconfig(tiny_config, data_dirs):
 
     cfg = cfg_mod.ScenarioConfig(name="tiny")  # constructed, not from YAML
     # Should not raise a type error; validation happens internally.
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 (placeholder, rewritten in story 1.9)
         # empty config has no categories -> engine-level failure, not TypeError
         run.run_scenario(cfg, data_dirs=data_dirs)

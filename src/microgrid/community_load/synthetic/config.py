@@ -3,6 +3,7 @@
 All scenario parameters live in a YAML file. This module converts that
 file into a ScenarioConfig dataclass that every other module receives.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,10 +12,10 @@ from typing import Literal
 
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Sub-configs
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RNGConfig:
@@ -27,8 +28,8 @@ class RNGConfig:
 class CategoryBounds:
     min_fraction: float = 0.0
     max_fraction: float = 1.0
-    fixed_count: int | None = None   # overrides fraction-based sampling if set
-    source: str = "resstock"         # "resstock" or "comstock"
+    fixed_count: int | None = None  # overrides fraction-based sampling if set
+    source: str = "resstock"  # "resstock" or "comstock"
 
 
 @dataclass
@@ -107,9 +108,7 @@ class ConvergenceConfig:
     lookback_window: int = 10
     min_stable_window: int = 10
     epsilon: float = 0.01
-    metrics: list[str] = field(default_factory=lambda: [
-        "peak_kw", "annual_energy_kwh", "load_factor"
-    ])
+    metrics: list[str] = field(default_factory=lambda: ["peak_kw", "annual_energy_kwh", "load_factor"])
 
 
 @dataclass
@@ -151,6 +150,7 @@ class DataConfig:
 # Top-level config
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ScenarioConfig:
     name: str = "unnamed"
@@ -170,6 +170,7 @@ class ScenarioConfig:
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into base (override wins on conflicts)."""
@@ -200,10 +201,7 @@ def _parse_category_bounds(d: dict) -> CategoryBounds:
 
 
 def _parse_composition(d: dict) -> CompositionConfig:
-    cats = {
-        name: _parse_category_bounds(bounds)
-        for name, bounds in d.get("categories", {}).items()
-    }
+    cats = {name: _parse_category_bounds(bounds) for name, bounds in d.get("categories", {}).items()}
     return CompositionConfig(
         total_buildings=int(d.get("total_buildings", 50)),
         method=d.get("method", "dirichlet"),
@@ -250,18 +248,14 @@ def _parse_feasibility(d: dict) -> FeasibilityConfig:
     soft = SoftConstraints(
         weights=soft_raw.get("weights", {}),
         bounds={
-            k: SoftConstraintBound(min=v.get("min"), max=v.get("max"))
-            for k, v in soft_raw.get("bounds", {}).items()
+            k: SoftConstraintBound(min=v.get("min"), max=v.get("max")) for k, v in soft_raw.get("bounds", {}).items()
         },
     )
     return FeasibilityConfig(hard=hard, soft=soft)
 
 
 def _parse_perturbation(d: dict) -> PerturbationConfig:
-    factors = {
-        k: EndUseFactorConfig(sigma=float(v.get("sigma", 0.0)))
-        for k, v in d.get("end_use_factors", {}).items()
-    }
+    factors = {k: EndUseFactorConfig(sigma=float(v.get("sigma", 0.0))) for k, v in d.get("end_use_factors", {}).items()}
     return PerturbationConfig(
         enabled=bool(d.get("enabled", False)),
         max_temporal_shift_hours=int(d.get("max_temporal_shift_hours", 2)),
@@ -352,14 +346,10 @@ def validate_config(cfg: ScenarioConfig) -> None:
         p_min_sum = sum(c.min_fraction for c in cats.values() if c.fixed_count is None)
         p_max_sum = sum(c.max_fraction for c in cats.values() if c.fixed_count is None)
         if p_min_sum > 1.0 + 1e-9:
-            errors.append(
-                f"Sum of min_fraction values ({p_min_sum:.4f}) exceeds 1.0 — "
-                "no feasible composition exists."
-            )
+            errors.append(f"Sum of min_fraction values ({p_min_sum:.4f}) exceeds 1.0 — no feasible composition exists.")
         if p_max_sum < 1.0 - 1e-9:
             errors.append(
-                f"Sum of max_fraction values ({p_max_sum:.4f}) is below 1.0 — "
-                "no feasible composition exists."
+                f"Sum of max_fraction values ({p_max_sum:.4f}) is below 1.0 — no feasible composition exists."
             )
 
     if errors:

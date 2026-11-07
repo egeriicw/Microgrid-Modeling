@@ -6,22 +6,28 @@ Two sampling modes (config-selectable):
 
 Both produce integer building counts that sum exactly to total_buildings.
 """
+
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from microgrid.community_load.synthetic._types import (
-    ArchetypePool, 
-    BuildingId, 
-    BuildingSelection, 
+    ArchetypePool,
+    BuildingId,
+    BuildingSelection,
     NeighborhoodComposition,
 )
 from microgrid.community_load.synthetic.config import ScenarioConfig
 
+if TYPE_CHECKING:
+    import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _project_simplex_box(
     p: np.ndarray,
@@ -71,6 +77,7 @@ def _proportions_to_counts(props: np.ndarray, total: int) -> np.ndarray:
 # Sampling strategies
 # ---------------------------------------------------------------------------
 
+
 def _sample_dirichlet(
     categories: list[str],
     p_min: np.ndarray,
@@ -86,7 +93,7 @@ def _sample_dirichlet(
     raw_p = rng.dirichlet(alpha)
     p = _project_simplex_box(raw_p, p_min, p_max)
     counts = _proportions_to_counts(p, total)
-    return dict(zip(categories, counts.tolist()))
+    return dict(zip(categories, counts.tolist(), strict=True))
 
 
 def _sample_uniform_renorm(
@@ -100,12 +107,13 @@ def _sample_uniform_renorm(
     raw_p = rng.uniform(p_min, p_max)
     p = _project_simplex_box(raw_p, p_min, p_max)
     counts = _proportions_to_counts(p, total)
-    return dict(zip(categories, counts.tolist()))
+    return dict(zip(categories, counts.tolist(), strict=True))
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def sample_composition(
     pool: ArchetypePool,
@@ -142,13 +150,10 @@ def sample_composition(
 
         if comp_cfg.method == "dirichlet":
             var_counts = _sample_dirichlet(
-                variable_cats, p_min, p_max,
-                comp_cfg.dirichlet_concentration, variable_total, rng
+                variable_cats, p_min, p_max, comp_cfg.dirichlet_concentration, variable_total, rng
             )
         else:
-            var_counts = _sample_uniform_renorm(
-                variable_cats, p_min, p_max, variable_total, rng
-            )
+            var_counts = _sample_uniform_renorm(variable_cats, p_min, p_max, variable_total, rng)
         counts.update(var_counts)
     elif variable_cats:
         # variable_total == 0: all buildings are fixed-count
@@ -166,7 +171,7 @@ def sample_buildings(
     pool: ArchetypePool,
     cfg: ScenarioConfig,
     rng: np.random.Generator,
-    resstock_chars: "pd.DataFrame | None" = None,
+    resstock_chars: pd.DataFrame | None = None,
 ) -> list[BuildingSelection]:
     """Draw building instances for each category using Layer 2 RNG.
 
@@ -192,13 +197,10 @@ def sample_buildings(
 
         if not bldg_pool:
             raise ValueError(
-                f"Category '{cat}' has no buildings in the filtered pool. "
-                "Check archetype_filters in your config."
+                f"Category '{cat}' has no buildings in the filtered pool. Check archetype_filters in your config."
             )
 
-        chosen_ids: list[BuildingId] = rng.choice(
-            bldg_pool, size=count, replace=True
-        ).tolist()
+        chosen_ids: list[BuildingId] = rng.choice(bldg_pool, size=count, replace=True).tolist()
 
         for bldg_id in chosen_ids:
             unit_multiplier = 1.0
@@ -210,11 +212,13 @@ def sample_buildings(
                 if len(match) > 0 and not pd.isna(match[0]):
                     unit_multiplier = float(match[0])
 
-            selections.append(BuildingSelection(
-                bldg_id=bldg_id,
-                category=cat,
-                source=source,
-                unit_multiplier=unit_multiplier,
-            ))
+            selections.append(
+                BuildingSelection(
+                    bldg_id=bldg_id,
+                    category=cat,
+                    source=source,
+                    unit_multiplier=unit_multiplier,
+                )
+            )
 
     return selections
