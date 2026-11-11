@@ -12,9 +12,9 @@ import logging
 import uuid
 
 import pytest
+from microgrid.community_load.synthetic.run import ProgressEvent, RunCancelled
 from sqlalchemy import select
 
-from microgrid.community_load.synthetic.run import ProgressEvent, RunCancelled
 from microgrid_api import worker
 from microgrid_api.config import ConfigurationError, Settings
 from microgrid_api.db.models import Run, RunEvent, RunStatus
@@ -268,7 +268,7 @@ def test_create_run_keeps_fixed_seeds_and_rejects_unknown_seed_keys(session, tin
 
 
 def test_create_run_rejects_invalid_config_loudly(session):
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="ensemble.mode"):
         svc.create_run(session, {"ensemble": {"mode": "not-a-mode"}})
 
 

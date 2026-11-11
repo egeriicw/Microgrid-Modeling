@@ -60,7 +60,9 @@ class Settings(BaseSettings):
                 f"MICROGRID_JWT_SECRET is required when MICROGRID_ENVIRONMENT is '{self.environment}'."
             )
         if self.task_soft_time_limit_s >= self.task_time_limit_s:
-            raise ConfigurationError("MICROGRID_TASK_SOFT_TIME_LIMIT_S must be smaller than MICROGRID_TASK_TIME_LIMIT_S.")
+            raise ConfigurationError(
+                "MICROGRID_TASK_SOFT_TIME_LIMIT_S must be smaller than MICROGRID_TASK_TIME_LIMIT_S."
+            )
         if "*" in self.cors_origins:
             raise ConfigurationError("cors_origins (MICROGRID_CORS_ORIGINS) must not contain '*'; list origins.")
         return self

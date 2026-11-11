@@ -94,7 +94,10 @@ def tiny_config(synthetic_dataset) -> dict:
         "archetype_filters": {
             "resstock": {
                 "mf_small": {
-                    "building_type_heights": ["Multi-Family with 2 - 4 Units", "Multi-Family with 5+ Units, 1-3 Stories"]
+                    "building_type_heights": [
+                        "Multi-Family with 2 - 4 Units",
+                        "Multi-Family with 5+ Units, 1-3 Stories",
+                    ]
                 },
                 "mf_mid": {"building_type_heights": ["Multi-Family with 5+ Units, 4-7 Stories"]},
             }

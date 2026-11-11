@@ -17,11 +17,11 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from microgrid import __version__ as ENGINE_VERSION  # noqa: N812
 from microgrid.community_load.synthetic.config import RNGConfig, config_from_dict
 from microgrid.community_load.synthetic.rng import resolve_seeds
+from sqlalchemy.orm import Session
+
 from microgrid_api.db.models import Run, RunStatus
 
 SEED_KEYS = ("composition_seed", "archetype_seed", "perturbation_seed")

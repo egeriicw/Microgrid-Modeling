@@ -22,10 +22,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from celery import Celery
+from microgrid.community_load.synthetic.run import ProgressEvent, RunCancelled, run_scenario
 from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from microgrid.community_load.synthetic.run import ProgressEvent, RunCancelled, run_scenario
 from microgrid_api.config import LOCAL_ENVIRONMENTS, ConfigurationError, Settings
 from microgrid_api.db.models import Run, RunEvent, RunStatus
 from microgrid_api.services import runs as svc
