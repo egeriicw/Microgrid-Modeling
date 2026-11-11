@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { init, type Chart } from "echarts-lib";
 import { generateDataset, type Dataset } from "./data";
-import { buildOption, type Mode, type Resolution, type View } from "./charts";
+import { BAND_DEFS, SERIES_ORDER, buildOption, formatTooltip, viewAtResolution, type Mode, type Resolution, type View } from "./charts";
 
 interface SpikeApi {
   ready: boolean;
   chart: Chart | null;
   marks: { generateMs: number; optionMs: number; renderMs: number; finishedAt: number };
-  /** Rebuild the chart at another resolution; resolves with ms until ECharts reports "finished". */
-  switchResolution: (r: Resolution) => Promise<number>;
+  /** Number of completed draws and the duration (setOption -> "finished", ms) of the latest one. */
+  renders: number;
+  lastRenderMs: number;
+  setResolution: (r: Resolution) => void;
 }
 declare global {
   interface Window {
@@ -29,7 +31,9 @@ window.__spike = {
   ready: false,
   chart: null,
   marks: { generateMs: 0, optionMs: 0, renderMs: 0, finishedAt: 0 },
-  switchResolution: () => Promise.reject(new Error("not ready")),
+  renders: 0,
+  lastRenderMs: 0,
+  setResolution: () => undefined,
 };
 
 function App() {
@@ -70,13 +74,54 @@ function App() {
   );
 
   useEffect(() => {
-    void draw(view, mode, series, resolution, !window.__spike.ready);
-    window.__spike.switchResolution = (r) => {
-      setResolution(r);
-      return draw(view, mode, series, r, false);
-    };
+    void draw(view, mode, series, resolution, !window.__spike.ready).then((ms) => {
+      window.__spike.lastRenderMs = ms;
+      window.__spike.renders += 1;
+    });
+    window.__spike.setResolution = setResolution;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, mode, series, resolution, draw]);
+
+  // "overlay" mode: our own crosshair + tooltip as plain DOM, so a hover never repaints the chart canvas.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const host = box.current;
+    if (mode !== "overlay" || !chart || !host || !dataRef.current || (view !== "timeseries" && view !== "band")) return;
+    const data = viewAtResolution(dataRef.current, resolution);
+    const defs = view === "band" ? BAND_DEFS : SERIES_ORDER.slice(0, series);
+    const line = document.createElement("div");
+    line.style.cssText = "position:absolute;top:48px;bottom:80px;width:1px;background:#555;pointer-events:none;display:none";
+    const tip = document.createElement("div");
+    tip.setAttribute("role", "status");
+    tip.style.cssText =
+      "position:absolute;pointer-events:none;display:none;background:#fff;border:1px solid #888;padding:4px 8px;font-size:12px;white-space:nowrap";
+    host.append(line, tip);
+    const zr = chart.getZr();
+    const move = (e: { offsetX: number; offsetY: number }) => {
+      const pt = [e.offsetX, e.offsetY];
+      if (!chart.containPixel("grid", pt)) {
+        line.style.display = tip.style.display = "none";
+        return;
+      }
+      const t = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as unknown as number;
+      tip.innerHTML = formatTooltip(t, data, defs);
+      line.style.left = `${e.offsetX}px`;
+      tip.style.left = `${e.offsetX + 12}px`;
+      tip.style.top = `${e.offsetY + 12}px`;
+      line.style.display = tip.style.display = "block";
+    };
+    const out = () => {
+      line.style.display = tip.style.display = "none";
+    };
+    zr.on("mousemove", move);
+    zr.on("globalout", out);
+    return () => {
+      zr.off("mousemove", move);
+      zr.off("globalout", out);
+      line.remove();
+      tip.remove();
+    };
+  }, [mode, view, series, resolution]);
 
   useEffect(() => {
     const onResize = () => chartRef.current?.resize();
@@ -103,6 +148,7 @@ function App() {
             <option value="naive">naive</option>
             <option value="tuned">tuned</option>
             <option value="lttb">tuned + lttb</option>
+            <option value="overlay">lttb + DOM overlay tooltip</option>
           </select>
         </label>
         <label>

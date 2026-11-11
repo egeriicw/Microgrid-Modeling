@@ -3,7 +3,8 @@ import type { Dataset } from "./data";
 import { STEP_1_H_MS } from "./data";
 import { hourlyMean, loadDurationCurve, seasonalDailyProfile } from "./stats";
 
-export type Mode = "naive" | "tuned" | "lttb";
+/** overlay = lttb + the built-in tooltip replaced by a DOM overlay driven by the app (see main.tsx). */
+export type Mode = "naive" | "tuned" | "lttb" | "overlay";
 export type View = "timeseries" | "band" | "ldc" | "seasonal" | "scatter";
 export type Resolution = "15min" | "1h";
 
@@ -20,6 +21,11 @@ export const SERIES_ORDER: SeriesDef[] = [
   { key: "commercial", name: "Commercial", color: "#0072B2" },
   { key: "p10", name: "P10", color: "#009E73" },
   { key: "p90", name: "P90", color: "#D55E00" },
+];
+export const BAND_DEFS: SeriesDef[] = [
+  { key: "p10", name: "P10", color: "" },
+  { key: "p50" as SeriesDef["key"], name: "P50", color: "" },
+  { key: "p90", name: "P90", color: "" },
 ];
 const TEMP_COLOR = "#CC79A7";
 const DASH: Array<"solid" | "dashed" | "dotted"> = ["solid", "solid", "solid", "dashed", "dotted"];
@@ -59,6 +65,7 @@ function stamp(ms: number): string {
  * timestamp, looked up directly from the raw arrays (so it stays exact even when the line is down-sampled).
  */
 export function formatTooltip(tsMs: number, data: Dataset, series: SeriesDef[]): string {
+  if (typeof tsMs !== "number" || !Number.isFinite(tsMs)) throw new Error(`formatTooltip: bad timestamp ${String(tsMs)}`);
   const i = Math.min(data.ts.length - 1, Math.max(0, Math.round((tsMs - data.ts[0]) / data.stepMs)));
   const rows = series
     .map((s) => `<div>${s.name}: <b>${data[s.key][i].toFixed(1)}</b> kW</div>`)
@@ -120,30 +127,25 @@ export function buildOption(p: Params): EChartsOption {
   const lineCommon = (extra: object = {}) => ({
     type: "line" as const,
     ...(fast ? { showSymbol: false, emphasis: { disabled: true }, progressive: 5000, progressiveThreshold: 3000 } : {}),
-    ...(mode === "lttb" ? { sampling: "lttb" as const } : {}),
+    ...(mode === "lttb" || mode === "overlay" ? { sampling: "lttb" as const } : {}),
     ...extra,
   });
   const zoom = [
     { type: "inside" as const, xAxisIndex: 0, filterMode: "filter" as const },
     { type: "slider" as const, xAxisIndex: 0, filterMode: "filter" as const, height: 24, bottom: 24 },
   ];
-  const timeTooltip = {
+  const timeTooltip = mode === "overlay" ? { show: false } : {
     trigger: "axis" as const,
-    axisPointer: { type: "cross" as const },
+    axisPointer: { type: "line" as const },
     ...(fast
       ? {
           formatter: (params: unknown) => {
             const first = (Array.isArray(params) ? params[0] : params) as { axisValue: number };
-            return formatTooltip(Number(first.axisValue), d, view === "band" ? bandDefs : defs);
+            return formatTooltip(Number(first.axisValue), d, view === "band" ? BAND_DEFS : defs);
           },
         }
       : {}),
   };
-  const bandDefs: SeriesDef[] = [
-    { key: "p10", name: "P10", color: "" },
-    { key: "p50" as SeriesDef["key"], name: "P50", color: "" },
-    { key: "p90", name: "P90", color: "" },
-  ];
   const yKw = { type: "value" as const, name: "kW", scale: true };
   const yTemp = { type: "value" as const, name: "°C", position: "right" as const, splitLine: { show: false }, scale: true };
   const tempSeries = (x: "ts") =>
@@ -189,6 +191,7 @@ export function buildOption(p: Params): EChartsOption {
     const spanV = Array.from(d.p90, (v, i) => v - d.p10[i]);
     return {
       ...base,
+      legend: { top: 4, data: ["P10-P90 band", "P50", "Temperature (°C)"] },
       ...(fast ? { dataset: { source: columns(d) } } : {}),
       tooltip: timeTooltip,
       xAxis: { type: "time" },

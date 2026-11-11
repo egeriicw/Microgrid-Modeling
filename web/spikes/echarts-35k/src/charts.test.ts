@@ -27,6 +27,10 @@ describe("formatTooltip", () => {
     expect(html).toContain(data.temperature[i].toFixed(1));
     expect(html).toContain("Residential");
   });
+  it("fails loudly on a non-finite timestamp instead of printing undefined", () => {
+    expect(() => formatTooltip(Number.NaN, data, SERIES_ORDER.slice(0, 1))).toThrow(/timestamp/);
+    expect(() => formatTooltip([1, 2] as unknown as number, data, SERIES_ORDER.slice(0, 1))).toThrow(/timestamp/);
+  });
   it("snaps an in-between timestamp to the nearest sample", () => {
     const i = 777;
     const html = formatTooltip(data.ts[i] + 4 * 60 * 1000, data, SERIES_ORDER.slice(0, 1));
@@ -47,6 +51,11 @@ describe("buildOption", () => {
     const o = buildOption({ view: "timeseries", mode: "lttb", seriesCount: 3, resolution: "15min", data });
     expect(sampling(o).filter((s) => s === "lttb").length).toBeGreaterThanOrEqual(3);
     expect(o.dataset).toBeDefined();
+  });
+  it("overlay mode samples with lttb but turns the built-in ECharts tooltip off", () => {
+    const o = buildOption({ view: "timeseries", mode: "overlay", seriesCount: 3, resolution: "15min", data });
+    expect(sampling(o).filter((s) => s === "lttb").length).toBeGreaterThanOrEqual(3);
+    expect((o.tooltip as { show?: boolean }).show).toBe(false);
   });
   it("has both slider and inside zoom, and N load series plus temperature", () => {
     const o = buildOption({ view: "timeseries", mode: "tuned", seriesCount: 5, resolution: "15min", data });
