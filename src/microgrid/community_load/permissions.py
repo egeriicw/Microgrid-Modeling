@@ -89,7 +89,8 @@ def _filters_of(composition: Any) -> dict[str, tuple[AttributeFilter, ...]]:
             raise TypeError("a list of filters must contain AttributeFilter objects")
         return {"filters": tuple(composition)} if composition else {}
     raise TypeError(
-        f"expected a scenario dict/config, ArchetypeFilterConfig or list of AttributeFilter, got {type(composition).__name__}"
+        "expected a scenario dict/config, ArchetypeFilterConfig or list of AttributeFilter, "
+        f"got {type(composition).__name__}"
     )
 
 

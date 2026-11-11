@@ -255,9 +255,13 @@ class ExposedAttributes:
                 nums = [(n, float(v)) for n, v in (("min", f.min), ("max", f.max)) if v is not None]
             for name, v in nums:
                 if attr.min is not None and v < attr.min:
-                    raise ValueError(f"{where}: {name} {v:g} is below the allowed minimum {attr.min:g} for {attr.key!r}")
+                    raise ValueError(
+                        f"{where}: {name} {v:g} is below the allowed minimum {attr.min:g} for {attr.key!r}"
+                    )
                 if attr.max is not None and v > attr.max:
-                    raise ValueError(f"{where}: {name} {v:g} is above the allowed maximum {attr.max:g} for {attr.key!r}")
+                    raise ValueError(
+                        f"{where}: {name} {v:g} is above the allowed maximum {attr.max:g} for {attr.key!r}"
+                    )
 
 
 @functools.lru_cache(maxsize=1)

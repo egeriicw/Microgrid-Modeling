@@ -7,7 +7,12 @@ import copy
 import pytest
 
 from microgrid.community_load import permissions
-from microgrid.community_load.permissions import FilterPermissionError, can, validate_filter_edit, validate_filters_allowed
+from microgrid.community_load.permissions import (
+    FilterPermissionError,
+    can,
+    validate_filter_edit,
+    validate_filters_allowed,
+)
 from microgrid.community_load.synthetic import run
 from microgrid.community_load.synthetic.attribute_filters import AttributeFilter
 from microgrid.community_load.synthetic.config import ArchetypeFilterConfig, ResidentialFilterConfig, config_from_dict

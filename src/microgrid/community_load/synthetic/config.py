@@ -9,7 +9,7 @@ from __future__ import annotations
 import difflib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 
@@ -204,7 +204,8 @@ def _parse_rng(d: dict) -> RNGConfig:
 
 
 def _parse_data(d: dict) -> DataConfig:
-    return DataConfig(**{k: (None if v is None else str(v)) for k, v in d.items()})
+    values: dict[str, Any] = {k: (None if v is None else str(v)) for k, v in d.items()}
+    return DataConfig(**values)
 
 
 def _parse_category_bounds(d: dict) -> CategoryBounds:
@@ -517,9 +518,7 @@ def validate_config(cfg: ScenarioConfig) -> None:
     for fld in ("dataset_resstock", "dataset_comstock"):
         value = getattr(cfg.data, fld)
         if value is not None and (not isinstance(value, str) or len([p for p in value.split(":") if p.strip()]) != 5):
-            errors.append(
-                f"data.{fld} must be a dataset id 'product:release:weather:scenario:state', got {value!r}"
-            )
+            errors.append(f"data.{fld} must be a dataset id 'product:release:weather:scenario:state', got {value!r}")
         if value is not None and not value.startswith(fld.removeprefix("dataset_") + ":"):
             errors.append(f"data.{fld} must start with '{fld.removeprefix('dataset_')}:', got {value!r}")
     for fld in ("resstock_load_basis", "comstock_load_basis"):

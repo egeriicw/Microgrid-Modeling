@@ -84,12 +84,16 @@ def test_filter_on_missing_column_fails_naming_it(synthetic_dataset):
 def test_comstock_attribute_filter(synthetic_dataset):
     df = archetype.load_comstock_characteristics(synthetic_dataset.comstock_chars)
     cfg = archetype.CommercialFilterConfig(
-        building_types=["SmallOffice", "MediumOffice"], attributes=[AttributeFilter("in.number_stories", "range", min=3)]
+        building_types=["SmallOffice", "MediumOffice"],
+        attributes=[AttributeFilter("in.number_stories", "range", min=3)],
     )
     got = archetype._filter_comstock_category(df, cfg)
-    assert got == df[df["in.comstock_building_type"].isin(cfg.building_types) & (df["in.number_stories"] >= 3)][
-        "bldg_id"
-    ].tolist()
+    assert (
+        got
+        == df[df["in.comstock_building_type"].isin(cfg.building_types) & (df["in.number_stories"] >= 3)][
+            "bldg_id"
+        ].tolist()
+    )
 
 
 # ---- pool preview ------------------------------------------------------------------------------------------

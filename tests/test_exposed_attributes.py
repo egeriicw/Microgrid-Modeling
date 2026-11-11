@@ -14,8 +14,8 @@ from microgrid.community_load.exposed_attributes import (
     discover_candidates,
 )
 from microgrid.community_load.registry import default_registry
-from microgrid.community_load.synthetic.attribute_filters import AttributeFilter
 from microgrid.community_load.synthetic.archetype import load_comstock_characteristics, load_resstock_characteristics
+from microgrid.community_load.synthetic.attribute_filters import AttributeFilter
 
 STARTER_KEYS = {
     "stories",
