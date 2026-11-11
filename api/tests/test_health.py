@@ -23,7 +23,7 @@ def test_health_ok_without_dependencies():
 def test_ready_ok_when_db_up(client):
     r = client.get("/api/v1/ready")
     assert r.status_code == 200
-    assert r.json() == {"ready": True, "checks": {"db": "ok"}}
+    assert r.json() == {"ready": True, "checks": {"db": "ok", "schema": "ok"}}
 
 
 def test_ready_503_when_db_down(app, monkeypatch):

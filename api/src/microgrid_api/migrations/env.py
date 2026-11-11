@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from alembic import context
 from sqlalchemy import create_engine
 
-from alembic import context
 from microgrid_api.config import Settings
 from microgrid_api.db import models  # noqa: F401  (register tables on Base.metadata)
 from microgrid_api.db.base import Base
@@ -12,7 +12,7 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    return config.get_main_option("sqlalchemy.url") or Settings().database_url
+    return config.get_main_option("sqlalchemy.url") or Settings().require_database_url()
 
 
 def run_migrations_offline() -> None:

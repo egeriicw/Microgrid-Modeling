@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,7 +14,6 @@ from sqlalchemy import create_engine, event, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from alembic import command
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run, RunEvent
 from microgrid_api.main import create_app
@@ -24,7 +24,7 @@ SECRET = "S3CRETpw"
 
 def _cfg(url: str | None) -> Config:
     cfg = Config(str(API_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(API_DIR / "alembic"))
+    cfg.set_main_option("script_location", str(API_DIR / "src" / "microgrid_api" / "migrations"))
     if url is not None:
         cfg.set_main_option("sqlalchemy.url", url)
     return cfg
@@ -67,7 +67,6 @@ def test_default_sends_no_cors_headers(client):
     assert "access-control-allow-origin" not in r.headers
 
 
-@pytest.mark.xfail(strict=True, reason="QA-1.8-F3: cors_origins setting exists but no CORSMiddleware is installed")
 def test_configured_cors_origin_is_honoured(tmp_path):
     s = Settings(database_url=f"sqlite:///{tmp_path / 'c.db'}", cors_origins=["http://localhost:3000"])
     with TestClient(create_app(s)) as c:
@@ -75,10 +74,6 @@ def test_configured_cors_origin_is_honoured(tmp_path):
     assert r.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-1.8-F1: compose passes unprefixed DATABASE_URL; Settings ignores it and silently falls back to SQLite",
-)
 def test_unprefixed_database_url_is_not_silently_ignored(monkeypatch, tmp_path):
     for k in [k for k in os.environ if k.startswith("MICROGRID_")]:
         monkeypatch.delenv(k)
