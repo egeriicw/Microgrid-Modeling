@@ -235,31 +235,30 @@ def test_pool_warning_threshold_is_strictly_fewer_than(synthetic_dataset, matche
 # --- silent or cryptic behaviours found in review (strict xfail: fix flips them) --------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="QA-F1: `in [nan]` matches NaN rows (NaN treated as a match)")
-def test_in_nan_does_not_match_missing_values(edge):
-    assert _m(edge, F("num", "in", values=(float("nan"),))) == [False] * 5
+def test_in_nan_is_rejected_so_it_cannot_match_missing_values():
+    for bad in (float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="'num'.*finite"):
+            F("num", "in", values=(1, bad))
+        with pytest.raises(ValueError, match="'num'.*finite"):
+            F("num", "equals", value=bad)
 
 
-@pytest.mark.xfail(strict=True, reason="QA-F2: NaN/inf bounds are accepted at construction instead of rejected")
 def test_non_finite_bounds_are_rejected_at_construction():
-    with pytest.raises(ValueError):
-        F("num", "range", min=float("nan"))
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        for key in ("min", "max"):
+            with pytest.raises(ValueError, match=f"'num'.*`{key}`.*finite"):
+                F("num", "range", **{key: bad})
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-F3: is_true/is_false crash with a cryptic error on pandas nullable boolean + NA"
-)
 def test_is_true_on_nullable_boolean_with_missing_values(edge):
     df = pd.DataFrame({"nb": pd.array([True, None, False], dtype="boolean")})
     assert _m(df, F("nb", "is_true")) == [True, False, False]
+    assert _m(df, F("nb", "is_false")) == [False, False, True]  # NA matches neither, like NaN elsewhere
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-F4: duplicate column names give a cryptic AttributeError, not a clear ValueError"
-)
 def test_duplicate_column_names_are_a_clear_error():
     dup = pd.DataFrame([[1, 2], [3, 4]], columns=["x", "x"])
-    with pytest.raises(ValueError, match="duplicate"):
+    with pytest.raises(ValueError, match="duplicate columns named 'x'"):
         apply_attribute_filters(dup, [F("x", "not_null")])
 
 
@@ -377,12 +376,20 @@ def test_brand_new_composition_and_empty_saved_are_both_treated_as_no_filters():
         validate_filter_edit("client", new=_comp(A), saved={})
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-F5: a saved NaN bound never equals itself, so an unchanged re-save is denied"
-)
 def test_unchanged_resave_with_nan_bound_is_allowed():
-    nan_comp = _comp([{"column": "c", "op": "range", "min": float("nan")}])
-    validate_filter_edit("client", new=copy.deepcopy(nan_comp), saved=nan_comp)
+    # NaN bounds can no longer be built normally; force one in to prove the comparison itself is NaN-safe
+    f = F("c", "range", min=1.0)
+    object.__setattr__(f, "min", float("nan"))
+    g = F("c", "range", min=1.0)
+    object.__setattr__(g, "min", float("nan"))
+    validate_filter_edit("client", new=[f], saved=[g])
+    with pytest.raises(FilterPermissionError):
+        validate_filter_edit("client", new=[f], saved=[F("c", "range", min=2.0)])
+
+
+def test_a_nan_bound_cannot_be_submitted_in_a_composition():
+    with pytest.raises(ValueError, match="finite"):
+        validate_filter_edit("client", new=_comp([{"column": "c", "op": "range", "min": float("nan")}]))
 
 
 # ---------------------------------------------------------------------------------------------------------

@@ -19,7 +19,9 @@ re-save an existing one (re-saving with unchanged filters is not an edit of the 
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
+from dataclasses import fields
 from typing import Any
 
 from microgrid.community_load.synthetic.attribute_filters import AttributeFilter
@@ -94,6 +96,27 @@ def _filters_of(composition: Any) -> dict[str, tuple[AttributeFilter, ...]]:
     )
 
 
+def _same_value(a: object, b: object) -> bool:
+    if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+        return True  # NaN-safe: a saved NaN equals itself (new NaN bounds are rejected at construction anyway)
+    if isinstance(a, tuple | list) and isinstance(b, tuple | list):
+        return len(a) == len(b) and all(_same_value(x, y) for x, y in zip(a, b, strict=True))
+    return bool(a == b)
+
+
+def _same_filters(a: dict[str, tuple[AttributeFilter, ...]], b: dict[str, tuple[AttributeFilter, ...]]) -> bool:
+    if a.keys() != b.keys():
+        return False
+    for cat, fa in a.items():
+        fb = b[cat]
+        if len(fa) != len(fb):
+            return False
+        for x, y in zip(fa, fb, strict=True):
+            if not all(_same_value(getattr(x, f.name), getattr(y, f.name)) for f in fields(AttributeFilter)):
+                return False
+    return True
+
+
 def validate_filters_allowed(role: str, composition: Any, overrides: Overrides | None = None) -> None:
     """Raise FilterPermissionError if ``composition`` contains attribute filters and ``role`` lacks ``filters.use``."""
     allowed = can(role, "filters.use", overrides)
@@ -114,7 +137,7 @@ def validate_filter_edit(role: str, *, new: Any, saved: Any = None, overrides: O
     allowed = can(role, "filters.use", overrides)
     if allowed:
         return
-    if _filters_of(new) != (_filters_of(saved) if saved is not None else {}):
+    if not _same_filters(_filters_of(new), _filters_of(saved) if saved is not None else {}):
         raise FilterPermissionError(
             f"role {role!r} does not have the filters.use permission and cannot add, change or remove attribute filters"
         )

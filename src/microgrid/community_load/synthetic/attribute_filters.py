@@ -11,7 +11,11 @@ Operators (``op``):
 * ``in``        ``values`` (a non-empty list of those)
 * ``range``     ``min`` and/or ``max`` (numbers), ``min_inclusive`` / ``max_inclusive`` (default true)
 * ``not_null`` / ``is_null``   the column has / has no value
-* ``is_true`` / ``is_false``   a boolean column (real booleans or the text "True"/"False" from spreadsheets)
+* ``is_true`` / ``is_false``   a boolean column (real booleans or the text "True"/"False" from spreadsheets).
+  Missing values (NaN, None, pandas NA) never match, exactly like NaN never matches ``range`` or ``equals``.
+
+Numbers must be finite: NaN and infinity are rejected as values or bounds. Duplicate column names in the
+characteristics table are an error naming the column.
 
 A filter on a column that is not in the data raises an error naming the column; nothing is ever ignored.
 """
@@ -19,6 +23,7 @@ A filter on a column that is not in the data raises an error naming the column; 
 from __future__ import annotations
 
 import difflib
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -43,8 +48,13 @@ def _is_number(v: object) -> bool:
     return isinstance(v, int | float) and not isinstance(v, bool)
 
 
+def _is_finite_number(v: object) -> bool:
+    return _is_number(v) and math.isfinite(v)  # type: ignore[arg-type]
+
+
 def _is_scalar(v: object) -> bool:
-    return isinstance(v, str | bool) or _is_number(v)
+    """A string, a boolean or a *finite* number: NaN and infinity are never valid filter values."""
+    return isinstance(v, str | bool) or _is_finite_number(v)
 
 
 @dataclass(frozen=True)
@@ -74,20 +84,24 @@ class AttributeFilter:
             if self.value is None:
                 raise ValueError(f"{where}: `equals` needs `value`")
             if not _is_scalar(self.value):
-                raise ValueError(f"{where}: `value` must be a single string, number or boolean")
+                raise ValueError(
+                    f"{where}: `value` must be a single string, finite number or boolean, got {self.value!r}"
+                )
         elif self.op == "in":
             if not isinstance(self.values, tuple | list) or len(self.values) == 0:
                 raise ValueError(f"{where}: `in` needs a non-empty `values` list")
             if not all(_is_scalar(v) for v in self.values):
-                raise ValueError(f"{where}: `values` must be strings, numbers or booleans")
+                raise ValueError(
+                    f"{where}: `values` must be strings, finite numbers or booleans (no NaN or infinity), got {list(self.values)!r}"
+                )
             object.__setattr__(self, "values", tuple(self.values))
         elif self.op == "range":
             if self.min is None and self.max is None:
                 raise ValueError(f"{where}: `range` needs min or max")
             for key in ("min", "max"):
                 v = getattr(self, key)
-                if v is not None and not _is_number(v):
-                    raise ValueError(f"{where}: `{key}` must be a number, got {v!r}")
+                if v is not None and not _is_finite_number(v):
+                    raise ValueError(f"{where}: `{key}` must be a finite number (no NaN or infinity), got {v!r}")
             if self.min is not None and self.max is not None and self.min > self.max:
                 raise ValueError(f"{where}: min {self.min} exceeds max {self.max}")
             for key in ("min_inclusive", "max_inclusive"):
@@ -150,7 +164,8 @@ def parse_attribute_filters(raw: object, path: str) -> list[AttributeFilter]:
 def _bool_series(s: pd.Series, f: AttributeFilter) -> pd.Series:
     """True / False / NA for a boolean-like column; anything else is an error."""
     if pd.api.types.is_bool_dtype(s):
-        return s.astype(bool)
+        # plain bool, or pandas nullable "boolean" whose NA never matches (like NaN in every other operator)
+        return s if s.dtype == "boolean" else s.astype(bool)
     if pd.api.types.is_numeric_dtype(s):
         raise ValueError(f"column {f.column!r} is numeric, but operator {f.op!r} needs a boolean column")
     text = s.astype("string").str.strip().str.lower()
@@ -181,6 +196,8 @@ def _mask_one(df: pd.DataFrame, f: AttributeFilter) -> pd.Series:
         hint = difflib.get_close_matches(f.column, [str(c) for c in df.columns], n=3)
         suffix = f"; similar columns: {hint}" if hint else ""
         raise ValueError(f"attribute filter column {f.column!r} is not in the characteristics data{suffix}")
+    if int((df.columns == f.column).sum()) > 1:
+        raise ValueError(f"the characteristics data has duplicate columns named {f.column!r}; cannot filter on it")
     s = df[f.column]
     if f.op == "not_null":
         return s.notna()
