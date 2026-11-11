@@ -671,11 +671,6 @@ def test_to_filters_rejects_nan_and_text_for_numeric_attributes():
 # ---------------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-F11: RunResult.config_snapshot (dataclasses.asdict) is not accepted by config_from_dict "
-    "(top-level name/description, flattened feasibility); minimal fix = config_to_dict + round-trip test",
-)
 def test_config_snapshot_replays_through_config_from_dict(synthetic_dataset):
     raw = build_tiny_config(synthetic_dataset)
     raw["archetype_filters"]["resstock"]["mf_small"]["attributes"] = [
@@ -686,6 +681,91 @@ def test_config_snapshot_replays_through_config_from_dict(synthetic_dataset):
     replayed = config_from_dict(result.config_snapshot)
     assert replayed.archetype_filters.resstock["mf_small"].attributes == [F("in.geometry_stories", "range", min=1)]
     assert replayed.rng.composition_seed == result.seeds["composition_seed"]
+
+
+def _rich_raw(ds) -> dict:
+    raw = build_tiny_config(ds)
+    raw["scenario"] = {"name": "rich", "description": "a description"}
+    raw["data"] = {
+        **raw["data"],
+        "dataset_resstock": "resstock:2025_release_1:amy2018:baseline:DC",
+        "dataset_comstock": "comstock:2025_release_3:amy2018:baseline:DC",
+        "resstock_load_basis": "gross",
+        "comstock_load_basis": "net",
+    }
+    res = raw["archetype_filters"]["resstock"]
+    res["mf_small"].update(
+        hvac_types=["a"],
+        hvac_types_exclude=["b"],
+        max_sqft=2500.5,
+        require_no_garage=True,
+        require_data_complete=False,
+        attributes=[
+            {"column": "c1", "op": "equals", "value": "x"},
+            {"column": "c2", "op": "in", "values": [1, 2.5]},
+            {"column": "c3", "op": "range", "min": 1, "max": 9, "min_inclusive": False},
+            {"column": "c4", "op": "is_true"},
+            {"column": "c5", "op": "not_null"},
+        ],
+    )
+    raw["archetype_filters"]["comstock"] = {"office": {"building_types": ["Office"], "include_public": True}}
+    raw["archetype_filters"]["min_pool_size"] = 3
+    raw["composition"]["categories"]["office"] = {"fixed_count": 1, "source": "comstock"}
+    raw["composition"]["dirichlet_concentration"] = 2.5
+    raw["perturbation"] = {
+        "enabled": True,
+        "max_temporal_shift_hours": 1,
+        "energy_tolerance": 0.1,
+        "end_use_factors": {"heating": {"sigma": 0.2}},
+    }
+    raw["feasibility"] = {
+        "hard": {"peak_kw": {"min": 1, "max": 5000}, "load_factor": {"max": 0.9}},
+        "soft": {
+            "weights": {"peak_kw": 2.0},
+            "bounds": {"peak_kw": {"min": 10}, "load_factor": {"min": 0.1, "max": 0.8}},
+        },
+    }
+    raw["convergence"] = {"lookback_window": 4, "min_stable_window": 3, "epsilon": 0.02, "metrics": ["peak_kw"]}
+    raw["validation"] = {"benchmarks": {"peak_kw": [1.0, 2.0]}, "min_cv_peak": 0.05}
+    raw["output"] = {"base_dir": "x", "per_run_csvs": False, "percentiles": [0.25, 0.75], "validation_report": False}
+    return raw
+
+
+def test_config_to_dict_round_trips_a_rich_config(synthetic_dataset):
+    from microgrid.community_load.synthetic.config import config_to_dict
+
+    cfg = config_from_dict(_rich_raw(synthetic_dataset))
+    assert config_from_dict(config_to_dict(cfg)) == cfg
+    # None-valued filter fields are dropped, and the shape is what the loader documents
+    d = config_to_dict(cfg)
+    assert d["scenario"] == {"name": "rich", "description": "a description"}
+    assert d["archetype_filters"]["resstock"]["mf_small"]["attributes"][0] == {
+        "column": "c1",
+        "op": "equals",
+        "value": "x",
+    }
+    assert set(d["feasibility"]) == {"hard", "soft"}
+    assert d["feasibility"]["hard"]["peak_kw"] == {"min": 1.0, "max": 5000.0}
+
+
+def test_config_to_dict_round_trips_the_default_config():
+    from microgrid.community_load.synthetic.config import ScenarioConfig, config_to_dict
+
+    cfg = ScenarioConfig()
+    assert config_from_dict(config_to_dict(cfg)) == cfg
+
+
+def test_snapshot_replays_to_identical_metrics(synthetic_dataset):
+    raw = build_tiny_config(synthetic_dataset)
+    raw["rng"] = {}  # fresh seeds: the snapshot must carry the ones actually used
+    raw["archetype_filters"]["resstock"]["mf_small"]["attributes"] = [
+        {"column": "in.geometry_stories", "op": "range", "min": 1}
+    ]
+    first = run.run_scenario(raw)
+    assert first.config_snapshot["rng"] == first.seeds
+    again = run.run_scenario(config_from_dict(first.config_snapshot))
+    assert again.seeds == first.seeds
+    assert json.dumps(again.metrics, sort_keys=True) == json.dumps(first.metrics, sort_keys=True)
 
 
 # ---------------------------------------------------------------------------------------------------------

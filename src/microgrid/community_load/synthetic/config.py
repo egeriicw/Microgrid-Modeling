@@ -7,7 +7,7 @@ file into a ScenarioConfig dataclass that every other module receives.
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
 
@@ -493,6 +493,96 @@ def config_from_dict(raw: object, *, source: str = "<dict>", default_name: str =
     except ValueError as exc:
         raise ValueError(f"{source}: {exc}") from None
     return cfg
+
+
+def _filter_to_dict(f: AttributeFilter) -> dict[str, Any]:
+    out: dict[str, Any] = {"column": f.column, "op": f.op}
+    for key, default in _FILTER_DEFAULTS.items():
+        value = getattr(f, key)
+        if value != default:
+            out[key] = list(value) if isinstance(value, tuple) else value
+    return out
+
+
+_FILTER_DEFAULTS: dict[str, Any] = {
+    "value": None,
+    "values": None,
+    "min": None,
+    "max": None,
+    "min_inclusive": True,
+    "max_inclusive": True,
+}
+
+
+def config_to_dict(cfg: ScenarioConfig) -> dict[str, Any]:
+    """The mapping ``config_from_dict`` accepts for ``cfg``: ``config_from_dict(config_to_dict(c)) == c``.
+
+    Plain data only (str, numbers, bool, None, list, dict), so it can be saved as JSON or YAML. Attribute
+    filters omit unset (None / default) fields. The resolver-written ``data.resstock_load_basis`` and
+    ``data.comstock_load_basis`` are kept: they are accepted, documented ``data`` keys, so a snapshot
+    records which load basis the run used and replays with it.
+    """
+    h, soft = cfg.feasibility.hard, cfg.feasibility.soft
+    af = cfg.archetype_filters
+
+    def res(c: ResidentialFilterConfig) -> dict[str, Any]:
+        return {
+            "building_type_heights": list(c.building_type_heights),
+            "hvac_types": None if c.hvac_types is None else list(c.hvac_types),
+            "hvac_types_exclude": None if c.hvac_types_exclude is None else list(c.hvac_types_exclude),
+            "max_sqft": c.max_sqft,
+            "require_no_garage": c.require_no_garage,
+            "require_data_complete": c.require_data_complete,
+            "attributes": [_filter_to_dict(f) for f in c.attributes],
+        }
+
+    def com(c: CommercialFilterConfig) -> dict[str, Any]:
+        return {
+            "building_types": list(c.building_types),
+            "include_public": c.include_public,
+            "attributes": [_filter_to_dict(f) for f in c.attributes],
+        }
+
+    return {
+        "scenario": {"name": cfg.name, "description": cfg.description},
+        "rng": asdict(cfg.rng),
+        "data": asdict(cfg.data),
+        "composition": {
+            "total_buildings": cfg.composition.total_buildings,
+            "method": cfg.composition.method,
+            "dirichlet_concentration": cfg.composition.dirichlet_concentration,
+            "categories": {n: asdict(b) for n, b in cfg.composition.categories.items()},
+        },
+        "archetype_filters": {
+            "resstock": {n: res(c) for n, c in af.resstock.items()},
+            "comstock": {n: com(c) for n, c in af.comstock.items()},
+            "min_pool_size": af.min_pool_size,
+        },
+        "perturbation": {
+            "enabled": cfg.perturbation.enabled,
+            "max_temporal_shift_hours": cfg.perturbation.max_temporal_shift_hours,
+            "energy_tolerance": cfg.perturbation.energy_tolerance,
+            "end_use_factors": {k: {"sigma": v.sigma} for k, v in cfg.perturbation.end_use_factors.items()},
+        },
+        "feasibility": {
+            "hard": {
+                "peak_kw": {"min": h.peak_kw_min, "max": h.peak_kw_max},
+                "annual_energy_kwh": {"min": h.annual_energy_kwh_min, "max": h.annual_energy_kwh_max},
+                "load_factor": {"min": h.load_factor_min, "max": h.load_factor_max},
+            },
+            "soft": {
+                "weights": dict(soft.weights),
+                "bounds": {
+                    k: {kk: vv for kk, vv in (("min", b.min), ("max", b.max)) if vv is not None}
+                    for k, b in soft.bounds.items()
+                },
+            },
+        },
+        "ensemble": asdict(cfg.ensemble),
+        "convergence": asdict(cfg.convergence),
+        "validation": asdict(cfg.validation),
+        "output": asdict(cfg.output),
+    }
 
 
 def split_dataset_id(text: str) -> list[str] | None:

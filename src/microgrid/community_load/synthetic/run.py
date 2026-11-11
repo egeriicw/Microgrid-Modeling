@@ -9,14 +9,14 @@ events. It adds no sampling or numerics of its own: results are exactly those of
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from microgrid import __version__
 from microgrid.community_load.synthetic import archetype, ensemble
 from microgrid.community_load.synthetic._types import ArchetypePool, EnsembleResult, NeighborhoodResult
-from microgrid.community_load.synthetic.config import ScenarioConfig, config_from_dict
+from microgrid.community_load.synthetic.config import ScenarioConfig, config_from_dict, config_to_dict
 from microgrid.community_load.synthetic.pool_preview import preview_pools
 
 Stage = Literal["building_pool", "running", "checking_convergence", "finished"]
@@ -161,7 +161,7 @@ def run_scenario(
 
     ens = ensemble.run_ensemble(pool, cfg, dirs, before_run=before_run, after_run=after_run, on_check=on_check)
 
-    snapshot = asdict(cfg)
+    snapshot = config_to_dict(cfg)  # the shape config_from_dict accepts, so a snapshot can be replayed
     snapshot["rng"] = dict(ens.seeds)  # the seeds actually used, so the snapshot alone replays the run
     result = RunResult(
         ensemble=ens,
