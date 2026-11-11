@@ -1,8 +1,7 @@
 """QA review of the owner-run inspector: read-only proof, engine parity, honesty, hostile paths.
 
-Tests marked ``xfail(strict=True)`` document real defects found in review (see the QA report). Each one fails today
-for the stated reason; when the defect is fixed the strict xfail turns into a failure that tells the fixer to delete
-the marker. They are NOT weakened tests.
+The defects found in review were marked ``xfail(strict=True)``; the fix pass resolved them all and removed the markers.
+The case-insensitivity test skips on case-sensitive volumes (Linux) and runs on the owner's Mac.
 """
 
 from __future__ import annotations
@@ -268,11 +267,6 @@ def test_not_usable_matches_engine_on_spelling_variants(root, status, applic):
     assert rep["characteristics"]["resstock"]["not_usable_rows"] == _engine_excluded(df)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: tool treats applicability 'yes'/'1' as applicable (_truthy); the engine accepts only 'true', so the "
-    "report UNDER-counts the buildings require_data_complete would exclude",
-)
 @pytest.mark.parametrize("applic", ["yes", "1", "Yes"])
 def test_not_usable_matches_engine_on_nonstandard_applicability(root, applic):
     df = _edit_chars(root, lambda d: d.assign(applicability=applic))
@@ -280,20 +274,12 @@ def test_not_usable_matches_engine_on_nonstandard_applicability(root, applic):
     assert rep["characteristics"]["resstock"]["not_usable_rows"] == _engine_excluded(df) == len(df)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: with completed_status absent the engine raises ValueError (require_data_complete unusable) but the "
-    "report says 'require_data_complete excludes nothing'",
-)
 def test_missing_status_column_is_not_reported_as_excludes_nothing(root):
     _edit_chars(root, lambda d: d.drop(columns=["completed_status"]).assign(applicability=True))
     rep = ins.inspect_dataset(root, expected_types=EXPECTED)
     assert not any("excludes nothing" in s and "resstock" in s for s in rep["next_steps"])
 
 
-@pytest.mark.xfail(
-    strict=True, reason="DEFECT: duplicate bldg_id rows are not reported (ids are de-duplicated into a set)"
-)
 def test_duplicate_building_ids_are_reported(root):
     _edit_chars(root, lambda d: pd.concat([d, d.iloc[[0]]], ignore_index=True))
     rep = ins.inspect_dataset(root, expected_types=EXPECTED)
@@ -375,10 +361,6 @@ def test_xlsx_preferred_over_csv_and_csv_listed_as_unused(root):
 # ---------------------------------------------------------------------------------------- hostile inputs
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: one corrupt SAMPLED parquet aborts the whole run (exit 2); the rest of the report is lost",
-)
 def test_one_corrupt_sampled_parquet_does_not_hide_the_rest(root, tmp_path):
     _first_res_parquet(root).write_bytes(b"not parquet")
     out = tmp_path / "r.md"
@@ -386,11 +368,22 @@ def test_one_corrupt_sampled_parquet_does_not_hide_the_rest(root, tmp_path):
     assert rc == 0 and "Layout" in out.read_text()
 
 
-def test_corrupt_and_zero_byte_inputs_exit_2_without_traceback(root, tmp_path):
+def test_zero_byte_sampled_parquet_is_a_per_file_error_without_traceback(root, tmp_path):
+    """Changed after the fix pass: a bad SAMPLED parquet no longer aborts (exit 0, ERROR note); see the fixes tests."""
     p = _first_res_parquet(root)
     p.write_bytes(b"")
     r = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "inspect_dataset.py"), "--data-root", str(root)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(REPO / "src")},
+    )
+    assert r.returncode == 0 and "Traceback" not in r.stderr and "ERROR:" in r.stdout
+
+
+def test_missing_data_root_still_exits_2_without_traceback(tmp_path):
+    r = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "inspect_dataset.py"), "--data-root", str(tmp_path / "nope")],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONPATH": str(REPO / "src")},

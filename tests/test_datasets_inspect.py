@@ -292,9 +292,9 @@ def test_missing_characteristics_file_is_reported_not_crash(root):
 def test_hostile_corrupt_parquet(root, capsys):
     for p in (root / RES_PART).glob("*.parquet"):
         p.write_bytes(b"this is not parquet")
-    assert ins.main(["--data-root", str(root)]) == 2
-    err = capsys.readouterr().err
-    assert ".parquet" in err and "Traceback" not in err
+    assert ins.main(["--data-root", str(root)]) == 0  # sampled-file failures are per-file notes, not aborts
+    cap = capsys.readouterr()
+    assert "ERROR:" in cap.out and ".parquet" in cap.out and "Traceback" not in cap.err + cap.out
 
 
 def test_hostile_corrupt_characteristics(root, capsys):
@@ -346,7 +346,9 @@ def test_manifest_in_root_only_when_asked(root, tmp_path):
 
 
 def test_manifest_path_inside_root_refused_without_flag(root):
-    rc = ins.main(["--data-root", str(root), "--hash", "--manifest", str(root / "m.json")])
+    rc = ins.main(
+        ["--data-root", str(root), "--out", str(root.parent / "r.md"), "--hash", "--manifest", str(root / "m.json")]
+    )
     assert rc == 2 and not (root / "m.json").exists()
 
 

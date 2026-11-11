@@ -4,13 +4,18 @@ Answers the open data questions (what is on disk, what the characteristics files
 match what the loader expects, which release the evidence points to) without the owner needing pandas.
 
 Safety rules, enforced in code and tests:
-  * the data root is only ever READ. Reports go to paths the owner names and are REFUSED inside the data root
-    (symlinks resolved) and refused if the file already exists (unless ``--overwrite-report``);
+  * the data root is only ever READ. Reports go to paths the owner names and are REFUSED inside the data root and
+    refused if the file already exists (unless ``--overwrite-report``). "Inside" is decided by filesystem identity
+    (``pathsafety.is_inside``: device and inode of the deepest existing ancestor), so symlinks, ``..``, upper/lower
+    case and Unicode NFC/NFD spellings that the volume treats as the same folder (macOS) are all caught. Not
+    guaranteed on network volumes without stable inode numbers; see ``pathsafety`` for the exact limits;
   * only metadata plus a few columns of a few sampled parquet files are read; the characteristics files are loaded
     whole (they are small relative to the timeseries);
   * the manifest (``--hash``) is OFF by default, written OUTSIDE the root unless ``--manifest-in-root`` is given;
-  * every failure the owner can cause (missing path, corrupt file, symlink loop) is a one-line message naming the
-    path and exit code 2, never a traceback;
+  * every failure the owner can cause (missing path, corrupt characteristics file, symlink loop) is a one-line message
+    naming the path and exit code 2, never a traceback. A corrupt SAMPLED parquet file is different: it becomes a
+    per-file ``ERROR:`` note and the run continues (exit 0). Unreadable folders met while walking are listed as
+    skipped, with the reason;
   * nothing is ever marked verified and no release is ever claimed: the fingerprint section is evidence only.
 """
 
@@ -40,6 +45,7 @@ from microgrid.datasets.manifest import (
     verify_manifest,
     write_manifest,
 )
+from microgrid.datasets.pathsafety import is_inside
 
 PRODUCTS = ("resstock", "comstock")
 CHARS_SHEET = "building_characteristics"
@@ -108,11 +114,21 @@ def _product_of(parts: Sequence[str]) -> str | None:
     return None
 
 
-def _walk(root: Path) -> tuple[dict[str, int], list[str]]:
-    """(relative file path -> size, symlinked directories skipped). Directories are never followed."""
+def _walk(root: Path) -> tuple[dict[str, int], list[str], list[dict[str, str]]]:
+    """(relative file path -> size, symlinked directories skipped, unreadable directories with reason).
+
+    Directories are never followed. A directory that cannot be listed (permissions, for example macOS
+    ``.Spotlight-V100``) is recorded and skipped; it does not abort the walk.
+    """
+    unreadable: list[dict[str, str]] = []
 
     def fail(err: OSError) -> None:
-        raise InspectError(f"cannot read directory {err.filename}: {err.strerror}")
+        where = Path(str(err.filename or root))
+        try:
+            rel = where.relative_to(root).as_posix()
+        except ValueError:
+            rel = str(where)
+        unreadable.append({"path": rel, "reason": err.strerror or type(err).__name__})
 
     files: dict[str, int] = {}
     skipped: list[str] = []
@@ -127,10 +143,12 @@ def _walk(root: Path) -> tuple[dict[str, int], list[str]]:
             except OSError as exc:
                 raise InspectError(f"cannot read {full} (symlink loop or broken link?): {exc.strerror}") from exc
             files[full.relative_to(root).as_posix()] = size
-    return files, sorted(skipped)
+    return files, sorted(skipped), sorted(unreadable, key=lambda d: d["path"])
 
 
-def _build_layout(root: Path, files: dict[str, int], skipped: list[str]) -> dict[str, Any]:
+def _build_layout(
+    root: Path, files: dict[str, int], skipped: list[str], skipped_dirs: list[dict[str, str]]
+) -> dict[str, Any]:
     folder_sizes: dict[str, int] = defaultdict(int)
     parts_map: dict[tuple[str, str, str], dict[str, Any]] = {}
     chars: list[str] = []
@@ -195,6 +213,7 @@ def _build_layout(root: Path, files: dict[str, int], skipped: list[str]) -> dict
         "characteristics_candidates": sorted(chars),
         "missing": missing,
         "skipped_symlinks": skipped,
+        "skipped_dirs": skipped_dirs,
     }
 
 
@@ -265,8 +284,18 @@ def _group_by_prefix(columns: Iterable[str]) -> dict[str, list[str]]:
     return dict(sorted(groups.items()))
 
 
-def _truthy(s: pd.Series) -> pd.Series:
-    return s.astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
+STATUS_REQUIRED = ("completed_status", "applicability")
+
+
+def _usable_mask(df: pd.DataFrame) -> pd.Series:
+    """The engine's ``require_data_complete`` rule, restated (this layer may not import community_load).
+
+    Mirrors ``community_load.synthetic.archetype._completed_and_applicable``: ``completed_status`` stripped and
+    lower-cased equals "success" AND ``applicability`` stripped and lower-cased equals "true", after ``astype(str)``
+    (so True, "TRUE" and " true " pass; "yes", "1", False, NaN and None do not). A parity test pins this to the engine.
+    """
+    ok = df["completed_status"].astype(str).str.strip().str.lower() == "success"
+    return ok & (df["applicability"].astype(str).str.strip().str.lower() == "true")
 
 
 def _inspect_chars(
@@ -298,12 +327,9 @@ def _inspect_chars(
     use = [c for c in wanted + extra if c in df.columns]
     out["described"] = describe_characteristics(df[use]) if use else []
     out["value_counts"] = {c: _value_counts(df[c]) for c in STATUS_COLUMNS if c in df.columns}
-    bad = pd.Series(False, index=df.index)
-    if "completed_status" in df.columns:
-        bad |= df["completed_status"].astype(str).str.strip().str.lower() != "success"
-    if "applicability" in df.columns:
-        bad |= ~_truthy(df["applicability"])
-    out["not_usable_rows"] = int(bad.sum())
+    out["status_columns_missing"] = [c for c in STATUS_REQUIRED if c not in df.columns]
+    # None (not 0) when a column is absent: the engine raises ValueError there, so no count exists.
+    out["not_usable_rows"] = None if out["status_columns_missing"] else int((~_usable_mask(df)).sum())
     bcol = BUILDING_TYPE_COLUMN[prod]
     if bcol in df.columns:
         counts = _value_counts(df[bcol])
@@ -318,12 +344,15 @@ def _inspect_chars(
     if idcol is None:
         out["id_match"] = {"available": False, "reason": f"no id column ({' / '.join(ID_COLUMNS)}) in the file"}
     else:
-        ids = {int(i) for i in pd.to_numeric(df[idcol], errors="coerce").dropna()}
+        id_series = pd.to_numeric(df[idcol], errors="coerce").dropna()
+        ids = {int(i) for i in id_series}
         only_chars, only_pq = sorted(ids - parquet_ids), sorted(parquet_ids - ids)
         out["id_match"] = {
             "available": True,
             "id_column": idcol,
             "chars_ids": len(ids),
+            "rows_with_id": int(len(id_series)),
+            "duplicate_rows": int(len(id_series)) - len(ids),
             "parquet_ids": len(parquet_ids),
             "matched": len(ids & parquet_ids),
             "in_chars_not_parquet": len(only_chars),
@@ -348,7 +377,18 @@ def _pick_evenly(items: list[str], n: int) -> list[str]:
     return [items[i] for i in idx]
 
 
-def _sample_one(path: Path, rel: str, prod: str) -> dict[str, Any]:
+class SampleError(Exception):
+    """A sampled parquet file could not be read; the message is ``<ExceptionClass>: <short message>``."""
+
+
+def _short_reason(exc: BaseException, root: Path) -> str:
+    msg = " ".join(str(exc).split())
+    for needle in {str(root), os.path.realpath(root)}:
+        msg = msg.replace(needle + os.sep, "").replace(needle, "<data root>")
+    return f"{type(exc).__name__}: {msg[:200]}" if msg else type(exc).__name__
+
+
+def _sample_one(path: Path, rel: str, prod: str, root: Path) -> dict[str, Any]:
     try:
         pf = pq.ParquetFile(path)
         names = [str(n) for n in pf.schema_arrow.names]
@@ -371,7 +411,7 @@ def _sample_one(path: Path, rel: str, prod: str) -> dict[str, Any]:
         }
         rows = int(pf.metadata.num_rows)
     except Exception as exc:  # noqa: BLE001 - corrupt or unreadable parquet must be a clean message naming the file
-        raise InspectError(f"cannot read parquet file {path}: {type(exc).__name__}: {exc}") from exc
+        raise SampleError(_short_reason(exc, root)) from exc
 
     candidates = [n for n in names if n.startswith("out.electricity.total")]
     sample: dict[str, Any] = {
@@ -539,10 +579,16 @@ def _next_steps(rep: dict[str, Any]) -> list[str]:
             steps.append(f"No {prod} characteristics file was read, so {prod} building types and ids are unchecked.")
             continue
         n, rows = c["not_usable_rows"], c["rows"]
-        if n:
+        if n is None:
             steps.append(
-                f"{n} buildings in the {prod} characteristics file (of {rows}) have completed_status != Success or "
-                "applicability false; the require_data_complete setting would exclude them. Decide if that is wanted."
+                f"{prod}: {c['status_columns_missing']}: column missing: the engine will refuse to run with "
+                "require_data_complete on (turn that setting off or supply the column)."
+            )
+        elif n:
+            steps.append(
+                f"{n} buildings in the {prod} characteristics file (of {rows}) are not Success or not applicable "
+                "(applicable means the text 'true'); the require_data_complete setting would exclude exactly these. "
+                "Decide if that is wanted."
             )
         else:
             steps.append(f"All {rows} {prod} rows are Success and applicable: require_data_complete excludes nothing.")
@@ -563,6 +609,11 @@ def _next_steps(rep: dict[str, Any]) -> list[str]:
         if bt.get("found_not_expected"):
             steps.append(f"{prod}: values in the data that no registry entry lists: {bt['found_not_expected']}.")
         idm = c["id_match"]
+        if idm.get("available") and idm["duplicate_rows"]:
+            steps.append(
+                f"{prod}: {idm['duplicate_rows']} duplicate {idm['id_column']} rows in the characteristics file "
+                f"({idm['rows_with_id']} rows, {idm['chars_ids']} distinct ids). Ask which row is right before use."
+            )
         if idm.get("available") and (idm["in_chars_not_parquet"] or idm["in_parquet_not_chars"]):
             steps.append(
                 f"{prod}: {idm['in_chars_not_parquet']} ids are in the characteristics file but have no parquet file "
@@ -570,6 +621,11 @@ def _next_steps(rep: dict[str, Any]) -> list[str]:
                 "files have no characteristics row (these would be unusable)."
             )
         ps = rep["parquet_sample"].get(prod)
+        for e in (ps or {}).get("errors", []):
+            steps.append(
+                f"{prod}: sampled file {e['file']} could not be read ({e['reason']}). Copy it aside to look at later "
+                "(never delete it; it may be a damaged download) and re-download or compare with the original."
+            )
         for s in (ps or {}).get("samples", []):
             if s["total_column"]["status"] == "FAIL":
                 steps.append(
@@ -608,10 +664,11 @@ def inspect_dataset(
     if not root.is_dir():
         raise InspectError(f"data root {root} does not exist or is not a directory")
     say(f"scanning {root}")
-    files, skipped = _walk(root)
+    files, skipped, unreadable = _walk(root)
     if not files:
-        raise InspectError(f"data root {root} contains no files; nothing to inspect")
-    layout = _build_layout(root, files, skipped)
+        why = f" ({unreadable[0]['path']}: {unreadable[0]['reason']})" if unreadable else ""
+        raise InspectError(f"data root {root} contains no readable files; nothing to inspect{why}")
+    layout = _build_layout(root, files, skipped, unreadable)
     say(f"found {layout['total_files']} files, {_human(layout['total_bytes'])}")
 
     parquet_ids: dict[str, set[int]] = defaultdict(set)
@@ -644,10 +701,15 @@ def inspect_dataset(
         names = sorted(parquet_by_prod.get(prod, []))
         chosen = _pick_evenly(names, sample_buildings)
         samples = []
+        errors: list[dict[str, str]] = []
         for i, rel in enumerate(chosen, start=1):
             say(f"sampling {prod} parquet {i}/{len(chosen)}: {rel}")
-            samples.append(_sample_one(root / rel, rel, prod))
-        sample[prod] = {"total_files": len(names), "files": chosen, "samples": samples}
+            try:
+                samples.append(_sample_one(root / rel, rel, prod, root))
+            except SampleError as exc:
+                errors.append({"file": rel, "reason": str(exc), "error": f"ERROR: {rel}: {exc}"})
+                say(f"ERROR reading {rel}: {exc}")
+        sample[prod] = {"total_files": len(names), "files": chosen, "samples": samples, "errors": errors}
 
     rep: dict[str, Any] = {
         "tool": "inspect_dataset",
@@ -655,6 +717,7 @@ def inspect_dataset(
         "layout": layout,
         "characteristics": chars,
         "parquet_sample": sample,
+        "sampled_files_unreadable": sum(len(v["errors"]) for v in sample.values()),
         "fingerprint": _build_fingerprint(files, chars, sample, chars_df),
         "catalog_stanza": _build_stanza(layout),
     }
@@ -682,6 +745,12 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
         f"Data root: `{rep['data_root']}` (read only; nothing was changed)",
         "",
     ]
+    if rep["sampled_files_unreadable"]:
+        L += [
+            f"**WARNING: {rep['sampled_files_unreadable']} sampled files could not be read** "
+            "(see the ERROR lines in section 3 and the next steps; the rest of the report is still valid).",
+            "",
+        ]
     lay = rep["layout"]
     L += ["## 1. Layout", ""]
     L.append(
@@ -705,6 +774,10 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
         "Characteristics candidates under background/: " + (", ".join(lay["characteristics_candidates"]) or "none")
     )
     L.append("")
+    for d in lay["skipped_dirs"]:
+        L.append(f"Folder skipped, could not be read: `{d['path']}` ({d['reason']})")
+    if lay["skipped_dirs"]:
+        L.append("")
     if lay["skipped_symlinks"]:
         L.append(f"Symlinked folders skipped (not followed): {lay['skipped_symlinks']}")
         L.append("")
@@ -741,10 +814,19 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
             rng = f"{d['min']} .. {d['max']}" if d["kind"] == "numeric" else ", ".join(d.get("values", [])[:8])
             rows.append((d["name"], d["kind"], d["n_distinct"], d["n_missing"], rng))
         L += _table(["column", "kind", "distinct", "missing", "range / top values"], rows)
-        L.append("Status columns (does `require_data_complete` exclude anything?):")
+        L.append("Status columns (what would `require_data_complete` exclude?):")
         for name, vc in c["value_counts"].items():
             L.append(f"- `{name}`: {_counts_line(vc)}")
-        L.append(f"- rows that are not Success or not applicable: **{c['not_usable_rows']}** of {c['rows']}")
+        if c["not_usable_rows"] is None:
+            L.append(
+                f"- {c['status_columns_missing']}: column missing: the engine will refuse to run with "
+                "require_data_complete on"
+            )
+        else:
+            L.append(
+                f"- rows that are not Success or not applicable: **{c['not_usable_rows']}** of {c['rows']} "
+                "(exactly what require_data_complete would drop; applicable means the text 'true')"
+            )
         L.append("")
         bt = c["building_types"]
         L.append(f"Building types (`{bt['column']}`):")
@@ -768,6 +850,11 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
                 f"{idm['in_chars_not_parquet']} in characteristics only {idm['examples_in_chars_not_parquet']}, "
                 f"{idm['in_parquet_not_chars']} parquet-only {idm['examples_in_parquet_not_chars']}."
             )
+            if idm["duplicate_rows"]:
+                L.append(
+                    f"**Duplicate {idm['id_column']} rows: {idm['duplicate_rows']}** "
+                    f"({idm['rows_with_id']} rows with an id, {idm['chars_ids']} distinct ids)."
+                )
         else:
             L.append(f"Id check not possible: {idm['reason']}.")
         L.append("")
@@ -781,6 +868,10 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
             f"{ps['total_files']} files found; sampled {len(ps['samples'])} (evenly spaced by sorted name).",
             "",
         ]
+        for e in ps["errors"]:
+            L.append(f"- {e['error']}")
+        if ps["errors"]:
+            L.append("")
         if not ps["samples"]:
             L += ["(none)", ""]
             continue
@@ -863,11 +954,11 @@ def render_markdown(rep: Mapping[str, Any]) -> str:
 
 
 def _inside(root: Path, path: Path) -> bool:
+    """True if ``path`` is the data root or below it, by filesystem identity (see ``pathsafety``)."""
     try:
-        Path(path).resolve().relative_to(root.resolve())
-    except ValueError:
-        return False
-    return True
+        return is_inside(root, Path(path))
+    except (OSError, RuntimeError) as exc:  # unreadable ancestor or a symlink loop in the output path
+        raise InspectError(f"cannot check where {path} is: {exc}") from exc
 
 
 def _check_output(root: Path, path: Path | None, label: str, overwrite: bool) -> None:
@@ -932,7 +1023,9 @@ def main(argv: list[str] | None = None, *, expected_types: Mapping[str, Sequence
         "--interesting-columns", default=",".join(DEFAULT_INTERESTING), help="comma-separated extra columns"
     )
     ap.add_argument("--overwrite-report", action="store_true", help="allow replacing an existing --out/--json file")
-    ap.add_argument("--hash", action="store_true", help="build or verify a manifest (reads every file; OFF by default)")
+    ap.add_argument(
+        "--hash", action="store_true", help="build or verify a manifest (needs --out; reads every file; OFF by default)"
+    )
     ap.add_argument("--manifest", type=Path, default=None, help="manifest path for --hash (default: next to --out)")
     ap.add_argument(
         "--manifest-in-root",
@@ -952,16 +1045,17 @@ def main(argv: list[str] | None = None, *, expected_types: Mapping[str, Sequence
         _check_output(root, args.json, "JSON report", args.overwrite_report)
         manifest_target: Path | None = None
         if args.hash:
+            if args.out is None:
+                raise InspectError(
+                    "--hash requires --out (the manifest is written next to the report; without it a stray file "
+                    "would land in the current folder)"
+                )
             if args.manifest_in_root and args.manifest:
                 raise InspectError("use either --manifest or --manifest-in-root, not both")
             if args.manifest_in_root:
                 manifest_target = root / MANIFEST_NAME
             else:
-                manifest_target = args.manifest or (
-                    args.out.with_name(args.out.stem + ".manifest.json")
-                    if args.out
-                    else Path.cwd() / "inspect_manifest.json"
-                )
+                manifest_target = args.manifest or args.out.with_name(args.out.stem + ".manifest.json")
                 if _inside(root, manifest_target):
                     raise InspectError(
                         f"manifest {manifest_target} is inside the data root {root}; choose a path outside it "

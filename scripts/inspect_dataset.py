@@ -1,7 +1,7 @@
 """Inspect a real ResStock/ComStock data root (read only) and write a report to paste back.
 
     uv run --extra dev python scripts/inspect_dataset.py --data-root /path/to/data --out ~/inspect-report.md \
-        --json ~/inspect-report.json [--sample-buildings 5] [--hash]
+        --json ~/inspect-report.json [--sample-buildings 5] [--hash (needs --out)]
 
 See docs/runbooks/inspect-my-data.md. Never modifies the data root.
 """
