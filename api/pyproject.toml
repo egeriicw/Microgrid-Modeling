@@ -76,3 +76,8 @@ warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The engine (microgrid) and celery ship no py.typed marker; treat them as untyped rather than failing.
+module = ["microgrid", "microgrid.*", "celery", "celery.*"]
+ignore_missing_imports = true
