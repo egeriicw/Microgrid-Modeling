@@ -54,6 +54,17 @@ jobs:
       - run: npm --prefix web ci
       - run: npm --prefix web test -- --ci
 
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Static validation: needs no running containers. The env template holds development-only values.
+      - run: docker compose --project-directory . --env-file deploy/.env.example -f deploy/docker-compose.yml config -q
+      - run: docker compose --project-directory . --env-file deploy/.env.example -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml config -q
+      # GitHub-hosted runners include Docker. Non-blocking until the api package is proven to install in the image.
+      - run: docker compose --project-directory . --env-file deploy/.env.example -f deploy/docker-compose.yml build api
+        continue-on-error: true
+
   compose-smoke:
     runs-on: ubuntu-latest
     needs: [engine]

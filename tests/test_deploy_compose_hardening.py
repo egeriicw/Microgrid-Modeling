@@ -34,6 +34,8 @@ def _binds(services: dict):
 
 def test_healthchecks_are_real_not_disabled():
     for name, svc in SERVICES.items():
+        if name == "migrate":  # one-shot job that exits; success is its exit code, not a health probe
+            continue
         hc = svc["healthcheck"]
         assert hc.get("disable") is not True, f"{name} healthcheck disabled"
         assert hc["test"][0] in ("CMD", "CMD-SHELL"), f"{name} healthcheck test must be CMD or CMD-SHELL, not NONE"

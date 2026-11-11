@@ -23,7 +23,8 @@ trap cleanup EXIT
 
 "${COMPOSE[@]}" config -q
 "${COMPOSE[@]}" up -d --build db redis web
-if ! "${COMPOSE[@]}" up -d --build api; then
+# `api` depends on the one-shot `migrate` service (alembic upgrade head) completing successfully.
+if ! "${COMPOSE[@]}" up -d --build migrate api; then
   echo "api failed to start"; "${COMPOSE[@]}" logs --tail 50 api
   [ "${SMOKE_REQUIRE_API:-1}" = "0" ] || exit 1
 fi
@@ -44,7 +45,9 @@ curl -fsS "$WEB/" >/dev/null && echo "web placeholder reachable"
 if [ "${SMOKE_REQUIRE_API:-1}" = "1" ]; then
   wait_healthy api
   curl -fsS "$API/api/v1/health"; echo
-  curl -fsS "$API/api/v1/ready"; echo
+  ready=$(curl -sS "$API/api/v1/ready") || { echo "ready endpoint unreachable"; exit 1; }
+  echo "$ready"
+  case "$ready" in *'"ready":true'*|*'"ready": true'*) ;; *) echo "API is not ready (database or migrations)"; exit 1 ;; esac
 fi
 
 if [ "${SMOKE_REQUIRE_WORKER:-0}" = "1" ]; then

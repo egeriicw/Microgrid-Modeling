@@ -1,17 +1,19 @@
 # Community Energy Profiler: local stack (FR-PLAT-4, FR-DATA-4). Targets Apple-silicon Docker Desktop.
 # Run from the repo root (Makefile does this):
 #   cp deploy/.env.example deploy/.env
-#   docker compose --project-directory . --env-file deploy/.env -f deploy/docker-compose.yml up -d --wait
+#   docker compose --project-directory . --env-file deploy/.env -f deploy/docker-compose.yml up -d --wait db redis web migrate api
+# (the worker is a placeholder that exits until story 1.10, so `make up` does not start it)
 # Relative paths below are relative to the repo root (--project-directory .).
 name: microgrid
 
 x-app-env: &app-env
-  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-microgrid}:${POSTGRES_PASSWORD:?set in deploy/.env}@db:5432/${POSTGRES_DB:-microgrid}
-  REDIS_URL: redis://redis:6379/0
-  JWT_SECRET: ${JWT_SECRET:?set in deploy/.env}
+  MICROGRID_ENVIRONMENT: production  # the API refuses to start without real settings
+  MICROGRID_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-microgrid}:${POSTGRES_PASSWORD:?set in deploy/.env}@db:5432/${POSTGRES_DB:-microgrid}
+  MICROGRID_REDIS_URL: redis://redis:6379/0
+  MICROGRID_JWT_SECRET: ${JWT_SECRET:?set in deploy/.env}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  DATA_DIR: /data
-  OUTPUT_DIR: /outputs
+  MICROGRID_DATA_DIR: /data
+  MICROGRID_OUTPUT_DIR: /outputs
 
 services:
   db:
@@ -47,6 +49,22 @@ services:
       timeout: 3s
       retries: 30
 
+  # One-shot: applies database migrations (alembic upgrade head) then exits 0. api waits for it to complete.
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+      target: api
+    image: microgrid-api:dev
+    command: ["python", "-m", "microgrid_api.db.migrate"]
+    restart: "no"
+    environment: *app-env
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 512m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
   api:
     build:
       context: .
@@ -61,6 +79,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     mem_limit: ${API_MEM_LIMIT:-1g}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
