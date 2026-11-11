@@ -19,41 +19,41 @@ Everything in `docs/archive/` and the older specs (`api-spec`, `data-model`, `fr
 `implementation-plan`, `test-plan`, `requirements`, `engine-reference`) is **stale or superseded**; use `engine-reference.md`
 only as a description of the original engine, and plan to update or retire the rest (tech-writer + architect).
 
-## 3. Baseline (measured at hand-off)
-- `uv run --extra dev pytest -q`: **192 passed, 2 skipped, 1 expected failure** (run facade, story 1.9). Coverage **77%**
-  (gate of 90% not enforced yet; weakest: `ensemble.py`, `outputs.py`, `loader.py`, `archetype.py`: they need fixtures).
-- ruff check, ruff format --check, mypy: clean. CI workflow is updated to block on these but **has not been observed
-  running on GitHub**; confirm on the first push/PR (the owner can check the Actions tab).
-- Last commits on the branch are the Sprint 1 stories below. Nothing is merged to `main`; no pull request exists.
+## 3. Baseline (measured 2026-11-11, end of Wave A)
+- Root: `uv run --extra dev pytest -q` -> **360 passed, 1 skipped**. Engine coverage **90%** (weakest: `outputs.py` 16%,
+  `snlg_source.py` 66%, `loader.py` 73%). Gate of 90% is **not enforced** (margin too thin).
+- API: `uv run --project api --extra dev pytest api/tests -q` -> **49 passed, 6 skipped, 27 expected failures** (old placeholders
+  for later stories: runs, worker, storage, configs, scenario validation). API ruff/format/mypy run from `api/`.
+- ruff check, ruff format --check, mypy: clean. `docker compose config -q` passes for the base file and the CI overlay.
+- NOT verified anywhere: Docker images (no daemon in the cloud), GitHub CI (never observed running), anything on the owner's real data.
+- All work is on the branch `claude/loving-pascal-x8khbu`. Nothing is merged to `main`; no pull request exists.
 
 ## 4. Sprint 1 status
 | Story | Status |
 |---|---|
-| 1.1 Packaging and dependency cleanup (FR-PLAT-3) | Done |
-| 1.2 CI that blocks (FR-PLAT-5) | Done in repo; GitHub run unconfirmed |
-| 1.3 Strict configuration (FR-ENG-3) | Done. `require_data_complete` implemented per owner ("include"): keeps `completed_status == "Success"` and `applicability == true`; column meaning to verify in the data dictionary |
-| 1.4 RNG and replayable seeds (FR-ENG-4) | Done at engine level; **[numbers change]** vs before. Golden determinism + full-ensemble seed-robustness tests still pending (need 1.6 and 1.9) |
-| 1.5 Building-type registry (FR-ENG-1) | Done. `civic` inactive (owner to decide ComStock mapping); ComStock type names to verify |
-| 1.6 Data ingestion, synthetic fixtures, characteristics store (DATA-1/2/7) | **Not started** |
-| 1.6b Attribute filters, Admin-only, admin-configured exposed list (ENG-11) | Not started |
-| 1.7 Docker Compose (db with PostGIS+Timescale, redis, api, worker, web placeholder) | Not started |
-| 1.8 API skeleton + Alembic migrations (PLAT-1) | Not started |
-| 1.9 Engine facade `run_scenario` + typed progress events (ENG-8) | Not started (placeholder tests in `tests/test_run_facade.py`, `tests/test_determinism.py` are skipped) |
-| 1.10 Celery worker task + cancel (PLAT-2) | Not started (needs 1.8, 1.9) |
-| 1.11 Performance baseline on owner's machine | Not started (owner machine) |
-| 1.11b Dataset catalog, scenario key, gross/net flag, confirm `upgrade=0` meaning (DATA-8) | Not started (partly owner machine) |
-| 1.12 Spikes: ECharts on 35k points, footprint source comparison, free hosting options | Not started |
+| 1.1 Packaging (FR-PLAT-3) | Done |
+| 1.2 CI that blocks (FR-PLAT-5) | Done in repo; GitHub run unconfirmed. A `compose-config` job was added; api/web/compose-smoke jobs still `if: false` |
+| 1.3 Strict configuration (FR-ENG-3) | Done (`require_data_complete` implemented per owner) |
+| 1.4 RNG and replayable seeds (FR-ENG-4) | Done (golden + replay + seed-robustness tests run on the generated fixture) |
+| 1.5 Building-type registry (FR-ENG-1) | Done (`civic` inactive pending the owner) |
+| 1.6 Fixtures, catalog, manifest (DATA-1/2/8) | Done for the cloud part. Open: Postgres characteristics store (DATA-7), engine takes dataset ids, download/provisioning step, real-data timing |
+| 1.7 Docker Compose (PLAT-4) | Code-complete, statically verified only. Needs the owner's Mac (section 6) |
+| 1.8 API skeleton (PLAT-1) | Done; verified on SQLite and Postgres 16 |
+| 1.9 Run facade + progress (ENG-8) | Done; notebook-on-fixtures acceptance item open |
+| 1.6b Attribute filters, Admin-only (ENG-11) | **Not started** (dictionary groundwork exists: `describe_characteristics`) |
+| 1.10 Celery worker task + cancel (PLAT-2) | **Not started** (unblocked: facade, `RunCancelled`, API, migrate step exist; add redis/storage to `/ready`, flip `SMOKE_REQUIRE_WORKER`) |
+| 1.11 Performance baseline (owner machine) | Not started |
+| 1.11b Dataset ids as engine inputs; catalog hash/size filled; confirm `upgrade=0` meaning | Not started (partly owner machine) |
+| 1.12 Spikes (ECharts 35k points, footprint source, free hosting options) | Not started |
 
-### Suggested order and parallelism for the next session
-1. **In parallel:** `modeling-engineer` → 1.9 (facade + progress events, then the golden determinism and robustness tests);
-   `data-engineer` → 1.6 (synthetic fixtures first, then the ingestion script and catalog 1.11b design).
-2. **In parallel after 1:** `modeling-engineer` + `backend-engineer` → 1.6b (filters); `devops-engineer` → 1.7;
-   `backend-engineer` → 1.8.
-3. `backend-engineer` → 1.10 once 1.8 and 1.9 land. `qa-engineer` checks traceability and raises engine coverage toward 90%
-   using the new fixtures. Spikes (1.12) by `frontend-engineer` / `data-engineer` any time there is slack.
-4. **Owner-machine tasks** (give the owner exact commands, batch them into one request): 1.11, real-data parts of 1.6 and
-   1.11b, confirming the release of the local data.
-5. End with `/sprint-review`. Day-14 checkpoint: go / cut / slip recommendation to the owner.
+### Suggested next steps (Sprint 1 remainder, then Sprint 2)
+1. Run the process that worked (see `CLAUDE.md` "Working with sub-agents"): parallel builds, independent QA, fix pass, lead integration.
+2. **Parallel batch:** `backend-engineer` -> 1.10 (Celery worker, cancel, progress rows; add redis check to `/ready`);
+   `modeling-engineer` + `backend-engineer` -> 1.6b (admin-only filters, permission flag `filters.use`);
+   `data-engineer` -> 1.11b (dataset ids into the config schema, using the catalog); `frontend-engineer` -> 1.12 spikes.
+3. After the owner's Mac check, record real figures (image sizes, timing) and fix what it finds.
+4. Then Sprint 2 per `docs/sprint-plan.md`: convergence (ENG-6), results model (ENG-5/7), meter placeholder (DATA-3), React shell
+   and composition form, auth roles, Day-14 checkpoint (about 2026-11-20).
 
 ## 5. Decisions already made (details in `docs/decision-log.md`)
 Convergence rule (provisional yes) · data root and dataset choice configurable · hosting: local first, $100/month ceiling,
@@ -73,7 +73,15 @@ community-scale warehouses in scope (if ComStock defines them) · attribute filt
 6. Repo license and product name (not urgent); confirm "CBEX" means CBECS.
 7. Whether the owner wants the review cadence (sprint review at each sprint end + Day-14 checkpoint) unchanged.
 
+### Owner tasks on the Mac (batch these into one request; exact commands are in `docs/runbooks/local-stack.md`)
+Prerequisite: Docker Desktop for Apple silicon; copy `deploy/.env.example` to `deploy/.env` first.
+`make image-check` (arm64 manifests and sizes; then pin the full db image tag) -> `make config-check` -> `make up`
+(expect migrate to exit 0 and db, redis, web, api healthy; the worker is intentionally not started) -> `make smoke`
+(expects `/api/v1/ready` to report ready with db ok and schema ok) -> `make disk` -> `make down`. Also still open from earlier:
+`du -sh data/` details and the release folder names, and the `completed_status` check on your characteristics file.
+
 ## 7. Known issues and cautions
+- Wave A findings worth remembering: components built in isolation disagreed on env-var names (caught by QA); cloud tests cannot start Docker; the golden file was generated on Linux and may need a tolerance tweak on the first Mac run.
 - An earlier global rename left the phrase `microgrid.community_load.synthetic` inside ordinary prose in ~30 comments,
   docstrings and several docs. Cosmetic; `tech-writer` cleans it in a docs pass.
 - Engine coverage is low where data is needed; do not "fix" it with mocks that hide behavior. Use synthetic fixtures.
