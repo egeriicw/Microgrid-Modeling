@@ -1,6 +1,7 @@
 """FR-A2 / A4 / A5 — config CRUD, versioning, clone, YAML round-trip.
 RED placeholder (docs/test-plan.md §4 Phase 2).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -73,7 +74,9 @@ async def test_delete_conflicts_when_runs_exist(client, auth_headers):
 
 
 async def test_clone(client, auth_headers):
-    cid = (await client.post("/configs", headers=auth_headers, json={"name": "orig", "body": _valid_body()})).json()["id"]
+    cid = (await client.post("/configs", headers=auth_headers, json={"name": "orig", "body": _valid_body()})).json()[
+        "id"
+    ]
     r = await client.post(f"/configs/{cid}/clone", headers=auth_headers, json={"name": "copy"})
     assert r.status_code == 201
     assert r.json()["name"] == "copy"
@@ -92,5 +95,7 @@ async def test_yaml_roundtrip(client, auth_headers, yaml_path):
     assert exported.headers["content-type"].startswith("text/yaml")
 
     # re-import the export; bodies must be equivalent
-    r2 = await client.post("/configs/import", headers={**auth_headers, "Content-Type": "text/yaml"}, content=exported.text)
+    r2 = await client.post(
+        "/configs/import", headers={**auth_headers, "Content-Type": "text/yaml"}, content=exported.text
+    )
     assert r2.json()["body"] == r.json()["body"]
