@@ -56,11 +56,6 @@ def test_cli_never_modifies_data_files(tmp_path):
     assert sorted(p.name for p in tmp_path.rglob("*") if p.is_file()) == ["manifest.json", "x.parquet", "y.xlsx"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA 1.6 finding: manifest.json.tmp that is a symlink to a file INSIDE the root is followed and "
-    "the target data file is overwritten by write_manifest (data loss).",
-)
 def test_tmp_symlink_to_data_file_is_not_overwritten(tmp_path):
     victim = tmp_path / "a.txt"
     victim.write_text("precious")
@@ -69,10 +64,6 @@ def test_tmp_symlink_to_data_file_is_not_overwritten(tmp_path):
     assert victim.read_text() == "precious"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA 1.6 finding: symlink loop / broken symlink raises an uncaught OSError instead of a clear error (exit 2).",
-)
 @pytest.mark.parametrize("kind", ["loop", "broken"])
 def test_cli_handles_bad_symlinks_with_clear_error(tmp_path, kind):
     if kind == "loop":
@@ -83,10 +74,6 @@ def test_cli_handles_bad_symlinks_with_clear_error(tmp_path, kind):
     assert mf.main(["build", "--data-root", str(tmp_path)]) == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA 1.6 finding: a manifest entry missing 'size'/'sha256' raises an uncaught KeyError (exit path not 2).",
-)
 def test_malformed_manifest_entry_is_a_clear_error(tmp_path):
     import json
 
