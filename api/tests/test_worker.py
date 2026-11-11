@@ -225,7 +225,7 @@ def test_request_cancel_unknown_run(session):
 def test_real_engine_cancel_during_run_stops_before_next_run(session_factory, session, tiny_config, monkeypatch):
     """Real facade on the synthetic dataset: cancel is requested after the 2nd run completes; the engine polls
     before each run, so nothing runs after the flag is seen (latency = one engine run)."""
-    run_id = svc.create_run(session, tiny_config).id
+    run_id = svc.create_run(session, tiny_config, trusted_data_paths=True).id
     real = worker.run_scenario
     done: list[int] = []
 
@@ -251,7 +251,7 @@ def test_real_engine_cancel_during_run_stops_before_next_run(session_factory, se
 
 
 def test_create_run_records_resolved_seeds_before_execution(session, tiny_config):
-    run = svc.create_run(session, tiny_config)
+    run = svc.create_run(session, tiny_config, trusted_data_paths=True)
     assert run.status == "queued" and run.started_at is None
     assert set(run.seeds) == {"composition_seed", "archetype_seed", "perturbation_seed"}
     assert all(isinstance(v, int) for v in run.seeds.values())
@@ -262,7 +262,7 @@ def test_create_run_records_resolved_seeds_before_execution(session, tiny_config
 
 def test_create_run_keeps_fixed_seeds_and_rejects_unknown_seed_keys(session, tiny_config):
     fixed = {"composition_seed": 5, "archetype_seed": 6, "perturbation_seed": 7}
-    assert svc.create_run(session, tiny_config, seeds=fixed).seeds == fixed
+    assert svc.create_run(session, tiny_config, seeds=fixed, trusted_data_paths=True).seeds == fixed
     with pytest.raises(ValueError):
         svc.create_run(session, tiny_config, seeds={"nope": 1})
 
@@ -273,7 +273,7 @@ def test_create_run_rejects_invalid_config_loudly(session):
 
 
 def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config):
-    first = svc.create_run(session, tiny_config)
+    first = svc.create_run(session, tiny_config, trusted_data_paths=True)
     worker.execute_run(first.id, session_factory)
     session.expire_all()
     first = session.get(Run, first.id)
@@ -284,7 +284,7 @@ def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config
 
     # The run's own stored snapshot (config + recorded seeds) replays it. NOTE: result["config_snapshot"] is the
     # engine's asdict(cfg) dump, which config_from_dict rejects (top-level name/description, flattened feasibility).
-    replay = svc.create_run(session, first.composition_snapshot)
+    replay = svc.create_run(session, first.composition_snapshot, trusted_data_paths=True)
     assert replay.seeds == first.seeds
     worker.execute_run(replay.id, session_factory)
     session.expire_all()

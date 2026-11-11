@@ -132,7 +132,7 @@ def test_redelivery_while_running_is_a_noop(session_factory, session, monkeypatc
 
 def test_cancel_arriving_after_claim_before_first_poll_is_honored(session_factory, session, tiny_config, monkeypatch):
     """Real engine: the flag is set during pool building (after the claim, before the first poll). No run starts."""
-    run_id = svc.create_run(session, tiny_config).id
+    run_id = svc.create_run(session, tiny_config, trusted_data_paths=True).id
     real = worker.run_scenario
     stages: list[str] = []
 
@@ -153,7 +153,7 @@ def test_cancel_arriving_after_claim_before_first_poll_is_honored(session_factor
 
 
 def test_late_progress_event_does_not_change_terminal_status(session_factory, session, monkeypatch):
-    """Progress writes touch only `progress`/run_events, never `status`."""
+    """A late progress write never changes the status of a terminal run."""
     run_id = _new(session)
 
     def engine(config, *, progress=None, **kw):
@@ -164,15 +164,9 @@ def test_late_progress_event_does_not_change_terminal_status(session_factory, se
     monkeypatch.setattr(worker, "run_scenario", engine)
     worker.execute_run(run_id, session_factory)
     row = _row(session_factory, run_id)
-    assert row.progress["stage"] == "running"  # progress write happened ...
-    # ... and the status assertion for the completion write lives in the strict-xfail test below.
+    assert row.status == "cancelled" and not row.progress  # late progress is dropped, status untouched
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: worker._finish is an unconditional UPDATE (no `WHERE status = 'running'`), so a run already "
-    "marked cancelled/failed is overwritten with succeeded + a result.",
-)
 def test_completion_does_not_overwrite_terminal_cancelled(session_factory, session, monkeypatch):
     run_id = _new(session)
 
@@ -186,12 +180,6 @@ def test_completion_does_not_overwrite_terminal_cancelled(session_factory, sessi
     assert row.status == "cancelled" and row.result is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: request_cancel is read-then-write with an unconditional ORM UPDATE of `status`. If the worker "
-    "claims the run between request_cancel's read (queued) and its commit, status is forced to cancelled while the "
-    "engine is running, and a later finish overwrites it again.",
-)
 def test_cancel_racing_the_claim_does_not_clobber_running(session_factory, session, monkeypatch):
     run_id = _new(session)
     real_get = svc.get_run
@@ -308,11 +296,18 @@ def test_celery_app_conf_and_reprs_do_not_expose_broker_password(monkeypatch):
 # --- (3) trust boundary ------------------------------------------------------------------------------------------
 
 
-def test_user_supplied_data_paths_reach_the_engine_unchanged(session_factory, session, monkeypatch):
-    """CHARACTERIZATION of the current trust gap: a snapshot's `data` section (file paths the engine reads) is
-    stored and handed to the engine verbatim. Whoever can call create_run chooses which directories are read."""
+def test_user_supplied_data_paths_are_rejected_unless_trusted(session):
+    """The snapshot's `data` section holds file paths the engine reads; untrusted callers may not set them."""
     evil = {"background_dir": "/etc", "resstock_timeseries_dir": "/root", "comstock_timeseries_dir": "/proc"}
-    run_id = svc.create_run(session, {"scenario": {"name": "x"}, "data": evil}).id  # accepted today
+    with pytest.raises(ValueError) as exc:
+        svc.create_run(session, {"scenario": {"name": "x"}, "data": evil})
+    assert "background_dir" in str(exc.value)
+    assert "/etc" not in str(exc.value) and "/root" not in str(exc.value)  # keys only, never values
+
+
+def test_trusted_data_paths_reach_the_engine_unchanged(session_factory, session, monkeypatch):
+    evil = {"background_dir": "/etc", "resstock_timeseries_dir": "/root", "comstock_timeseries_dir": "/proc"}
+    run_id = svc.create_run(session, {"scenario": {"name": "x"}, "data": evil}, trusted_data_paths=True).id
     seen: dict = {}
 
     def engine(config, **kw):
@@ -324,11 +319,6 @@ def test_user_supplied_data_paths_reach_the_engine_unchanged(session_factory, se
     assert seen == evil
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="TRUST BOUNDARY: create_run accepts user-supplied data.*_dir/background_dir paths. Sprint 2 must "
-    "override `data` from Settings.data_dir / the dataset catalog and reject user-supplied paths.",
-)
 def test_create_run_rejects_user_supplied_data_paths():
     from sqlalchemy.orm import Session
 
@@ -338,6 +328,50 @@ def test_create_run_rejects_user_supplied_data_paths():
     Base.metadata.create_all(engine)
     with Session(engine) as s, pytest.raises(ValueError):
         svc.create_run(s, {"data": {"background_dir": "/etc"}})
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        {"data": {"resstock_chars_file": "x.xlsx"}},
+        {"data": {"comstock_chars_file": "x.xlsx"}},
+        {"data": {"comstock_timeseries_dir": "/x"}},
+        {"data": {"resstock_timeseries_dir": "/x"}},
+        {"data_dir": "/x"},
+        {"data_dirs": ["/x"]},
+        {"output_dir": "/x"},
+        {"data": {"output_dir": "/x"}},
+        {"data": {"data_dir": "/x"}},
+    ],
+)
+def test_every_path_key_is_rejected_by_name_only(session, snapshot):
+    with pytest.raises(ValueError) as exc:
+        svc.create_run(session, snapshot, validate=False)
+    assert "/x" not in str(exc.value) and "x.xlsx" not in str(exc.value)
+
+
+def test_non_path_data_keys_are_allowed(session):
+    assert svc.create_run(session, {"data": {"upgrade": "0", "state": "DC"}}, validate=False).status == "queued"
+
+
+def test_server_side_data_section_builds_paths_under_data_dir(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    data = svc.server_side_data_section(Settings(data_dir=root, environment="test"))
+    assert set(data) == {"background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir"}
+    assert all(str(root.resolve()) in v for v in data.values())
+
+
+def test_server_side_data_section_requires_data_dir_and_rejects_symlink_escape(tmp_path):
+    with pytest.raises(ValueError):
+        svc.server_side_data_section(Settings(environment="test"))
+    root, outside = tmp_path / "root", tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "background").symlink_to(outside)
+    with pytest.raises(ValueError) as exc:
+        svc.server_side_data_section(Settings(data_dir=root, environment="test"))
+    assert str(outside) not in str(exc.value)
 
 
 # --- (6) serialization through the broker ------------------------------------------------------------------------
@@ -400,3 +434,79 @@ def test_server_default_applies_to_raw_insert_without_orm_defaults(session_facto
         )
         s.commit()
     assert _row(session_factory, rid).cancel_requested is False
+
+
+# --- post-QA fixes: guarded writes, cancel atomics, stale finder -------------------------------------------------
+
+
+def test_failure_does_not_overwrite_terminal_status(session_factory, session, monkeypatch, caplog):
+    run_id = _new(session)
+
+    def engine(config, **kw):
+        _set(session_factory, run_id, status="cancelled")
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(worker, "run_scenario", engine)
+    with caplog.at_level(logging.INFO, logger="microgrid_api.worker"):
+        worker.execute_run(run_id, session_factory)
+    row = _row(session_factory, run_id)
+    assert row.status == "cancelled" and row.error_message is None and row.result is None
+    assert "already terminal" in caplog.text
+
+
+def test_cancel_does_not_overwrite_succeeded(session_factory, session, monkeypatch):
+    run_id = _new(session)
+
+    def engine(config, **kw):
+        _set(session_factory, run_id, status="succeeded", result={"ok": True})
+        raise worker.RunCancelled()
+
+    monkeypatch.setattr(worker, "run_scenario", engine)
+    worker.execute_run(run_id, session_factory)
+    row = _row(session_factory, run_id)
+    assert row.status == "succeeded" and row.result == {"ok": True}
+
+
+def test_late_progress_does_not_resurrect_terminal_run(session_factory, session, monkeypatch):
+    run_id = _new(session)
+
+    def engine(config, *, progress=None, **kw):
+        _set(session_factory, run_id, status="cancelled")
+        progress(_ev())
+        return _Result()
+
+    monkeypatch.setattr(worker, "run_scenario", engine)
+    worker.execute_run(run_id, session_factory)
+    row = _row(session_factory, run_id)
+    assert row.status == "cancelled" and row.result is None and not row.progress
+
+
+def test_request_cancel_queued_running_terminal_unknown(session_factory, session):
+    q = _new(session)
+    assert svc.request_cancel(session, q).status == "cancelled"
+    assert _row(session_factory, q).finished_at is not None
+    r = _new(session)
+    _set(session_factory, r, status="running")
+    got = svc.request_cancel(session, r)
+    assert got.status == "running" and got.cancel_requested is True
+    t = _new(session)
+    _set(session_factory, t, status="failed")
+    got = svc.request_cancel(session, t)
+    assert got.status == "failed" and got.cancel_requested is False
+    with pytest.raises(LookupError):
+        svc.request_cancel(session, uuid.uuid4())
+
+
+def test_find_stale_running_returns_only_old_running_ids_and_writes_nothing(session_factory, session):
+    from datetime import UTC, datetime, timedelta
+
+    old, fresh, done, queued = (_new(session) for _ in range(4))
+    now = datetime.now(UTC)
+    _set(session_factory, old, status="running", started_at=now - timedelta(hours=3))
+    _set(session_factory, fresh, status="running", started_at=now - timedelta(seconds=5))
+    _set(session_factory, done, status="succeeded", started_at=now - timedelta(hours=3))
+    assert worker.find_stale_running(session, 3600) == [old]
+    assert _row(session_factory, old).status == "running"
+    with pytest.raises(ValueError):
+        worker.find_stale_running(session, 0)
+    assert queued not in worker.find_stale_running(session, 1)

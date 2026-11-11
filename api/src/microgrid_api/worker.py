@@ -6,7 +6,10 @@ Design:
 * All run state lives in the database (``runs``, ``run_events``); there is no Celery results backend.
 * The task is ``acks_late`` (a task lost with a crashed worker is redelivered) but never retried on engine failure.
   A redelivered task is a no-op unless the run is still ``queued`` (atomic claim), so a run cannot execute twice.
-  Known limit: a worker that dies mid-run leaves the row ``running`` (a reaper is future work).
+* Terminal states are final: every completion/failure/cancel/progress write is an atomic UPDATE guarded by
+  ``status = 'running'``, so a late write can never overwrite or resurrect a cancelled/failed/succeeded run.
+* Documented limitation: a worker that dies mid-run leaves the row ``running`` forever; no reaper exists yet.
+  ``find_stale_running`` is the tested read-only building block a later reaper will use.
 * The engine is reached only through the facade ``run_scenario`` (FR-ENG-8).
 * Failure messages stored on the row are a safe summary (exception class only); the traceback goes to the log.
 """
@@ -18,7 +21,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from celery import Celery
@@ -61,10 +64,32 @@ def _safe_error(exc: BaseException) -> str:
     return f"engine run failed ({type(exc).__name__}); see worker logs"
 
 
-def _finish(session: Session, rid: uuid.UUID, status: RunStatus, **fields: Any) -> None:
+def _finish(session: Session, rid: uuid.UUID, status: RunStatus, **fields: Any) -> bool:
+    """Record the terminal state only if the run is still ``running`` (one atomic UPDATE). Returns False, writing
+    nothing (so no result is stored), when the run was already terminal."""
     values = {k: v for k, v in fields.items() if v is not None}
-    session.execute(update(Run).where(Run.id == rid).values(status=status.value, finished_at=_now(), **values))
+    res = session.execute(
+        update(Run)
+        .where(Run.id == rid, Run.status == RunStatus.running.value)
+        .values(status=status.value, finished_at=_now(), **values)
+    )
     session.commit()
+    if getattr(res, "rowcount", 0) != 1:
+        logger.info("run %s already terminal; not overwritten with %s", rid, status.value)
+        return False
+    return True
+
+
+def find_stale_running(session: Session, older_than_seconds: int) -> list[uuid.UUID]:
+    """Read-only: ids of runs that have been ``running`` for longer than ``older_than_seconds`` (a worker that
+    died mid-run). Changes nothing; a future reaper decides what to do with them."""
+    if older_than_seconds <= 0:
+        raise ValueError("older_than_seconds must be positive")
+    cutoff = _now() - timedelta(seconds=older_than_seconds)
+    rows = session.scalars(
+        select(Run.id).where(Run.status == RunStatus.running.value, Run.started_at < cutoff).order_by(Run.started_at)
+    )
+    return list(rows)
 
 
 def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> None:
@@ -94,8 +119,11 @@ def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> Non
 
         def on_progress(ev: ProgressEvent) -> None:
             payload: dict[str, Any] = asdict(ev)
-            run.progress = payload
-            session.add(RunEvent(run_id=rid, stage=ev.stage, message=ev.message[:1000], payload=payload))
+            res = session.execute(
+                update(Run).where(Run.id == rid, Run.status == RunStatus.running.value).values(progress=payload)
+            )
+            if getattr(res, "rowcount", 0) == 1:  # a late event for a terminal run is dropped
+                session.add(RunEvent(run_id=rid, stage=ev.stage, message=ev.message[:1000], payload=payload))
             session.commit()
 
         try:
