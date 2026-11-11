@@ -17,7 +17,7 @@ run what it prints on your Mac. Once confirmed, pin the full tag in `deploy/dock
 ## Prerequisites
 - A Mac with Apple silicon (M-series) and Docker Desktop for Mac (Apple silicon build). In Docker Desktop settings,
   Resources: 6 or more CPUs and 8 GB or more memory is a reasonable start (the worker is capped at 8 GB by default).
-- About 8 to 10 GB of free disk for images and volumes **[estimate; measure with `make disk`]**. The owner's `data/`
+- About 12 GB of free disk for the full stack (images, build cache, volumes; the preflight check enforces it) **[estimate; measure with `make disk`]**. Less than that: use the lite stack, see "Small disk" below. The owner's `data/`
   folder (about 11 GB) is separate: it is mounted read-only and never copied.
 - `make` (ships with Xcode command line tools).
 
@@ -71,6 +71,87 @@ docker image prune     # dangling images
 **Never run `docker volume prune`, `docker system prune --volumes`, or `docker compose down -v`.** They delete named
 volumes, and `pgdata` holds the database (configs, runs, results, calibration uploads) while `outputs` holds run
 outputs. To wipe them on purpose, use `make nuke`, which asks you to type DELETE first.
+
+## Small disk
+
+A full disk can freeze macOS, so check before you start. With about 6.7 GB free (as `df` reports), do NOT run the full
+stack. Use the lite stack.
+
+**Step 1: look, change nothing.**
+```bash
+df -h /System/Volumes/Data   # the real free space on the Mac's data volume
+make disk-plan               # prints the expected need for full and lite (never runs anything)
+docker system df             # what Docker already uses (images, containers, volumes, build cache)
+```
+`make up` and `make lite-up` first run `deploy/preflight.sh`, which only reads free space and refuses (non-zero exit,
+clear message) below 12 GB for full and 5 GB for lite. It never deletes anything. Override the threshold on purpose with
+`PREFLIGHT_MIN_FREE_GB=8 make up`; the script announces the override. If Docker's disk image lives on another drive,
+point the check at it: `PREFLIGHT_PATH=/Volumes/External make up`.
+
+**Step 2: run the lite stack.**
+```bash
+make lite-up     # api + migrate only, one image, SQLite file in a named volume; API at http://127.0.0.1:8000
+make lite-down   # stops and removes containers; the lite volumes (SQLite file, outputs) are KEPT
+```
+What lite gives you: the same API image as the full stack, the data folder mounted read-only, loopback-only port,
+healthcheck, non-root user and dropped capabilities. What you lose: PostGIS (spatial SQL), TimescaleDB (time-series
+SQL), Redis, the web placeholder, the worker, and production mode. Lite sets `MICROGRID_ENVIRONMENT=development`
+because the API only allows SQLite without a JWT secret in development; no secrets file is needed, and for that reason
+lite is for this laptop on 127.0.0.1 only. Nothing in the engine or API uses PostGIS or TimescaleDB yet (the
+migration runs on SQLite, checked in the cloud). Run the full stack when you have the space, or on a bigger disk, to
+check the production-like setup. Lite and full both default to port 8000: run one at a time.
+
+**Step 3: free space safely (only what you recognise).**
+```bash
+docker builder prune      # build cache only; volumes untouched
+docker image prune        # dangling (untagged) images only
+```
+Never `docker volume prune`, `docker system prune --volumes`, or `docker compose down -v`: they delete the database and
+outputs volumes. Ordinary macOS clean-up is fine: empty the Trash, Apple menu > About This Mac > Storage > Manage.
+Do not delete anything inside `data/`.
+
+**Step 4: move Docker's disk image to an external drive (Docker Desktop).** Docker Desktop > Settings > Resources >
+Advanced > "Disk image location" > Browse > choose a folder on the external drive > Apply & restart. Docker Desktop
+moves the file itself. Use a fast SSD (USB 3 or Thunderbolt), keep it plugged in while Docker runs, and do not pick a
+network drive. Existing images and volumes move with it [verify the option name in your Docker Desktop version]. Then
+set `PREFLIGHT_PATH` to that drive so the free-space check looks at the right place. Also note: the Docker disk file
+grows but does not shrink by itself after you delete images (Settings > Resources > Disk image size shows usage).
+
+### Measured and estimated sizes (checked 2026-11-11, linux/arm64)
+"Compressed" is the sum of the layer sizes the registry reports for the arm64 image (this is the download size), read
+through the registry API without a Docker daemon. "On disk" is the expanded size Docker Desktop stores; the expansion
+ratio was MEASURED for the two images marked (m) by downloading and unpacking their layers, and is an ESTIMATE
+(ratio 2.4 to 3.4) for the others. Docker Desktop with the containerd image store may also keep the compressed copy,
+so allow for both [verify on your Mac with `docker system df`].
+
+| Image (used by) | Compressed | On disk | Index digest (first 12) | Notes |
+|---|---|---|---|---|
+| timescale/timescaledb-ha:pg17 (full `db`) | 891.8 MB | about 2.1 to 3.0 GB ESTIMATE | 3f0b3f6bdf49 | PostgreSQL + PostGIS + TimescaleDB; floating tag |
+| redis:7.4-alpine (full `redis`) | 16.9 MB | 40.7 MB (m) | 7b1753b4c5ad | |
+| nginxinc/nginx-unprivileged:1.27-alpine (full `web`) | 21.8 MB | about 55 MB ESTIMATE | 65e3e85dbaed | |
+| python:3.12-slim-bookworm (api base) | 44.9 MB | 154 MB (m, layer tar bytes) | 935c3c5b1235 | |
+| microgrid-api:dev (api, migrate, worker; shared layers) | about 170 MB ESTIMATE | about 0.6 to 0.7 GB ESTIMATE | n/a (built locally) | base + Python packages below |
+| python:3.12-alpine | 18.5 MB | n/a | e064671ca452 | NOT usable: pyarrow publishes no musl wheels [verify] |
+| postgres:17-alpine | 115.0 MB | about 280 MB ESTIMATE | 3540c0362c80 | no PostGIS, no TimescaleDB |
+| postgres:17-bookworm | 154.2 MB | about 400 MB ESTIMATE | 665dc7b37ac5 | no PostGIS, no TimescaleDB |
+| timescale/timescaledb:latest-pg17 | 549.5 MB | about 1.4 GB ESTIMATE | b56a3f51991d | TimescaleDB, no PostGIS |
+| timescale/timescaledb:2.31.0-pg17-oss | 383 MB (Docker Hub tag API) | n/a | n/a | open-source subset, no PostGIS |
+| postgis/postgis:17-3.5-alpine (official) | 189 MB (amd64 only) | n/a | n/a | NO arm64 build: would run emulated on an M2 |
+| imresamu/postgis:17-3.5-alpine (community) | 192 MB arm64 (Docker Hub tag API) | n/a | n/a | PostGIS only, unofficial publisher |
+
+Python packages in `microgrid-api` (arm64 wheels from PyPI, resolved with `uv pip compile`, 53 packages, 121 MB of
+wheels in total; there is no scipy). Largest: pyarrow 51.8 MB, botocore 16.3 MB (from boto3, an API dependency), numpy
+15.7 MB, pandas 11.5 MB, psycopg-binary 6.8 MB, sqlalchemy 4.7 MB, uvloop 4.4 MB. Unpacked, these are roughly 400 to 550 MB
+ESTIMATE. The root package needs only numpy, pandas, pyarrow, pyyaml and openpyxl.
+
+| Scenario | Estimated disk | Basis |
+|---|---|---|
+| Full stack: images + build cache + empty volumes | about 4 to 6 GB ESTIMATE | db 2.1 to 3.0 GB + api 0.7 + small images 0.1 + build cache 0.5 to 1 + volumes 0.1 |
+| Lite stack | about 1 to 2 GB ESTIMATE | api image 0.7 + build cache 0.5 to 1 |
+| Your `data/` folder | about 11 GB, already used | read-only mount, never copied |
+
+Lite saves roughly 3 GB, almost all of it the `db` image. A smaller real Postgres is possible (postgres:17-alpine, about
+0.3 GB) but loses PostGIS and TimescaleDB, so it is not offered until the owner decides that trade.
 
 ## Troubleshooting
 - **Port already in use** (for example a local Postgres on 5432): change `DB_PORT` (or `API_PORT`, `REDIS_PORT`,
