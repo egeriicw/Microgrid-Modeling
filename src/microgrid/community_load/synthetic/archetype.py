@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from microgrid.community_load.synthetic._types import ArchetypePool, BuildingId
+from microgrid.community_load.synthetic.attribute_filters import apply_attribute_filters
 from microgrid.community_load.synthetic.config import (
     ArchetypeFilterConfig,
     CommercialFilterConfig,
@@ -77,6 +78,9 @@ def _filter_resstock_category(df: pd.DataFrame, cat_cfg: ResidentialFilterConfig
     if cat_cfg.require_no_garage:
         mask &= df["in.geometry_garage"].isnull()
 
+    if cat_cfg.attributes:
+        mask &= apply_attribute_filters(df, cat_cfg.attributes)
+
     return df.loc[mask, "bldg_id"].tolist()
 
 
@@ -90,6 +94,9 @@ def _filter_comstock_category(df: pd.DataFrame, cat_cfg: CommercialFilterConfig)
     if not cat_cfg.include_public:
         public_types = ["PrimarySchool", "SecondarySchool"]
         mask &= ~df["in.comstock_building_type"].isin(public_types)
+
+    if cat_cfg.attributes:
+        mask &= apply_attribute_filters(df, cat_cfg.attributes)
 
     return df.loc[mask, "bldg_id"].tolist()
 

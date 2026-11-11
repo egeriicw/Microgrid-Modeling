@@ -34,7 +34,13 @@ FORBIDDEN = {
     "microgrid.datasets": _ban("datasets"),
     "microgrid.community_load": _ban("core", "geo", "community_load", "datasets"),
     "microgrid.community_load.synthetic": _ban("community_load")
-    + ["microgrid.community_load.sources", "microgrid.community_load.categorize"],
+    + [
+        "microgrid.community_load.sources",
+        "microgrid.community_load.categorize",
+        "microgrid.community_load.dataset_resolution",
+        "microgrid.community_load.permissions",
+        "microgrid.community_load.exposed_attributes",
+    ],
     "microgrid.der": _ban("core", "geo", "der"),
     "microgrid.dispatch": _ban("core", "geo", "der", "dispatch"),
     "microgrid.economics": _ban("core", "geo", "der", "dispatch", "economics"),
@@ -56,6 +62,8 @@ def _imports(path: Path) -> set[str]:
             found.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             found.add(node.module)
+            # `from pkg import submodule` imports pkg.submodule too
+            found.update(f"{node.module}.{a.name}" for a in node.names)
     return found
 
 

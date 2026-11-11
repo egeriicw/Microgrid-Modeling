@@ -9,14 +9,15 @@ events. It adds no sampling or numerics of its own: results are exactly those of
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from microgrid import __version__
 from microgrid.community_load.synthetic import archetype, ensemble
 from microgrid.community_load.synthetic._types import ArchetypePool, EnsembleResult, NeighborhoodResult
-from microgrid.community_load.synthetic.config import ScenarioConfig, config_from_dict
+from microgrid.community_load.synthetic.config import ScenarioConfig, config_from_dict, config_to_dict
+from microgrid.community_load.synthetic.pool_preview import preview_pools
 
 Stage = Literal["building_pool", "running", "checking_convergence", "finished"]
 
@@ -67,6 +68,10 @@ class RunResult:
     seeds: dict[str, int]  # seeds actually used; supply them as ``rng`` to replay the run
     engine_version: str
     config_snapshot: dict[str, Any] = field(default_factory=dict)
+    # Per category ("resstock/<name>"): {"matched", "total", "warnings"} for the effective filters (FR-ENG-11 c, e).
+    pool_summary: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Dataset ids used and their load basis, per product (FR-DATA-8); empty when paths were hard-coded.
+    datasets: dict[str, dict[str, str | None]] = field(default_factory=dict)
 
     @property
     def converged(self) -> bool:
@@ -79,6 +84,8 @@ class RunResult:
             "engine_version": self.engine_version,
             "seeds": dict(self.seeds),
             "config_snapshot": self.config_snapshot,
+            "pool_summary": {k: dict(v) for k, v in self.pool_summary.items()},
+            "datasets": {k: dict(v) for k, v in self.datasets.items()},
             "metrics": [dict(m) for m in self.metrics],
             "converged": bool(e.converged),
             "n_attempted": int(e.n_attempted),
@@ -110,6 +117,13 @@ def run_scenario(
     else:
         raise TypeError(f"config must be a ScenarioConfig or a dict, got {type(config).__name__}")
 
+    for product in ("resstock", "comstock"):
+        if getattr(cfg.data, f"dataset_{product}") is not None and getattr(cfg.data, f"{product}_load_basis") is None:
+            raise ValueError(
+                f"data.dataset_{product} is set but was never resolved to paths and a load basis; "
+                "call community_load.resolve_dataset_paths first (the engine does not guess locations)"
+            )
+
     max_runs = cfg.ensemble.max_runs
 
     def emit(stage: Stage, run_index: int, n_att: int, n_feas: int, converged: bool | None, message: str) -> None:
@@ -119,7 +133,10 @@ def run_scenario(
     if pool is None:
         bg = Path(cfg.data.background_dir)
         pool = archetype.build_archetype_pool(bg / cfg.data.resstock_chars_file, bg / cfg.data.comstock_chars_file, cfg)
-    emit("building_pool", -1, 0, 0, None, "archetype pool ready")
+    previews = preview_pools(pool.resstock_chars, pool.comstock_chars, cfg.archetype_filters)
+    pool_summary = {k: v.to_dict() for k, v in previews.items()}
+    notes = [f"{k}: {w}" for k, v in previews.items() for w in v.warnings]
+    emit("building_pool", -1, 0, 0, None, "archetype pool ready" + ("; warnings: " + "; ".join(notes) if notes else ""))
 
     dirs: dict[str, Path] = (
         {k: Path(v) for k, v in data_dirs.items()}
@@ -144,7 +161,7 @@ def run_scenario(
 
     ens = ensemble.run_ensemble(pool, cfg, dirs, before_run=before_run, after_run=after_run, on_check=on_check)
 
-    snapshot = asdict(cfg)
+    snapshot = config_to_dict(cfg)  # the shape config_from_dict accepts, so a snapshot can be replayed
     snapshot["rng"] = dict(ens.seeds)  # the seeds actually used, so the snapshot alone replays the run
     result = RunResult(
         ensemble=ens,
@@ -152,6 +169,12 @@ def run_scenario(
         seeds=dict(ens.seeds),
         engine_version=__version__,
         config_snapshot=snapshot,
+        pool_summary=pool_summary,
+        datasets={
+            product: {"dataset_id": ds_id, "load_basis": getattr(cfg.data, f"{product}_load_basis")}
+            for product in ("resstock", "comstock")
+            if (ds_id := getattr(cfg.data, f"dataset_{product}")) is not None
+        },
     )
     emit(
         "finished",

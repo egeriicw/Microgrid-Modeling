@@ -7,11 +7,16 @@ file into a ScenarioConfig dataclass that every other module receives.
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-import yaml
+from microgrid.community_load.synthetic.attribute_filters import (
+    AttributeFilter,
+    check_attribute_filter_raw,
+    parse_attribute_filters,
+)
+from microgrid.community_load.synthetic.strict_yaml import load_yaml_strict
 
 # ---------------------------------------------------------------------------
 # Sub-configs
@@ -49,18 +54,21 @@ class ResidentialFilterConfig:
     max_sqft: float | None = None
     require_no_garage: bool = False
     require_data_complete: bool = True  # keep only buildings whose simulation completed and applies (see archetype.py)
+    attributes: list[AttributeFilter] = field(default_factory=list)  # FR-ENG-11; AND-combined, empty = no narrowing
 
 
 @dataclass
 class CommercialFilterConfig:
     building_types: list[str] = field(default_factory=list)
     include_public: bool = False
+    attributes: list[AttributeFilter] = field(default_factory=list)  # FR-ENG-11; AND-combined, empty = no narrowing
 
 
 @dataclass
 class ArchetypeFilterConfig:
     resstock: dict[str, ResidentialFilterConfig] = field(default_factory=dict)
     comstock: dict[str, CommercialFilterConfig] = field(default_factory=dict)
+    min_pool_size: int = 10  # pool preview warns when a category matches fewer buildings than this (FR-ENG-11 c)
 
 
 @dataclass
@@ -145,6 +153,12 @@ class DataConfig:
     resstock_timeseries_dir: str = "../data/input/resstock/timeseries_individual_buildings"
     comstock_timeseries_dir: str = "../data/input/comstock/timeseries_individual_buildings"
     background_dir: str = "../data/background"
+    # Dataset ids as plain strings, "product:release:weather:scenario:state" (FR-DATA-8). The engine only carries
+    # them; community_load.resolve_dataset_paths turns them into the path fields above and records the load basis.
+    dataset_resstock: str | None = None
+    dataset_comstock: str | None = None
+    resstock_load_basis: str | None = None  # "gross" or "net"; set by the resolver, recorded with the run
+    comstock_load_basis: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +203,8 @@ def _parse_rng(d: dict) -> RNGConfig:
 
 
 def _parse_data(d: dict) -> DataConfig:
-    return DataConfig(**{k: str(v) for k, v in d.items()})
+    values: dict[str, Any] = {k: (None if v is None else str(v)) for k, v in d.items()}
+    return DataConfig(**values)
 
 
 def _parse_category_bounds(d: dict) -> CategoryBounds:
@@ -219,6 +234,7 @@ def _parse_res_filter(d: dict) -> ResidentialFilterConfig:
         max_sqft=d.get("max_sqft"),
         require_no_garage=bool(d.get("require_no_garage", False)),
         require_data_complete=bool(d.get("require_data_complete", True)),
+        attributes=parse_attribute_filters(d.get("attributes"), "attributes"),
     )
 
 
@@ -226,13 +242,14 @@ def _parse_com_filter(d: dict) -> CommercialFilterConfig:
     return CommercialFilterConfig(
         building_types=d.get("building_types", []),
         include_public=bool(d.get("include_public", False)),
+        attributes=parse_attribute_filters(d.get("attributes"), "attributes"),
     )
 
 
 def _parse_archetype_filters(d: dict) -> ArchetypeFilterConfig:
     res = {k: _parse_res_filter(v) for k, v in d.get("resstock", {}).items()}
     com = {k: _parse_com_filter(v) for k, v in d.get("comstock", {}).items()}
-    return ArchetypeFilterConfig(resstock=res, comstock=com)
+    return ArchetypeFilterConfig(resstock=res, comstock=com, min_pool_size=d.get("min_pool_size", 10))
 
 
 def _parse_feasibility(d: dict) -> FeasibilityConfig:
@@ -340,7 +357,7 @@ _SECTION_KEYS = {
     "convergence": {"lookback_window", "min_stable_window", "epsilon", "metrics"},
     "validation": {"benchmarks", "min_cv_peak"},
     "output": {f.name for f in fields(OutputConfig)},
-    "archetype_filters": {"resstock", "comstock"},
+    "archetype_filters": {"resstock", "comstock", "min_pool_size"},
 }
 _CATEGORY_KEYS = {"min_fraction", "max_fraction", "fixed_count", "source"}
 _RES_FILTER_KEYS = {f.name for f in fields(ResidentialFilterConfig)}
@@ -383,7 +400,17 @@ def _check_raw_config(raw: dict) -> list[str]:
             group = filters.get(kind)
             if isinstance(group, dict):
                 for name, body in group.items():
-                    _check_keys(f"archetype_filters.{kind}.{name}", body, allowed, errors)
+                    where = f"archetype_filters.{kind}.{name}"
+                    if _check_keys(where, body, allowed, errors) is None:
+                        continue
+                    attrs = body.get("attributes")
+                    if attrs is None:
+                        continue
+                    if not isinstance(attrs, list):
+                        errors.append(f"{where}.attributes: expected a list of filters, got {type(attrs).__name__}")
+                        continue
+                    for i, item in enumerate(attrs):
+                        check_attribute_filter_raw(item, f"{where}.attributes[{i}]", errors)
 
     feas = raw.get("feasibility")
     if isinstance(feas, dict):
@@ -419,8 +446,7 @@ def _text(value: object) -> str:
 def load_config(path: Path | str) -> ScenarioConfig:
     """Load a YAML scenario config file and return a typed ScenarioConfig."""
     path = Path(path)
-    with path.open() as f:
-        raw = yaml.safe_load(f) or {}
+    raw = load_yaml_strict(path.read_text()) or {}
     return config_from_dict(raw, source=str(path), default_name=path.stem)
 
 
@@ -467,6 +493,110 @@ def config_from_dict(raw: object, *, source: str = "<dict>", default_name: str =
     return cfg
 
 
+def _filter_to_dict(f: AttributeFilter) -> dict[str, Any]:
+    out: dict[str, Any] = {"column": f.column, "op": f.op}
+    for key, default in _FILTER_DEFAULTS.items():
+        value = getattr(f, key)
+        if value != default:
+            out[key] = list(value) if isinstance(value, tuple) else value
+    return out
+
+
+_FILTER_DEFAULTS: dict[str, Any] = {
+    "value": None,
+    "values": None,
+    "min": None,
+    "max": None,
+    "min_inclusive": True,
+    "max_inclusive": True,
+}
+
+
+def config_to_dict(cfg: ScenarioConfig) -> dict[str, Any]:
+    """The mapping ``config_from_dict`` accepts for ``cfg``: ``config_from_dict(config_to_dict(c)) == c``.
+
+    Plain data only (str, numbers, bool, None, list, dict), so it can be saved as JSON or YAML. Attribute
+    filters omit unset (None / default) fields. The resolver-written ``data.resstock_load_basis`` and
+    ``data.comstock_load_basis`` are kept: they are accepted, documented ``data`` keys, so a snapshot
+    records which load basis the run used and replays with it.
+    """
+    h, soft = cfg.feasibility.hard, cfg.feasibility.soft
+    af = cfg.archetype_filters
+
+    def res(c: ResidentialFilterConfig) -> dict[str, Any]:
+        return {
+            "building_type_heights": list(c.building_type_heights),
+            "hvac_types": None if c.hvac_types is None else list(c.hvac_types),
+            "hvac_types_exclude": None if c.hvac_types_exclude is None else list(c.hvac_types_exclude),
+            "max_sqft": c.max_sqft,
+            "require_no_garage": c.require_no_garage,
+            "require_data_complete": c.require_data_complete,
+            "attributes": [_filter_to_dict(f) for f in c.attributes],
+        }
+
+    def com(c: CommercialFilterConfig) -> dict[str, Any]:
+        return {
+            "building_types": list(c.building_types),
+            "include_public": c.include_public,
+            "attributes": [_filter_to_dict(f) for f in c.attributes],
+        }
+
+    return {
+        "scenario": {"name": cfg.name, "description": cfg.description},
+        "rng": asdict(cfg.rng),
+        "data": asdict(cfg.data),
+        "composition": {
+            "total_buildings": cfg.composition.total_buildings,
+            "method": cfg.composition.method,
+            "dirichlet_concentration": cfg.composition.dirichlet_concentration,
+            "categories": {n: asdict(b) for n, b in cfg.composition.categories.items()},
+        },
+        "archetype_filters": {
+            "resstock": {n: res(c) for n, c in af.resstock.items()},
+            "comstock": {n: com(c) for n, c in af.comstock.items()},
+            "min_pool_size": af.min_pool_size,
+        },
+        "perturbation": {
+            "enabled": cfg.perturbation.enabled,
+            "max_temporal_shift_hours": cfg.perturbation.max_temporal_shift_hours,
+            "energy_tolerance": cfg.perturbation.energy_tolerance,
+            "end_use_factors": {k: {"sigma": v.sigma} for k, v in cfg.perturbation.end_use_factors.items()},
+        },
+        "feasibility": {
+            "hard": {
+                "peak_kw": {"min": h.peak_kw_min, "max": h.peak_kw_max},
+                "annual_energy_kwh": {"min": h.annual_energy_kwh_min, "max": h.annual_energy_kwh_max},
+                "load_factor": {"min": h.load_factor_min, "max": h.load_factor_max},
+            },
+            "soft": {
+                "weights": dict(soft.weights),
+                "bounds": {
+                    k: {kk: vv for kk, vv in (("min", b.min), ("max", b.max)) if vv is not None}
+                    for k, b in soft.bounds.items()
+                },
+            },
+        },
+        "ensemble": asdict(cfg.ensemble),
+        "convergence": asdict(cfg.convergence),
+        "validation": asdict(cfg.validation),
+        "output": asdict(cfg.output),
+    }
+
+
+def split_dataset_id(text: str) -> list[str] | None:
+    """The five parts of a dataset id, or None if ``text`` is not a well-formed id.
+
+    Accepted forms (one rule, shared by config validation and ``parse_dataset_id``): exactly five non-empty
+    parts separated by ``:`` (``product:release:weather:scenario:state``) or, when the text has no ``:``, by
+    ``/`` (the ``str(DatasetId)`` form). No part may carry leading or trailing whitespace or a newline: nothing
+    is stripped, so ``" resstock:..."`` and ``"...:DC\\n"`` are rejected rather than quietly repaired.
+    """
+    parts = text.split(":" if ":" in text else "/")
+    if len(parts) != 5 or any(not p or p != p.strip() for p in parts):
+        return None
+    return parts
+
+
 def validate_config(cfg: ScenarioConfig) -> None:
     """Raise ValueError if any config invariants are violated."""
     errors: list[str] = []
@@ -484,6 +614,25 @@ def validate_config(cfg: ScenarioConfig) -> None:
     bad_pct = [p for p in cfg.output.percentiles if not 0.0 < p < 1.0]
     if bad_pct:
         errors.append(f"output.percentiles must be between 0 and 1 (exclusive), got {bad_pct}")
+    mps = cfg.archetype_filters.min_pool_size
+    if isinstance(mps, bool) or not isinstance(mps, int) or mps < 0:
+        errors.append(f"archetype_filters.min_pool_size must be an integer of 0 or more, got {mps!r}")
+    for fld in ("dataset_resstock", "dataset_comstock"):
+        value = getattr(cfg.data, fld)
+        if value is None:
+            continue
+        product = fld.removeprefix("dataset_")
+        parts = split_dataset_id(value) if isinstance(value, str) else None
+        if parts is None:
+            errors.append(
+                f"data.{fld} must be a dataset id 'product:release:weather:scenario:state' "
+                f"(no surrounding whitespace, five non-empty parts), got {value!r}"
+            )
+        elif parts[0] != product:
+            errors.append(f"data.{fld} must start with '{product}:', got {value!r}")
+    for fld in ("resstock_load_basis", "comstock_load_basis"):
+        if getattr(cfg.data, fld) not in (None, "gross", "net"):
+            errors.append(f"data.{fld} must be 'gross' or 'net', got {getattr(cfg.data, fld)!r}")
     for name, c in cfg.composition.categories.items():
         where = f"composition.categories.{name}"
         if c.source not in ("resstock", "comstock"):
