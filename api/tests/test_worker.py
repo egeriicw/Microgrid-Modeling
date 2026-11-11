@@ -24,7 +24,7 @@ SECRET = "S3CRETpw"
 
 
 class FakeResult:
-    def to_dict(self):
+    def to_dict(self, *, include_results: bool = True):
         return {
             "engine_version": "9.9.9",
             "seeds": {"composition_seed": 1, "archetype_seed": 2, "perturbation_seed": 3},
@@ -272,7 +272,9 @@ def test_create_run_rejects_invalid_config_loudly(session):
         svc.create_run(session, {"ensemble": {"mode": "not-a-mode"}})
 
 
-def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config):
+def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config, settings, tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update={"output_dir": tmp_path / "out"}))
+    tiny_config["output"] = {"base_dir": str(tmp_path / "out" / "run1")}
     first = svc.create_run(session, tiny_config, trusted_data_paths=True)
     worker.execute_run(first.id, session_factory)
     session.expire_all()
@@ -281,6 +283,8 @@ def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config
     assert first.result["seeds"] == first.seeds  # seeds recorded before execution are the ones actually used
     assert 1 <= len(first.result["metrics"]) <= 6
     json.dumps(first.result)
+    assert "results" not in first.result  # the runs table keeps the compact summary only
+    assert "results" in json.loads((tmp_path / "out" / "run1" / "results.json").read_text())
 
     # The run's own stored snapshot (config + recorded seeds) replays it. NOTE: result["config_snapshot"] is the
     # engine's asdict(cfg) dump, which config_from_dict rejects (top-level name/description, flattened feasibility).

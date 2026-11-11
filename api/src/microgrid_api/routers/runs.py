@@ -15,12 +15,15 @@ import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from microgrid.community_load.permissions import FilterPermissionError, validate_filters_allowed
-from pydantic import BaseModel, ConfigDict, model_validator
+from microgrid.community_load.synthetic.config import config_from_dict
+from pydantic import BaseModel, ConfigDict, StrictInt, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
@@ -44,12 +47,15 @@ class RunCreate(BaseModel):
 
     config: dict[str, Any] | None = None
     composition_id: str | None = None
-    seeds: dict[str, int] | None = None
+    seeds: dict[str, StrictInt] | None = None
 
     @model_validator(mode="after")
     def _one_source(self) -> RunCreate:
         if (self.config is None) == (self.composition_id is None):
             raise ValueError("send exactly one of 'config' or 'composition_id'")
+        for key, value in (self.seeds or {}).items():
+            if not 0 <= value < 2**32:
+                raise ValueError(f"seed {key} must be between 0 and {2**32 - 1}")
         return self
 
 
@@ -94,6 +100,8 @@ def _out(run: Run) -> RunOut:
 
 def _detail(run: Run) -> RunDetail:
     snapshot = {k: v for k, v in run.composition_snapshot.items() if k != "data"}  # never expose server paths
+    if isinstance(snapshot.get("output"), dict):
+        snapshot["output"] = {k: v for k, v in snapshot["output"].items() if k != "base_dir"}
     base = _out(run).model_dump()
     return RunDetail(**base, composition_snapshot=snapshot, result=run.result)
 
@@ -108,13 +116,37 @@ def _visible_run(session: Session, principal: Principal, run_id: uuid.UUID) -> R
     return run
 
 
-def _build_snapshot(settings: Settings, config: dict[str, Any]) -> dict[str, Any]:
+def _build_snapshot(settings: Settings, config: dict[str, Any], run_id: uuid.UUID) -> dict[str, Any]:
+    """Server-built `data` section and per-run `output.base_dir` (<MICROGRID_OUTPUT_DIR>/<run id>)."""
     try:
         data: dict[str, str] = svc.server_side_data_section(settings)
     except ValueError:
         logger.error("cannot build the data section: data directory missing or outside its root")
         raise HTTPException(503, "the server data directory is not available") from None
-    return {**copy.deepcopy(config), "data": data}
+    if settings.output_dir is None:
+        logger.error("MICROGRID_OUTPUT_DIR is not configured")
+        raise HTTPException(503, "the server output directory is not available")
+    snapshot = {**copy.deepcopy(config), "data": data}
+    output = snapshot.get("output")
+    if output is None:
+        output = {}
+    if not isinstance(output, dict):
+        raise HTTPException(422, "'output' must be a mapping")
+    snapshot["output"] = {**output, "base_dir": str(settings.output_dir.resolve() / str(run_id))}
+    return snapshot
+
+
+def _check_caps(settings: Settings, snapshot: dict[str, Any]) -> None:
+    try:
+        parsed = config_from_dict(copy.deepcopy(snapshot), source="<run config>")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    if parsed.composition.total_buildings > settings.max_total_buildings:
+        raise HTTPException(
+            422, f"composition.total_buildings exceeds the server cap of {settings.max_total_buildings}"
+        )
+    if parsed.ensemble.max_runs > settings.max_ensemble_runs:
+        raise HTTPException(422, f"ensemble.max_runs exceeds the server cap of {settings.max_ensemble_runs}")
 
 
 @router.get("/demo-compositions", response_model=DemoCompositions, summary="Predefined compositions")
@@ -145,16 +177,22 @@ def create_run(
             raise HTTPException(
                 422, "the 'data' section is built by the server and must not be sent; remove it from the config"
             )
+        if isinstance(config.get("output"), dict) and "base_dir" in config["output"]:
+            raise HTTPException(422, "output.base_dir is set by the server and must not be sent; remove it")
         bad = svc.path_keys_present(config)
         if bad:
             raise HTTPException(422, f"path fields are not allowed in a client config: {bad}")
     if demo:  # fixed stored seed unless the predefined composition pins its own
         pinned = dict(config.get("rng") or {})
         config["rng"] = {k: pinned.get(k, settings.demo_seed) for k in svc.SEED_KEYS}
-    snapshot = _build_snapshot(settings, config)
+    run_id = uuid.uuid4()
+    snapshot = _build_snapshot(settings, config, run_id)
+    _check_caps(settings, snapshot)
     try:
         validate_filters_allowed(principal.role, snapshot)  # permission flag filters.use
-        run = svc.create_run(session, snapshot, body.seeds, trusted_data_paths=True, owner=principal.subject)
+        run = svc.create_run(
+            session, snapshot, body.seeds, trusted_data_paths=True, owner=principal.subject, run_id=run_id
+        )
     except FilterPermissionError as exc:
         raise HTTPException(403, str(exc)) from None
     except ValueError as exc:
@@ -176,7 +214,7 @@ def list_runs(
     session: Session = Depends(get_session),
     status: RunStatusName | None = None,
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=1_000_000),
 ) -> RunList:
     where = []
     if principal.role != "admin":
@@ -206,6 +244,31 @@ def cancel(
 ) -> RunOut:
     _visible_run(session, principal, run_id)
     return _out(request.app.state.cancel_run(session, run_id))
+
+
+@router.get(
+    "/runs/{run_id}/results",
+    summary="Full results document (JSON file written by the worker)",
+    response_class=FileResponse,
+)
+def get_results(
+    run_id: uuid.UUID,
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    run = _visible_run(session, principal, run_id)
+    settings: Settings = request.app.state.settings
+    if run.status != RunStatus.succeeded.value or settings.output_dir is None:
+        raise HTTPException(404, "results not available")
+    base = (run.composition_snapshot.get("output") or {}).get("base_dir")
+    if not isinstance(base, str):
+        raise HTTPException(404, "results not available")
+    path = (Path(base) / svc.RESULTS_FILENAME).resolve()
+    if not path.is_relative_to(settings.output_dir.resolve()) or not path.is_file():
+        logger.warning("results file for run %s missing or outside the output root", run_id)
+        raise HTTPException(404, "results not available")
+    return FileResponse(path, media_type="application/json")
 
 
 def _poll(factory: Callable[[], Session], run_id: uuid.UUID, after: int) -> tuple[str, list[dict[str, Any]]]:
@@ -242,6 +305,8 @@ async def run_events(
     await anyio.to_thread.run_sync(check)
     try:
         after = int(last_event_id) if last_event_id else 0
+        if not 0 <= after <= 2**31 - 1:
+            raise ValueError
     except ValueError:
         raise HTTPException(422, "Last-Event-ID must be an integer event id") from None
     interval = request.app.state.settings.sse_poll_interval_s

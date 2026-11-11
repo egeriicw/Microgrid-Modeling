@@ -17,12 +17,14 @@ Design:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from celery import Celery
@@ -158,7 +160,10 @@ def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> Non
             session.commit()
 
         try:
-            data = run_scenario(config, progress=on_progress, should_cancel=should_cancel).to_dict()
+            result = run_scenario(config, progress=on_progress, should_cancel=should_cancel)
+            data = result.to_dict(include_results=False)  # compact summary: the only thing the runs table stores
+            full = result.to_dict()
+            results_path = _write_results(rid, config, full) if "results" in full else None
         except RunCancelled:
             session.rollback()
             _finish(session, rid, RunStatus.cancelled)
@@ -167,7 +172,7 @@ def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> Non
             session.rollback()
             _finish(session, rid, RunStatus.failed, error_message=_safe_error(exc))
         else:
-            _finish(
+            ok = _finish(
                 session,
                 rid,
                 RunStatus.succeeded,
@@ -175,6 +180,26 @@ def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> Non
                 seeds=data.get("seeds") or None,
                 engine_version=str(data.get("engine_version") or "") or None,
             )
+            if not ok and results_path is not None:  # cancelled/reaped meanwhile: do not leave an orphan file
+                results_path.unlink(missing_ok=True)
+
+
+def _write_results(rid: uuid.UUID, config: dict[str, Any], full: dict[str, Any]) -> Path:
+    """Write the full results document to ``<output.base_dir>/results.json`` (atomic rename). The directory must be
+    inside MICROGRID_OUTPUT_DIR; anything else fails the run loudly (the API sets base_dir, never the client)."""
+    settings = _settings_override or Settings()
+    base = (config.get("output") or {}).get("base_dir")
+    if settings.output_dir is None or not isinstance(base, str):
+        raise ConfigurationError("results cannot be stored: MICROGRID_OUTPUT_DIR or output.base_dir is missing")
+    directory = Path(base).resolve()
+    if not directory.is_relative_to(settings.output_dir.resolve()):
+        raise ConfigurationError("results cannot be stored: output.base_dir is outside MICROGRID_OUTPUT_DIR")
+    directory.mkdir(parents=True, exist_ok=True)
+    final = directory / svc.RESULTS_FILENAME
+    tmp = directory / f".{svc.RESULTS_FILENAME}.{rid}.tmp"
+    tmp.write_text(json.dumps(full))
+    tmp.replace(final)
+    return final
 
 
 def _run_engine_task_body(run_id: str) -> None:

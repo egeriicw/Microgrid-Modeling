@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     api_keys: list[ApiKey] = Field(default_factory=list, repr=False)
     # Demo role: YAML file {"compositions": {name: scenario-without-data}}; capped size; fixed stored seed.
     demo_compositions_file: Path | None = None  # MICROGRID_DEMO_COMPOSITIONS_FILE
+    # Server-side size caps for EVERY role (MICROGRID_MAX_ENSEMBLE_RUNS / MICROGRID_MAX_TOTAL_BUILDINGS); the demo caps
+    # below are stricter. Over-cap requests are rejected with 422 before anything is stored.
+    max_ensemble_runs: int = Field(default=1000, gt=0)
+    max_total_buildings: int = Field(default=5000, gt=0)
     demo_max_buildings: int = Field(default=50, gt=0)
     demo_max_runs: int = Field(default=20, gt=0)
     demo_seed: int = Field(default=20260101, ge=0)

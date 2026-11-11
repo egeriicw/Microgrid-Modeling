@@ -33,6 +33,8 @@ def load_demo_compositions(settings: Settings) -> dict[str, dict[str, Any]]:
 def _validate(name: str, cfg: dict[str, Any], settings: Settings) -> dict[str, Any]:
     if "data" in cfg or svc.path_keys_present(cfg):
         raise ConfigurationError(f"demo composition '{name}': 'data' and path fields are built by the server.")
+    if isinstance(cfg.get("output"), dict) and "base_dir" in cfg["output"]:
+        raise ConfigurationError(f"demo composition '{name}': output.base_dir is set by the server.")
     try:
         parsed = config_from_dict(copy.deepcopy(cfg), source=f"<demo composition {name}>")
         validate_filters_allowed(DEMO_ROLE, parsed)

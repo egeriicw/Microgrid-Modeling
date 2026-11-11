@@ -1,7 +1,6 @@
 """Independent QA of the Sprint 2 HTTP layer (auth, run endpoints, demo, reaper, migration, openapi).
 
-Passing tests are regression guards found during review; xfail(strict=True) tests are real defects (the reason names
-the defect). Remove the xfail marker when the defect is fixed."""
+Regression guards found during review; the "defect" tests were xfail until the fix pass and now pass."""
 
 from __future__ import annotations
 
@@ -50,7 +49,6 @@ def _bare_run(**kw):
 # ---- defects ----------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-1 (high): client sets output.base_dir; MICROGRID_OUTPUT_DIR is unused")
 @pytest.mark.parametrize("base", ["/etc/cron.d", "../../escape", "/tmp/anything"])
 def test_defect_client_output_base_dir_is_rejected(api, tiny_config, base):
     cfg = client_config(tiny_config)
@@ -58,7 +56,6 @@ def test_defect_client_output_base_dir_is_rejected(api, tiny_config, base):
     assert _post(api, cfg).status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-1b: a client run's snapshot must write under MICROGRID_OUTPUT_DIR")
 def test_defect_snapshot_output_under_server_output_dir(api, tiny_config, http_settings):
     r = _post(api, client_config(tiny_config))
     assert r.status_code == 202
@@ -67,9 +64,6 @@ def test_defect_snapshot_output_under_server_output_dir(api, tiny_config, http_s
     assert snap.get("output", {}).get("base_dir", "").startswith(str(http_settings.output_dir))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="DEFECT-2 (medium): huge Last-Event-ID overflows the DB integer inside the stream"
-)
 def test_defect_huge_last_event_id(api, tiny_config):
     # Today: HTTP 200 with an empty body (the generator dies on the DB OverflowError); expected: 422 up front.
     rid = _post(api, client_config(tiny_config)).json()["id"]
@@ -77,27 +71,23 @@ def test_defect_huge_last_event_id(api, tiny_config):
     assert r.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-3 (low): offset has no upper bound; huge value overflows the DB, 500")
 def test_defect_huge_offset(api):
     r = api.get("/api/v1/runs?offset=" + str(10**30), headers=bearer("alice"))
     assert r.status_code in (200, 422)
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-4 (low): negative or oversized seeds accepted, fail later in the worker")
 @pytest.mark.parametrize("seed", [-1, 2**70])
 def test_defect_bad_seed_rejected_at_creation(api, tiny_config, seed):
     r = _post(api, client_config(tiny_config), seeds={"composition_seed": seed})
     assert r.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-5 (medium): no size cap for client/admin; max_runs unbounded")
 def test_defect_client_resource_cap(api, tiny_config):
     cfg = client_config(tiny_config)
     cfg["ensemble"] = {"mode": "fixed", "max_runs": 10**9}
     assert _post(api, cfg).status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-6 (low): a demo composition file may carry output.base_dir")
 def test_defect_demo_composition_with_output_base_dir_refused(tmp_path, synthetic_dataset, tiny_config):
     cfg = client_config(tiny_config)
     cfg["output"] = {"base_dir": "/tmp/elsewhere"}

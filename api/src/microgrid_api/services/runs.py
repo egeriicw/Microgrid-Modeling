@@ -41,6 +41,7 @@ SEED_KEYS = ("composition_seed", "archetype_seed", "perturbation_seed")
 _PATH_SUFFIXES = ("_dir", "_dirs", "_file", "_path")
 # Path-like fields of the engine's DataConfig, read from the engine rather than hard-coded.
 DATA_PATH_KEYS = frozenset(f.name for f in fields(DataConfig) if f.name.endswith(_PATH_SUFFIXES))
+RESULTS_FILENAME = "results.json"  # full results document, under the run's output.base_dir
 FORBIDDEN_KEYS = frozenset({"data_dir", "data_dirs", "output_dir"})
 
 
@@ -86,6 +87,9 @@ def _resolved_seeds(snapshot: dict[str, Any], seeds: dict[str, Any] | None) -> d
     unknown = sorted(set(merged) - set(SEED_KEYS))
     if unknown:
         raise ValueError(f"unknown seed keys {unknown}; allowed: {list(SEED_KEYS)}")
+    for key, value in merged.items():
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 2**32):
+            raise ValueError(f"seed {key} must be an integer between 0 and {2**32 - 1}")
     resolved = asdict(resolve_seeds(RNGConfig(**merged)))
     return {k: int(resolved[k]) for k in SEED_KEYS}
 
@@ -98,6 +102,7 @@ def create_run(
     validate: bool = True,
     trusted_data_paths: bool = False,
     owner: str | None = None,
+    run_id: uuid.UUID | None = None,
 ) -> Run:
     """Store a queued run. Unset seeds are resolved HERE, before execution, so the exact seeds are on the row and
     the stored snapshot alone replays the run. ``validate`` (default) checks the config with the engine's strict
@@ -114,7 +119,7 @@ def create_run(
     if validate:
         config_from_dict(copy.deepcopy(snapshot), source="<run snapshot>")
     run = Run(
-        id=uuid.uuid4(),
+        id=run_id or uuid.uuid4(),
         composition_snapshot=snapshot,
         seeds=resolved,
         engine_version=ENGINE_VERSION,

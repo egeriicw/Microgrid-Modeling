@@ -29,7 +29,7 @@ PG = os.environ.get("MICROGRID_TEST_DATABASE_URL")
 
 
 class _Result:
-    def to_dict(self):
+    def to_dict(self, *, include_results: bool = True):
         return {"engine_version": "9.9.9", "seeds": {}, "metrics": [{"run_index": 0}]}
 
 
