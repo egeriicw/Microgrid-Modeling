@@ -107,10 +107,10 @@ def test_build_context_keeps_what_pip_install_needs():
 def test_no_directory_named_data_under_packages():
     """`**/data` in .dockerignore silently strips any nested data/ dir (e.g. package data) from the image."""
     assert "**/data" in _ignored_top_level()
-    for pkg in ("src", "api"):
+    for pkg in ("src", "api/src"):
         base = ROOT / pkg
         if base.exists():
-            hits = [p for p in base.rglob("data") if p.is_dir() and "node_modules" not in p.parts]
+            hits = [p for p in base.rglob("data") if p.is_dir()]
             assert not hits, f"{hits} would be excluded from the image by **/data"
 
 
