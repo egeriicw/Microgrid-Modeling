@@ -5,15 +5,13 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useApiClient } from "../../api/context";
 import { DEMO_RUN_ID, type Composition, type EntryMode } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { validateComposition } from "./validate";
+import { parseNumber as num, validateComposition } from "./validate";
 
 interface EntryForm {
   typeId: string;
   mode: EntryMode;
   value: string;
 }
-
-const num = (raw: string) => (raw.trim() === "" ? Number.NaN : Number(raw));
 
 export function CompositionPage() {
   const client = useApiClient();

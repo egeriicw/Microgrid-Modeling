@@ -9,31 +9,31 @@ export interface TableData {
   rows: (string | number)[][];
 }
 
-const WEATHER = "weather year AMY2018 (actual 2018 weather, not a typical year)";
+const WEATHER = (weatherYear: string) => `weather year ${weatherYear}`;
 const f1 = (v: number) => v.toFixed(1);
 
-export function dailyTable(s: LoadSeries): TableData {
+export function dailyTable(s: LoadSeries, weatherYear: string): TableData {
   return {
-    caption: `Daily load and temperature, ${WEATHER}`,
+    caption: `Daily load and temperature, ${WEATHER(weatherYear)}`,
     columns: ["Date (UTC)", "Mean load (kW)", "Peak load (kW)", "Mean temperature (°C)"],
     rows: dailySummary(s.ts, s.total, s.temperature).map((r) => [r.date, f1(r.meanKw), f1(r.peakKw), f1(r.meanTempC)]),
   };
 }
 
-export function loadDurationTable(s: LoadSeries): TableData {
+export function loadDurationTable(s: LoadSeries, weatherYear: string): TableData {
   const curves = [s.total, s.residential, s.commercial].map(loadDurationCurve);
   const rows = Array.from({ length: 11 }, (_, k) => {
     const pct = k * 10;
     return [`${pct}`, ...curves.map((c) => f1(c.values[Math.round((pct / 100) * (c.values.length - 1))]))];
   });
   return {
-    caption: `Load-duration curve sampled every 10 percent of time, ${WEATHER}`,
+    caption: `Load-duration curve sampled every 10 percent of time, ${WEATHER(weatherYear)}`,
     columns: ["Percent of time at or above", "Total (kW)", "Residential (kW)", "Commercial (kW)"],
     rows,
   };
 }
 
-export function seasonalTable(s: LoadSeries): TableData {
+export function seasonalTable(s: LoadSeries, weatherYear: string): TableData {
   const prof = seasonalDailyProfile(s.ts, s.total);
   const slots = prof.winter.length;
   const perHour = slots / 24;
@@ -47,18 +47,18 @@ export function seasonalTable(s: LoadSeries): TableData {
     }),
   ]);
   return {
-    caption: `Average daily profile of total load by season (hourly means), ${WEATHER}`,
+    caption: `Average daily profile of total load by season (hourly means), ${WEATHER(weatherYear)}`,
     columns: ["Time of day (UTC)", ...SEASONS.map((x) => `${SEASON_DEFS[x].name} (kW)`)],
     rows,
   };
 }
 
-export function splitTable(s: LoadSeries): TableData {
+export function splitTable(s: LoadSeries, weatherYear: string): TableData {
   const e = sectorEnergyMwh(s);
   const total = e.residential + e.commercial;
   const row = (name: string, v: number) => [name, f1(v), `${((100 * v) / total).toFixed(1)}%`];
   return {
-    caption: `Annual energy by sector, ${WEATHER}`,
+    caption: `Annual energy by sector, ${WEATHER(weatherYear)}`,
     columns: ["Sector", "Energy (MWh)", "Share"],
     rows: [row("Residential", e.residential), row("Commercial", e.commercial)],
   };

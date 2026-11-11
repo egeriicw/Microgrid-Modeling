@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockClient } from "./mockClient";
 import { ApiError, type Composition } from "./types";
 
@@ -74,5 +74,24 @@ describe("mock ApiClient", () => {
     expect(r.calibrationStatus).toMatch(/not calibrated/i);
     expect(r.series.ts).toHaveLength(96 * 8);
     expect(r.series.total[0]).toBeCloseTo(r.series.residential[0] + r.series.commercial[0], 6);
+  });
+
+  it("persists the session in sessionStorage only when asked, and survives a bad storage", async () => {
+    sessionStorage.clear();
+    const a = createMockClient({ persistSession: true });
+    await a.login("admin");
+    const b = createMockClient({ persistSession: true });
+    expect((await b.getSession())?.role).toBe("admin");
+    await b.logout();
+    expect(await createMockClient({ persistSession: true }).getSession()).toBeNull();
+    // not persisted by default
+    await createMockClient().login("client");
+    expect(await createMockClient({ persistSession: true }).getSession()).toBeNull();
+    // storage that throws must not break the client
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    expect(await createMockClient({ persistSession: true }).getSession()).toBeNull();
+    spy.mockRestore();
   });
 });

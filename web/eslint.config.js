@@ -16,7 +16,13 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "warn",
       // All HTTP lives in src/api/. The real generated client replaces src/api/mockClient.ts later.
       "no-restricted-globals": ["error", { name: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." }],
+      "no-restricted-properties": [
+        "error",
+        { object: "window", property: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." },
+        { object: "globalThis", property: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." },
+        { object: "self", property: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." },
+      ],
     },
   },
-  { files: ["src/api/**", "src/**/*.test.{ts,tsx}"], rules: { "no-restricted-globals": "off" } },
+  { files: ["src/api/**", "src/**/*.test.{ts,tsx}"], rules: { "no-restricted-globals": "off", "no-restricted-properties": "off" } },
 );

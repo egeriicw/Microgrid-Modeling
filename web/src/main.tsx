@@ -11,15 +11,16 @@ import { AuthProvider } from "./auth/AuthContext";
 // Colour-blind-safe primary (Okabe-Ito blue). Swap createMockClient for the generated client when the API exists.
 const theme = createTheme({ palette: { primary: { main: "#0072B2" } } });
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
-const client = createMockClient();
+const client = createMockClient({ persistSession: true });
 
-createRoot(document.getElementById("root")!).render(
+void client.getSession().then((initialSession) =>
+  createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={client}>
-          <AuthProvider>
+          <AuthProvider initialSession={initialSession}>
             <BrowserRouter>
               <AppRoutes />
             </BrowserRouter>
@@ -28,4 +29,5 @@ createRoot(document.getElementById("root")!).render(
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,
+  ),
 );

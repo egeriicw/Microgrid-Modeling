@@ -1,5 +1,4 @@
-// Independent QA review tests. `it.fails` marks a defect that still exists: it passes while the defect is
-// present and starts failing (loudly) when someone fixes it, at which point change it to a plain `it`.
+// Independent QA review tests (defects D1-D3 are fixed; their former `it.fails` markers are now plain tests).
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +36,7 @@ describe("QA: composition validation holes", () => {
 
   // DEFECT D1: mixing fixed counts with fractions skips the fraction-sum check, so 60 fixed + fractions summing to
   // 100% of 100 buildings (160 buildings) is accepted.
-  it.fails("rejects fixed counts plus fractions that over-fill the total", () => {
+  it("rejects fixed counts plus fractions that over-fill the total", () => {
     const e = validateComposition({
       ...ok,
       entries: [
@@ -49,17 +48,17 @@ describe("QA: composition validation holes", () => {
   });
 
   // DEFECT D2: no upper bounds. A seed above the 32/64-bit range or a billion max runs passes client validation.
-  it.fails("rejects an overflowing seed", () => {
+  it("rejects an overflowing seed", () => {
     expect(validateComposition({ ...ok, seed: 1e300 }).seed).toBeTruthy();
   });
-  it.fails("rejects an absurd maxRuns", () => {
+  it("rejects an absurd maxRuns", () => {
     expect(validateComposition({ ...ok, maxRuns: 1e12 }).maxRuns).toBeTruthy();
   });
 });
 
 describe("QA: results labels come from the API", () => {
   // DEFECT D3: the weather-year subtitle on each card is hardcoded "AMY2018" instead of results.weatherYear.
-  it.fails("does not hardcode AMY2018 when the API says another weather year", async () => {
+  it("does not hardcode AMY2018 when the API says another weather year", async () => {
     const base = createMockClient({ pointsPerYear: 96 * 20 });
     const client: ApiClient = { ...base, getResults: async (id) => ({ ...(await base.getResults(id)), weatherYear: "TMY3" }) };
     await renderApp({ route: "/results/demo-run", role: "client", client });

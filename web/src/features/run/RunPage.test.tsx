@@ -55,4 +55,14 @@ describe("run screen (FR-WEB-2)", () => {
     await renderApp({ route: "/runs/nope", role: "client" });
     expect(await screen.findByRole("alert")).toHaveTextContent(/not found/i);
   });
+
+  it("hides Cancel from the demo role", async () => {
+    const client = createMockClient({ runsPerPoll: 1 });
+    await client.login("client");
+    const { runId } = await client.startRun(comp);
+    await client.login("demo");
+    await renderApp({ route: `/runs/${runId}`, role: "demo", client });
+    await screen.findByText(/runs completed/i);
+    expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
+  });
 });

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { useApiClient } from "../../api/context";
 import type { RunStatus } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 
 const isTerminal = (s: RunStatus | undefined) => s !== undefined && s.state !== "running";
 
@@ -10,6 +11,7 @@ export function RunPage({ pollMs = 1000 }: { pollMs?: number }) {
   const { runId = "" } = useParams();
   const client = useApiClient();
   const qc = useQueryClient();
+  const { can } = useAuth();
   const run = useQuery({
     queryKey: ["run", runId],
     queryFn: () => client.getRun(runId),
@@ -41,7 +43,7 @@ export function RunPage({ pollMs = 1000 }: { pollMs?: number }) {
             </Box>
           )}
           <Box sx={{ mt: 3, display: "flex", gap: 2 }}>
-            {s?.state === "running" && (
+            {s?.state === "running" && can.startRuns && (
               <Button variant="outlined" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel run</Button>
             )}
             {s?.state === "succeeded" && (

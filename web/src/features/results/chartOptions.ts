@@ -104,14 +104,17 @@ function pairs(x: ArrayLike<number>, y: ArrayLike<number>): number[][] {
   return out;
 }
 
-const fast = { showSymbol: false, emphasis: { disabled: true }, progressive: 5000, progressiveThreshold: 3000, sampling: "lttb" as const };
+const fastBase = { showSymbol: false, emphasis: { disabled: true }, progressive: 5000, progressiveThreshold: 3000 };
+const fast = { ...fastBase, sampling: "lttb" as const };
 const base = {
   animation: false,
   useUTC: true,
   color: [OKABE_ITO.black, OKABE_ITO.orange, OKABE_ITO.blue, OKABE_ITO.bluishGreen, OKABE_ITO.vermillion],
-  grid: { left: 64, right: 64, top: 48, bottom: 80 },
+  grid: { left: 64, right: 64, top: 72, bottom: 80 },
   legend: { top: 4 },
-  aria: { enabled: true },
+  // Off on purpose: the container div carries the accessible name (role=img + aria-label); ECharts' own aria
+  // option would overwrite it with an auto-generated description.
+  aria: { enabled: false },
 };
 const yKw = { type: "value" as const, name: "kW", scale: true };
 
@@ -120,7 +123,11 @@ export interface TimeSeriesParams {
   resolution: Resolution;
   showBand: boolean;
   showTemperature: boolean;
+  /** Phone-width layout: narrower side margins, taller top so a wrapped legend clears the axis titles. */
+  compact?: boolean;
 }
+
+export const GRID_TOP = { wide: 72, compact: 104 } as const;
 
 export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
   const d = viewAtResolution(p.series, p.resolution);
@@ -129,14 +136,14 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
     name: s.name,
     color: s.color,
     encode: { x: "ts", y: s.key },
-    lineStyle: { width: 1.2, type: s.dash },
+    lineStyle: { width: 1, type: s.dash },
     ...fast,
   }));
   const band = p.showBand
     ? [
-        { type: "line" as const, name: "P10 (base)", encode: { x: "ts", y: "p10" }, stack: "band", silent: true, lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 }, ...fast },
-        { type: "line" as const, name: "P10-P90 band", encode: { x: "ts", y: "span" }, stack: "band", lineStyle: { opacity: 0 }, areaStyle: { color: OKABE_ITO.skyBlue, opacity: 0.35 }, ...fast },
-        { type: "line" as const, name: "P50", color: OKABE_ITO.bluishGreen, encode: { x: "ts", y: "p50" }, lineStyle: { width: 1.5, type: "solid" as const }, ...fast },
+        { type: "line" as const, name: "P10 (base)", encode: { x: "ts", y: "p10" }, stack: "band", silent: true, symbol: "none", lineStyle: { width: 0, opacity: 0 }, areaStyle: { opacity: 0 }, ...fastBase },
+        { type: "line" as const, name: "P10-P90 band", encode: { x: "ts", y: "span" }, stack: "band", symbol: "none", itemStyle: { color: OKABE_ITO.skyBlue }, lineStyle: { width: 0, opacity: 0 }, areaStyle: { color: OKABE_ITO.skyBlue, opacity: 0.6 }, ...fastBase },
+        { type: "line" as const, name: "P50", color: OKABE_ITO.bluishGreen, encode: { x: "ts", y: "p50" }, lineStyle: { width: 1, type: "solid" as const }, ...fast },
       ]
     : [];
   const temp = p.showTemperature
@@ -154,11 +161,12 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
     : [];
   return {
     ...base,
-    legend: { top: 4, data: [...loads.map((l) => l.name), ...(p.showBand ? ["P10-P90 band", "P50"] : []), ...(p.showTemperature ? ["Temperature (°C)"] : [])] },
+    grid: { ...base.grid, left: p.compact ? 44 : 64, right: p.compact ? 44 : 64, top: p.compact ? GRID_TOP.compact : GRID_TOP.wide },
+    legend: { top: 4, icon: "rect", itemGap: p.compact ? 8 : 10, data: [...loads.map((l) => l.name), ...(p.showBand ? ["P10-P90 band", "P50"] : []), ...(p.showTemperature ? ["Temperature (°C)"] : [])] },
     dataset: { source: columns(d) },
     tooltip: { show: false }, // replaced by the DOM overlay
     xAxis: { type: "time" },
-    yAxis: [yKw, { type: "value", name: "°C", position: "right", splitLine: { show: false }, scale: true }],
+    yAxis: [{ ...yKw, nameGap: 14 }, { type: "value", name: "°C", position: "right", splitLine: { show: false }, scale: true, nameGap: 14 }],
     dataZoom: [
       { type: "inside", xAxisIndex: 0, filterMode: "filter" },
       { type: "slider", xAxisIndex: 0, filterMode: "filter", height: 24, bottom: 24 },
@@ -167,9 +175,10 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
   };
 }
 
-export function buildLoadDurationOption(series: LoadSeries): EChartsCoreOption {
+export function buildLoadDurationOption(series: LoadSeries, compact = false): EChartsCoreOption {
   return {
     ...base,
+    grid: { ...base.grid, top: compact ? GRID_TOP.compact : GRID_TOP.wide },
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
     xAxis: { type: "value", name: "% of time at or above", min: 0, max: 100 },
     yAxis: yKw,
@@ -195,10 +204,11 @@ export function slotLabels(slots: number): string[] {
   });
 }
 
-export function buildSeasonalOption(series: LoadSeries): EChartsCoreOption {
+export function buildSeasonalOption(series: LoadSeries, compact = false): EChartsCoreOption {
   const prof = seasonalDailyProfile(series.ts, series.total);
   return {
     ...base,
+    grid: { ...base.grid, top: compact ? GRID_TOP.compact : GRID_TOP.wide },
     tooltip: { trigger: "axis" },
     xAxis: { type: "category", data: slotLabels(prof.winter.length), name: "time of day (UTC)" },
     yAxis: yKw,

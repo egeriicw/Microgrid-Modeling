@@ -86,6 +86,29 @@ describe("buildTimeSeriesOption", () => {
     expect(dashes.size).toBe(loads.length);
   });
 
+  it("turns off ECharts' own aria label so the container's accessible name wins", () => {
+    expect(opt().aria.enabled).toBe(false);
+  });
+
+  it("draws the band clearly: strong opacity, rect legend swatch in the band colour, hidden base", () => {
+    const o = opt({ showBand: true });
+    const span = o.series.find((s: Opt) => s.name === "P10-P90 band");
+    expect(span.areaStyle.opacity).toBeGreaterThanOrEqual(0.5);
+    expect(span.itemStyle.color).toBe(span.areaStyle.color);
+    expect(o.legend.icon).toBe("rect");
+    const base = o.series.find((s: Opt) => s.name === "P10 (base)");
+    expect(base.lineStyle.width).toBe(0);
+    expect(base.symbol).toBe("none");
+    expect(o.legend.data).not.toContain("P10 (base)");
+  });
+
+  it("uses roomier margins and a taller top on compact (phone) layouts", () => {
+    const wide = opt();
+    const narrow = opt({ compact: true });
+    expect(narrow.grid.left).toBeLessThan(wide.grid.left);
+    expect(narrow.grid.top).toBeGreaterThan(wide.grid.top);
+  });
+
   it("uses the hourly dataset when asked", () => {
     expect(opt({ resolution: "1h" }).dataset.source.ts).toHaveLength(series.ts.length / 4);
   });

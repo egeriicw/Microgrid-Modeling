@@ -41,4 +41,24 @@ describe("attachHoverOverlay (DOM tooltip, no chart repaint)", () => {
     handlers.mousemove({ offsetX: 1, offsetY: 1 });
     expect((host.querySelector("[role=status]") as HTMLElement).style.display).toBe("none");
   });
+
+  it("tap-to-inspect: a click pins the tooltip through globalout; tapping outside the plot unpins it", () => {
+    const host = document.createElement("div");
+    let inside = true;
+    const handlers: Record<string, (e: { offsetX: number; offsetY: number }) => void> = {};
+    const chart = {
+      getZr: () => ({ on: (n: string, h: never) => (handlers[n] = h), off: vi.fn() }),
+      containPixel: () => inside,
+      convertFromPixel: () => series.ts[10],
+    };
+    attachHoverOverlay(chart as never, host, () => series, ["total"]);
+    const tip = host.querySelector("[role=status]") as HTMLElement;
+    handlers.click({ offsetX: 50, offsetY: 50 });
+    expect(tip.style.display).toBe("block");
+    handlers.globalout({ offsetX: 0, offsetY: 0 }); // finger lifted
+    expect(tip.style.display).toBe("block");
+    inside = false;
+    handlers.click({ offsetX: 1, offsetY: 1 });
+    expect(tip.style.display).toBe("none");
+  });
 });

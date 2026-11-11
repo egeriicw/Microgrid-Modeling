@@ -72,10 +72,10 @@ describe("results screen", () => {
     await open();
     const hourly = screen.getByRole("button", { name: /hourly/i });
     const quarter = screen.getByRole("button", { name: /15-minute/i });
+    expect(hourly).toHaveAttribute("aria-pressed", "true"); // hourly by default: 15-minute lines are unreadable at full-year zoom
+    await user.click(quarter);
     expect(quarter).toHaveAttribute("aria-pressed", "true");
-    await user.click(hourly);
-    expect(hourly).toHaveAttribute("aria-pressed", "true");
-    expect(quarter).toHaveAttribute("aria-pressed", "false");
+    expect(hourly).toHaveAttribute("aria-pressed", "false");
   });
 
   it("adds the P10-P90 band and removes the temperature overlay via switches", async () => {

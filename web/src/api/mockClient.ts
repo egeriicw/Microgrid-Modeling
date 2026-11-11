@@ -17,6 +17,29 @@ export interface MockOptions {
   runsPerPoll?: number;
   /** Length of the fixture series (multiple of 4); default is a full year, 35,040 points. */
   pointsPerYear?: number;
+  /** Keep the mock session in sessionStorage so a reload or deep link keeps the user signed in. */
+  persistSession?: boolean;
+}
+
+const SESSION_KEY = "microgrid.mockSession";
+
+function readStored(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    const v = raw ? (JSON.parse(raw) as Session) : null;
+    return v && ["admin", "client", "demo"].includes(v.role) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(s: Session | null): void {
+  try {
+    if (s) sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* storage blocked: the session just lasts until reload */
+  }
 }
 
 
@@ -36,7 +59,8 @@ function stageFor(fraction: number): string {
 export function createMockClient(options: MockOptions = {}): ApiClient {
   const runsPerPoll = options.runsPerPoll ?? 25;
   const points = options.pointsPerYear ?? FULL_YEAR_POINTS;
-  let session: Session | null = null;
+  const persist = options.persistSession ?? false;
+  let session: Session | null = persist ? readStored() : null;
   const runs = new Map<string, RunRecord>();
   let counter = 0;
   let cached: ResultsData | null = null;
@@ -72,12 +96,15 @@ export function createMockClient(options: MockOptions = {}): ApiClient {
   return {
     async login(role: Role) {
       session = { role, displayName: `Mock ${role}` };
+      if (persist) writeStored(session);
       return session;
     },
     async logout() {
       session = null;
+      if (persist) writeStored(null);
     },
     async getSession() {
+      if (persist) session = readStored();
       return session;
     },
     async listBuildingTypes() {
