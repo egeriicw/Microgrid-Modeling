@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Only these environments may fall back to a local SQLite file and run without a JWT secret.
@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = []
 
     # MICROGRID_DATABASE_URL (postgresql+psycopg://...). SQLite default only in development/test.
-    database_url: str | None = None
-    redis_url: str | None = None  # MICROGRID_REDIS_URL (used from story 1.10)
+    # repr=False: connection URLs can embed passwords and must never show up when settings are printed or logged.
+    database_url: str | None = Field(default=None, repr=False)
+    redis_url: str | None = Field(default=None, repr=False)  # MICROGRID_REDIS_URL (used from story 1.10)
     jwt_secret: SecretStr | None = None  # MICROGRID_JWT_SECRET; no default, required outside development
     data_dir: Path | None = None  # MICROGRID_DATA_DIR, read-only data root
     output_dir: Path | None = None  # MICROGRID_OUTPUT_DIR, writable outputs
