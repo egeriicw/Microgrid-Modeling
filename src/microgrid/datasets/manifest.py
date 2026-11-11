@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from microgrid.datasets.catalog import CatalogError, resolve_data_root
+from microgrid.datasets.pathsafety import is_inside
 
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1
@@ -76,12 +77,10 @@ def _check_root(root: Path) -> Path:
 
 def _inside(root: Path, path: Path, *, must_exist: bool = True) -> bool:
     try:
-        path.resolve(strict=must_exist).relative_to(root.resolve())
-    except ValueError:
-        return False
+        path.resolve(strict=must_exist)  # raises for a broken symlink or loop; containment itself is by identity
+        return is_inside(root, path)
     except (OSError, RuntimeError) as exc:  # broken symlink, symlink loop, permission problem
         raise CatalogError(f"cannot resolve {path} (broken or looping symlink?): {exc}") from exc
-    return True
 
 
 def _safe_rel(rel: str) -> str:
@@ -166,6 +165,21 @@ def write_manifest(manifest: Manifest, path: Path, *, root: Path | None = None) 
         Path(tmp_name).unlink(missing_ok=True)  # only our own just-created temp file
         raise
     return path
+
+
+def content_hash(manifest: Manifest, prefix: str) -> str:
+    """sha256 over the sorted lines ``relpath<TAB>size<TAB>sha256`` of the files under ``prefix`` ONLY.
+
+    ``relpath`` is relative to ``prefix`` (the dataset folder), so the same content gives the same hash wherever the
+    data root lives. No mtimes and no files of other datasets enter the hash. Raises if no file is under ``prefix``.
+    """
+    base = prefix.rstrip("/") + "/"
+    lines = sorted(
+        f"{rel[len(base) :]}\t{e.size}\t{e.sha256}" for rel, e in manifest.files.items() if rel.startswith(base)
+    )
+    if not lines:
+        raise CatalogError(f"manifest lists no files under {prefix}")
+    return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
 
 
 def read_manifest(path: Path) -> Manifest:
