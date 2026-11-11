@@ -1,8 +1,14 @@
 """Data-root manifest: relative path, size and sha256 per file (FR-DATA-1).
 
 Safety rules, enforced in code and tests:
-  * never downloads anything and never deletes or rewrites a data file (the only file ever written is the manifest);
-  * refuses to read or write outside the data root (symlinks that resolve outside it are rejected);
+  * never downloads anything and never deletes or rewrites a data file; the only file ever written is the manifest,
+    via a uniquely named temporary file created exclusively (never following a symlink) and renamed into place;
+  * REFUSED (exit code 2): a symlinked FILE that resolves outside the data root, a symlink loop, a broken symlink,
+    an unreadable file, and a manifest target outside the root;
+  * SKIPPED (never followed, listed in build/verify/report output): symlinked DIRECTORIES, even if they point inside
+    the root, so their contents are not in the manifest;
+  * EXCLUDED from the walk (never hashed, never removed): ``manifest.json`` and leftover temporary files
+    (``manifest.json.tmp``, ``.manifest.json.*.tmp``) directly under the root;
   * resumable and idempotent: a previous manifest is reused for files whose size and mtime are unchanged, and the
     manifest bytes carry no timestamps, so rebuilding an unchanged tree reproduces the same file.
 """
@@ -15,6 +21,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -38,6 +45,7 @@ class FileEntry:
 @dataclass(frozen=True)
 class Manifest:
     files: dict[str, FileEntry] = field(default_factory=dict)
+    skipped_dirs: tuple[str, ...] = ()  # symlinked directories seen while walking; not followed, not serialized
 
 
 @dataclass
@@ -45,6 +53,7 @@ class VerifyReport:
     missing: list[str] = field(default_factory=list)
     modified: list[str] = field(default_factory=list)
     extra: list[str] = field(default_factory=list)  # present on disk but not in the manifest (informational)
+    skipped_dirs: list[str] = field(default_factory=list)  # symlinked directories, not followed
 
     @property
     def ok(self) -> bool:
@@ -65,11 +74,13 @@ def _check_root(root: Path) -> Path:
     return Path(root).resolve()
 
 
-def _inside(root: Path, path: Path) -> bool:
+def _inside(root: Path, path: Path, *, must_exist: bool = True) -> bool:
     try:
-        path.resolve().relative_to(root.resolve())
+        path.resolve(strict=must_exist).relative_to(root.resolve())
     except ValueError:
         return False
+    except (OSError, RuntimeError) as exc:  # broken symlink, symlink loop, permission problem
+        raise CatalogError(f"cannot resolve {path} (broken or looping symlink?): {exc}") from exc
     return True
 
 
@@ -80,24 +91,42 @@ def _safe_rel(rel: str) -> str:
     return rel
 
 
-def _walk(root: Path) -> list[str]:
+def _is_manifest_artifact(rel: str) -> bool:
+    """The manifest itself and temporary files left by an interrupted write (root level only)."""
+    if "/" in rel:
+        return False
+    return rel in (MANIFEST_NAME, MANIFEST_NAME + ".tmp") or (
+        rel.startswith("." + MANIFEST_NAME + ".") and rel.endswith(".tmp")
+    )
+
+
+def _walk_all(root: Path) -> tuple[list[str], list[str]]:
+    """Return (files, symlinked directories), both sorted and relative to ``root``. Directories are never followed."""
     found: list[str] = []
-    for dirpath, _dirs, names in os.walk(root):
+    skipped: list[str] = []
+    for dirpath, dirs, names in os.walk(root, followlinks=False):
+        for d in dirs:
+            if (Path(dirpath) / d).is_symlink():
+                skipped.append((Path(dirpath) / d).relative_to(root).as_posix())
         for name in names:
             full = Path(dirpath) / name
+            rel = full.relative_to(root).as_posix()
+            if _is_manifest_artifact(rel):
+                continue
             if not _inside(root, full):
                 raise CatalogError(f"{full} resolves outside the data root {root}; refusing")
-            rel = full.relative_to(root).as_posix()
-            if rel == MANIFEST_NAME:
-                continue
             found.append(rel)
-    return sorted(found)
+    return sorted(found), sorted(skipped)
+
+
+def _walk(root: Path) -> list[str]:
+    return _walk_all(root)[0]
 
 
 def build_manifest(root: Path, *, previous: Manifest | None = None, progress: Progress | None = None) -> Manifest:
     """Walk ``root`` and hash every file (reusing ``previous`` hashes for files with unchanged size and mtime)."""
     root = _check_root(root)
-    rels = _walk(root)
+    rels, skipped = _walk_all(root)
     files: dict[str, FileEntry] = {}
     for i, rel in enumerate(rels, start=1):
         st = (root / rel).stat()
@@ -108,13 +137,13 @@ def build_manifest(root: Path, *, previous: Manifest | None = None, progress: Pr
             files[rel] = FileEntry(st.st_size, sha256_file(root / rel), st.st_mtime_ns)
         if progress:
             progress(i, len(rels), rel)
-    return Manifest(files)
+    return Manifest(files, tuple(skipped))
 
 
 def write_manifest(manifest: Manifest, path: Path, *, root: Path | None = None) -> Path:
     """Write the manifest atomically. If ``root`` is given, ``path`` must be inside it."""
     path = Path(path)
-    if root is not None and not _inside(Path(root), path):
+    if root is not None and not _inside(Path(root), path, must_exist=False):
         raise CatalogError(f"manifest target {path} is outside the data root {root}; refusing")
     doc = {
         "version": MANIFEST_VERSION,
@@ -123,9 +152,19 @@ def write_manifest(manifest: Manifest, path: Path, *, root: Path | None = None) 
             for rel, e in sorted(manifest.files.items())
         ],
     }
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(doc, indent=1) + "\n")
-    os.replace(tmp, path)
+    payload = (json.dumps(doc, indent=1) + "\n").encode()
+    # mkstemp creates a brand-new file (O_CREAT|O_EXCL, so an existing file or symlink of any name is never opened).
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix="." + path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp_name, 0o644)
+        os.replace(tmp_name, path)  # replaces the name itself; never writes through a symlink at ``path``
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)  # only our own just-created temp file
+        raise
     return path
 
 
@@ -137,9 +176,14 @@ def read_manifest(path: Path) -> Manifest:
     if not isinstance(doc, dict) or doc.get("version") != MANIFEST_VERSION or not isinstance(doc.get("files"), list):
         raise CatalogError(f"manifest {path} has an unsupported format")
     files: dict[str, FileEntry] = {}
-    for item in doc["files"]:
-        rel = _safe_rel(str(item["path"]))
-        files[rel] = FileEntry(int(item["size"]), str(item["sha256"]), int(item.get("mtime_ns", 0)))
+    for i, item in enumerate(doc["files"]):
+        try:
+            rel = _safe_rel(str(item["path"]))
+            files[rel] = FileEntry(int(item["size"]), str(item["sha256"]), int(item.get("mtime_ns", 0)))
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise CatalogError(
+                f"manifest {path}: entry {i} is malformed (needs path, size, sha256): {type(exc).__name__} {exc}"
+            ) from exc
     return Manifest(files)
 
 
@@ -150,15 +194,18 @@ def verify_manifest(root: Path, manifest: Manifest, *, progress: Progress | None
     items = sorted(manifest.files.items())
     for i, (rel, entry) in enumerate(items, start=1):
         full = root / _safe_rel(rel)
-        if not full.is_file():
+        if not (full.is_file() or full.is_symlink()):
             report.missing.append(rel)
+        elif not full.is_file():
+            report.missing.append(rel)  # broken symlink or loop: the file is not there
         elif not _inside(root, full):
             raise CatalogError(f"{full} resolves outside the data root {root}; refusing")
         elif full.stat().st_size != entry.size or sha256_file(full) != entry.sha256:
             report.modified.append(rel)
         if progress:
             progress(i, len(items), rel)
-    report.extra = [r for r in _walk(root) if r not in manifest.files]
+    walked, report.skipped_dirs = _walk_all(root)
+    report.extra = [r for r in walked if r not in manifest.files]
     return report
 
 
@@ -167,7 +214,8 @@ def disk_report(root: Path, *, budget_gb: float = DEFAULT_BUDGET_GB) -> dict[str
     root = _check_root(root)
     by_top: dict[str, int] = {}
     total = 0
-    for rel in _walk(root) + ([MANIFEST_NAME] if (root / MANIFEST_NAME).exists() else []):
+    walked, skipped = _walk_all(root)
+    for rel in walked + ([MANIFEST_NAME] if (root / MANIFEST_NAME).is_file() else []):
         size = (root / rel).stat().st_size
         total += size
         top = rel.split("/", 1)[0] if "/" in rel else "."
@@ -177,6 +225,7 @@ def disk_report(root: Path, *, budget_gb: float = DEFAULT_BUDGET_GB) -> dict[str
         "root": str(root),
         "total_bytes": total,
         "by_top_level": dict(sorted(by_top.items())),
+        "skipped_symlinked_dirs": skipped,
         "free_bytes": shutil.disk_usage(root).free,
         "budget_gb": budget_gb,
         "budget_used_fraction": total / budget_bytes if budget_bytes else 0.0,
@@ -196,6 +245,10 @@ def format_disk_report(rep: dict[str, object]) -> str:
     assert isinstance(by_top, dict)
     lines = [f"Disk use under {rep['root']}"]
     lines += [f"  {name:<20}{_human(size):>12}" for name, size in by_top.items()]
+    skipped = rep.get("skipped_symlinked_dirs") or []
+    assert isinstance(skipped, list)
+    for name in skipped:
+        lines.append(f"  skipped symlinked directory (not followed, not counted): {name}")
     lines.append(f"  {'TOTAL':<20}{_human(float(str(rep['total_bytes']))):>12}")
     pct = float(str(rep["budget_used_fraction"])) * 100
     lines.append(
@@ -225,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
             m = build_manifest(root, previous=previous, progress=_print_progress)
             write_manifest(m, mpath, root=root)
             print(f"wrote {mpath} ({len(m.files)} files)")
+            for d in m.skipped_dirs:
+                print(f"skipped symlinked directory (not followed): {d}")
             rc = 0
         elif args.command == "verify":
             if not mpath.exists():
@@ -241,6 +296,10 @@ def main(argv: list[str] | None = None) -> int:
         return rc
     except CatalogError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, RuntimeError) as exc:  # unreadable file, permission problem, symlink loop: never a traceback
+        where = f" ({getattr(exc, 'filename', None)})" if getattr(exc, "filename", None) else ""
+        print(f"error: filesystem problem{where}: {exc}", file=sys.stderr)
         return 2
 
 

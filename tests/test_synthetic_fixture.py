@@ -115,3 +115,14 @@ def test_deterministic_by_seed(tmp_path):
 def test_fixture_is_small(synthetic_dataset):
     total = sum(p.stat().st_size for p in synthetic_dataset.root.rglob("*") if p.is_file())
     assert total < 15 * 1024 * 1024
+
+
+def test_generated_profiles_are_strictly_positive(synthetic_dataset):
+    ds = synthetic_dataset
+    files = [
+        ds.resstock_dir / "upgrade=0" / "state=DC" / f"{ds.resstock_ids[0]}-0.parquet",
+        ds.comstock_dir / "upgrade=0" / "state=DC" / f"{ds.comstock_ids[0]}-0.parquet",
+    ]
+    for f in files:
+        numeric = pd.read_parquet(f).drop(columns=["timestamp"])
+        assert (numeric > 0).all().all(), f"non-positive values in {f.name}"

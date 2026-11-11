@@ -1,37 +1,39 @@
-# Committed fixture dataset (FR-E11 / NFR-12)
+# Test fixture data (FR-DATA-2): synthetic, generated, never committed
 
-A **tiny** slice of ResStock / ComStock data so the engine integration
-tests, the API worker path, and CI run with **no network and no OEDI
-access**.
+No real ResStock or ComStock file is committed to this repository. Tests use a **synthetic** dataset: made-up
+numbers in the real on-disk layout and column names, so the engine runs with no network and no NREL data.
 
-## Required layout
+- Generator: `tests/fixtures/synthetic_data.py` (`build_synthetic_dataset(root, ...)`, deterministic for a given
+  `seed`).
+- Test access: the session-scoped pytest fixture `synthetic_dataset` (in `tests/conftest.py`). It builds the files once
+  per test session into a pytest temp directory. Nothing is written into git; this directory holds only this README.
+- Do not write into the shared session root. Tests that need a different mix of buildings call
+  `build_synthetic_dataset(tmp_path, resstock_by_height=..., comstock_by_type=...)` with their own `tmp_path`.
+
+## Layout produced
 
 ```
-tests/fixtures/data/
-  input/resstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet   # ~3–5 files
-  input/comstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet   # ~1–2 files
-  background/chars_resstock.xlsx   # sheet: building_characteristics — only the rows for the bldg_ids above
-  background/chars_comstock.xlsx   # sheet: building_characteristics
+<root>/background/chars_resstock.xlsx   # sheet "building_characteristics"
+<root>/background/chars_comstock.xlsx   # sheet "building_characteristics"
+<root>/input/resstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet
+<root>/input/comstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet
 ```
 
-## How to build it (Phase 1.6)
+Parquet files hold one full year (2018) at 15-minute steps (35,040 rows) with a `timestamp` column, the total
+electricity column (`out.electricity.total.energy_consumption..kwh` for ResStock, without the `..kwh` suffix for
+ComStock) and four end-use columns (cooling, heating, lighting, plug loads). All values are strictly positive.
+The characteristics sheets carry `bldg_id`, `completed_status`, `applicability`, `in.geometry_building_type_height`,
+`in.geometry_building_number_units_mf`, `in.sqft..ft2`, `in.hvac_heating_type`, `in.geometry_garage` and a few more
+filter columns (ComStock: `in.comstock_building_type`). Deliberately bad ResStock rows (`completed_status` not
+`Success`, or `applicability` false) are included; their ids are in `SyntheticDataset.bad_resstock_ids`.
 
-1. Pick ~5 ResStock + 2 ComStock `bldg_id`s that survive the
-   `dc_multifamily_baseline.yaml` filters (multifamily + `SmallOffice`).
-   The repo already has ~140 DC ComStock parquet files under
-   `data/input/comstock/...` to sample from.
-2. Copy those parquet files here (optionally downsample each to a few weeks
-   to keep the tree < ~5 MB — the engine only needs a valid `timestamp`
-   column + the total-electricity column; 8760 output length is produced by
-   resampling whatever span is present, so **keep a full year** if any test
-   asserts `len == 8760`).
-3. Build the two `*.xlsx` characteristics files containing **only** the
-   selected `bldg_id` rows with the columns `archetype.py` reads
-   (`bldg_id`, `in.geometry_building_type_height`, `in.hvac_heating_type`,
-   `in.sqft..ft2`, `in.geometry_garage`,
-   `in.geometry_building_number_units_mf`, `in.comstock_building_type`).
-4. Regenerate the determinism golden:
-   `pytest tests/test_determinism.py --update-golden`.
+## Gotcha: 8+ story multifamily
 
-Keep this directory small and in git. Real datasets are provisioned by
-`scripts/download_oedi.py` into `data/input/**` (gitignored).
+The default fixture has **no** "Multi-Family with 5+ Units, 8+ Stories" buildings (defaults: single-family detached,
+2-4 unit multifamily, 5+ units 4-7 stories). The baseline scenario YAML
+(`configs/scenarios/dc_multifamily_baseline.yaml`) draws from 8+ story buildings too, so a test that runs it must pass
+`resstock_by_height` including that type, for example
+`{"Multi-Family with 2 - 4 Units": 4, "Multi-Family with 5+ Units, 8+ Stories": 3, ...}`. See
+`tests/test_qa_1_6_review.py::test_engine_end_to_end_on_synthetic_fixture`.
+
+Real datasets are provisioned on the owner's machine under the data root (git-ignored `data/`), never in git.
