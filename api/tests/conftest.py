@@ -14,12 +14,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from microgrid_api.config import Settings
+from microgrid_api.db.migrate import upgrade_to_head
 from microgrid_api.main import create_app
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", environment="test")
+    s = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", environment="test")
+    upgrade_to_head(s.require_database_url())  # /ready also checks the schema, so the test DB is migrated
+    return s
 
 
 @pytest.fixture

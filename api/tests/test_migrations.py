@@ -6,12 +6,12 @@ import os
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect
 
-from alembic import command
 from microgrid_api.db.base import Base
 from microgrid_api.db.models import Composition  # noqa: F401  (register models)
 
@@ -21,7 +21,7 @@ TABLES = {"users", "compositions", "runs", "run_events"}
 
 def _cfg(url: str) -> Config:
     cfg = Config(str(API_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(API_DIR / "alembic"))
+    cfg.set_main_option("script_location", str(API_DIR / "src" / "microgrid_api" / "migrations"))
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
