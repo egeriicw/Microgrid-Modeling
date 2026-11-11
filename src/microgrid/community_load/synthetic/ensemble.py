@@ -30,6 +30,7 @@ from microgrid.community_load.synthetic._types import (
 )
 from microgrid.community_load.synthetic.composition import sample_buildings, sample_composition
 from microgrid.community_load.synthetic.config import ConvergenceConfig, ScenarioConfig
+from microgrid.community_load.synthetic.convergence import ConvergenceCheck, ConvergenceTracker
 from microgrid.community_load.synthetic.loader import load_and_scale_profile
 from microgrid.community_load.synthetic.rng import (
     RNGBundle,
@@ -113,6 +114,14 @@ def _run_single(
 
     metrics = aggregation.compute_metrics(total_hourly)
 
+    # 15-minute and per-category views for the results model; they never feed back into the numbers above.
+    res_15 = aggregation.aggregate_profiles_15min(res_profiles)
+    com_15 = aggregation.aggregate_profiles_15min(com_profiles)
+    category_profiles = {
+        cat: aggregation.aggregate_profiles([p for p in profiles if p.category == cat])
+        for cat in dict.fromkeys(p.category for p in profiles)
+    }
+
     # --- Feasibility evaluation (Section 6) ---
     feasible, violations = feasibility.passes_hard_constraints(
         metrics["peak_kw"],
@@ -143,6 +152,9 @@ def _run_single(
         feasible=feasible,
         soft_score=soft_score,
         perturbation_logs=perturbation_logs,
+        residential_profile_15min=res_15,
+        commercial_profile_15min=com_15,
+        category_profiles=category_profiles,
     )
 
 
@@ -194,6 +206,7 @@ def _build_ensemble_result(
     converged: bool,
     n_attempted: int,
     cfg: ScenarioConfig,
+    convergence_checks: list[ConvergenceCheck] | None = None,
 ) -> EnsembleResult:
     """Compute derived ensemble statistics from raw runs."""
     import numpy as np
@@ -248,6 +261,7 @@ def _build_ensemble_result(
         percentile_envelopes=percentile_envelopes,
         diversity_metrics=diversity_metrics,
         representative_cases=representative_cases,
+        convergence_checks=list(convergence_checks or []),
     )
 
 
@@ -264,6 +278,7 @@ def run_ensemble(
     before_run: Callable[[int, int, int], None] | None = None,
     after_run: Callable[[NeighborhoodResult, int, int], None] | None = None,
     on_check: Callable[[bool, int, int], None] | None = None,
+    on_convergence: Callable[[ConvergenceCheck], None] | None = None,
 ) -> EnsembleResult:
     """Run the full ensemble generation loop.
 
@@ -277,6 +292,7 @@ def run_ensemble(
       before_run(run_index, n_attempted, n_feasible)   called before each run
       after_run(result, n_attempted, n_feasible)       called after each run, feasible or not
       on_check(converged, n_attempted, n_feasible)     called after each adaptive convergence check
+      on_convergence(check)                            the full ConvergenceCheck, called just before on_check
     """
     # Random seeds unless the config fixes them; always recorded in the result so the run can be replayed.
     used = seed_triple(resolve_seeds(cfg.rng))
@@ -287,6 +303,8 @@ def run_ensemble(
     feasible_runs: list[NeighborhoodResult] = []
     converged = False
     n_attempted = 0
+    checks: list[ConvergenceCheck] = []
+    tracker = ConvergenceTracker(cfg.convergence) if cfg.convergence.rule == "prd_default" else None
 
     for i in range(ens_cfg.max_runs):
         if before_run is not None:
@@ -304,7 +322,24 @@ def run_ensemble(
         if ens_cfg.mode == "adaptive":
             n_feasible = len(feasible_runs)
             if n_feasible >= ens_cfg.min_runs and n_feasible % ens_cfg.check_every == 0:
-                is_converged = _check_convergence(feasible_runs, cfg.convergence)
+                if tracker is not None:
+                    check = tracker.check(feasible_runs, n_attempted)
+                    is_converged = check.converged
+                else:
+                    is_converged = _check_convergence(feasible_runs, cfg.convergence)
+                    check = ConvergenceCheck(
+                        rule="legacy_window",
+                        n_attempted=n_attempted,
+                        n_feasible=n_feasible,
+                        passed=is_converged,
+                        consecutive_passes=1 if is_converged else 0,
+                        required_passes=1,
+                        converged=is_converged,
+                        epsilon=cfg.convergence.epsilon,
+                    )
+                checks.append(check)
+                if on_convergence is not None:
+                    on_convergence(check)
                 if on_check is not None:
                     on_check(is_converged, n_attempted, n_feasible)
                 if is_converged:
@@ -319,6 +354,6 @@ def run_ensemble(
     if not converged and ens_cfg.mode == "fixed":
         converged = True  # fixed mode always "completes"
 
-    ensemble_result = _build_ensemble_result(all_runs, converged, n_attempted, cfg)
+    ensemble_result = _build_ensemble_result(all_runs, converged, n_attempted, cfg, checks)
     ensemble_result.seeds = dict(zip(("composition_seed", "archetype_seed", "perturbation_seed"), used, strict=True))
     return ensemble_result

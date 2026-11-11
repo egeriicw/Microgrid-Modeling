@@ -6,9 +6,12 @@ No computation lives here — only data contracts between modules.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from microgrid.community_load.synthetic.convergence import ConvergenceCheck
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -78,6 +81,9 @@ class PerturbedProfile:
     original_annual_kwh: float
     perturbed_annual_kwh: float
     perturbation_log: dict = field(default_factory=dict)
+    # The same profile at the source's 15-minute resolution (kWh per interval), when available. Its sum equals
+    # ``hourly_kwh.sum()``; the hourly series is always the one existing numbers are computed from.
+    kwh_15min: LoadProfile | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +107,11 @@ class NeighborhoodResult:
     feasible: bool
     soft_score: float
     perturbation_logs: list[dict] = field(default_factory=list)
+    # 15-minute residential / commercial kWh per interval (None when the run has no 15-minute data), and the
+    # hourly kWh profile of each composition category ("building type"). Added for the results model (FR-ENG-5/7).
+    residential_profile_15min: LoadProfile | None = None
+    commercial_profile_15min: LoadProfile | None = None
+    category_profiles: dict[str, LoadProfile] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -121,3 +132,4 @@ class EnsembleResult:
     diversity_metrics: dict[str, float] = field(default_factory=dict)
     representative_cases: dict[str, NeighborhoodResult] = field(default_factory=dict)
     seeds: dict[str, int] = field(default_factory=dict)  # seeds actually used; supply them to replay the run
+    convergence_checks: list[ConvergenceCheck] = field(default_factory=list)  # one per adaptive check, in order
