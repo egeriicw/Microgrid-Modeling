@@ -24,12 +24,6 @@ from tests.test_run_facade import build_tiny_config
 # ---- convergence ----------------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: the check fires after every attempt while n_feasible is a multiple of check_every, so an "
-    "infeasible (rejected) run re-checks the identical ensemble; rel_change is 0 and the pass counter climbs "
-    "without any new information, giving false convergence",
-)
 def test_rejected_runs_do_not_trigger_extra_convergence_checks(stub_pool, monkeypatch):  # noqa: F811
     base = _fake_single(noise=0.0)
 
@@ -44,15 +38,10 @@ def test_rejected_runs_do_not_trigger_extra_convergence_checks(stub_pool, monkey
     assert res.converged is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: ConvergenceCheck.to_dict() can carry NaN/Infinity for non-finite input, which is not strict "
-    "JSON (the results model rejects non-finite input loudly; the tracker should too)",
-)
 def test_check_dict_is_strict_json_for_non_finite_profiles():
     runs = [_run(0, profile=np.zeros(24)), _run(1, profile=np.full(24, np.inf))]
-    chk = ConvergenceTracker(_cc()).check(runs, 2)
-    json.dumps(chk.to_dict(), allow_nan=False)
+    with pytest.raises(ValueError, match="non-finite"):
+        ConvergenceTracker(_cc()).check(runs, 2)
 
 
 def test_zero_variance_ensemble_is_not_a_divide_by_zero_and_converges():

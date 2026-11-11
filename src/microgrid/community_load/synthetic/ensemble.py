@@ -303,6 +303,7 @@ def run_ensemble(
     feasible_runs: list[NeighborhoodResult] = []
     converged = False
     n_attempted = 0
+    last_checked = 0  # n_feasible at the latest check: a rejected run adds no information, so no re-check
     checks: list[ConvergenceCheck] = []
     tracker = ConvergenceTracker(cfg.convergence) if cfg.convergence.rule == "prd_default" else None
 
@@ -321,7 +322,8 @@ def run_ensemble(
 
         if ens_cfg.mode == "adaptive":
             n_feasible = len(feasible_runs)
-            if n_feasible >= ens_cfg.min_runs and n_feasible % ens_cfg.check_every == 0:
+            if n_feasible > last_checked and n_feasible >= ens_cfg.min_runs and n_feasible % ens_cfg.check_every == 0:
+                last_checked = n_feasible
                 if tracker is not None:
                     check = tracker.check(feasible_runs, n_attempted)
                     is_converged = check.converged

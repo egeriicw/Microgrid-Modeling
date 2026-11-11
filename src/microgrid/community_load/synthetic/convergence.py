@@ -95,9 +95,13 @@ class ConvergenceTracker:
                 f"all runs must have profiles of the same length to check convergence, got {sorted(lengths)}"
             )
         profiles = np.vstack([r.total_profile.to_numpy(dtype=float) for r in feasible_runs])
+        if not np.isfinite(profiles).all():
+            raise ValueError("cannot check convergence: a run profile contains NaN or non-finite values")
         energy = float(np.mean([r.annual_energy_kwh for r in feasible_runs]))
         peak = float(np.mean([r.peak_kw for r in feasible_runs]))
         mean_profile = profiles.mean(axis=0)
+        if not (math.isfinite(energy) and math.isfinite(peak)):
+            raise ValueError("cannot check convergence: annual energy or peak is not finite")
 
         rel_se: float | None = None
         if k >= 2 and profiles.shape[1] > 0:

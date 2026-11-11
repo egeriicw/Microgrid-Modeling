@@ -69,3 +69,29 @@ source (post multifamily scaling) energy. In the envelopes: `sum(hourly.mean_kw)
 
 Coincidence and diversity factors, representative cases and the temperature series (FR-ENG-7 / FR-ENG-10) are not in
 this version; 15-minute resolution is provided for total/residential/commercial only (not per building type).
+
+## Convergence formulas (rule `prd_default`)
+
+Plain language: every `check_every` feasible runs (starting at `min_runs`) the engine compares the ensemble now with the
+ensemble at the previous check, and asks whether the estimate has stopped moving and is precise enough. A rejected
+(infeasible) run adds no information, so it never triggers a check. A check cannot happen twice for the same count.
+
+Let K be the number of feasible runs, `E` the mean annual energy, `P` the mean peak kW, `m` the mean hourly profile
+(a vector over the hours), and `prev` the value at the previous check.
+
+- `rel_change.annual_energy_kwh = |E - E_prev| / |E_prev|`, and likewise for `peak_kw` with `P`.
+- `rel_change.mean_profile = ||m - m_prev|| / ||m_prev||` (`||.||` is the root-sum-of-squares over hours).
+- `rel_se_p50 = ||SE|| / ||P50||`, where `SE_h = 1.2533 * s_h / sqrt(K)`, `s_h` is the sample standard deviation across
+  runs at hour h (n-1 divisor), and `P50` is the median profile. 1.2533 = sqrt(pi/2), the large-sample ratio of the
+  standard error of a median to that of a mean for normally distributed data (an approximation).
+- A check **passes** when all three `rel_change` values are strictly below `epsilon` and `rel_se_p50` is strictly below
+  `se_target`. The first check has no previous check, so it cannot pass. If a previous value is (near) zero the
+  denominator is taken as 1 (absolute change).
+- **Converged** when `consecutive_checks` (M) checks in a row pass; one failed check resets the count to zero.
+- A run profile containing NaN or infinity raises an error (it never silently fails to converge).
+
+Defaults and status: `epsilon = 0.01` (carried over from the earlier rule), `consecutive_checks = 3` and
+`se_target = 0.02` are **placeholders chosen by the engineer, not owner-approved numbers**; the L2-norm choice and the
+normal-approximation median standard error are also placeholders. The owner approved the shape of the rule
+(2026-11-06, provisional). `max_runs` defaults to 1000 for adaptive mode. `rule: legacy_window` (still the default
+rule) keeps the earlier behaviour.
