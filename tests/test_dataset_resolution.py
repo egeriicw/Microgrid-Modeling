@@ -172,8 +172,11 @@ def test_two_scenarios_for_one_state_resolve_to_different_dirs(synthetic_dataset
     )
     base = resolve_dataset_paths(_cfg(synthetic_dataset, dataset_resstock=RES), cat, root)
     upg = resolve_dataset_paths(
-        _cfg(synthetic_dataset, dataset_resstock="resstock:2025_release_1:amy2018:hvac_0005:DC"), cat, root
+        _cfg(synthetic_dataset, dataset_resstock="resstock:2025_release_1:amy2018:hvac_0005:DC", upgrade="5"),
+        cat,
+        root,
     )
+    # a lone product must agree with the config's data.upgrade (see the QA-F6 tests)
     assert base.data.upgrade == "0" and upg.data.upgrade == "5"
     assert base.data.resstock_timeseries_dir == upg.data.resstock_timeseries_dir  # same parent, other partition
 

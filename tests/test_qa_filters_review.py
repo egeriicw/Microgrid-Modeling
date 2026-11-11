@@ -465,24 +465,48 @@ def test_product_without_an_id_keeps_its_configured_paths(synthetic_dataset, cat
     assert out.data.comstock_load_basis is None and out.data.dataset_comstock is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-F6: resolving only one product overwrites the shared data.upgrade/state that the other product's "
-    "configured path is still read with",
-)
-def test_partial_resolution_does_not_change_the_other_products_upgrade(synthetic_dataset, tmp_path):
+def _one_product_root(synthetic_dataset, tmp_path, partition=5):
     root = tmp_path
     (root / "background").mkdir()
-    (root / "input/resstock/timeseries_individual_buildings/upgrade=5/state=DC").mkdir(parents=True)
+    (root / f"input/resstock/timeseries_individual_buildings/upgrade={partition}/state=DC").mkdir(parents=True)
     (root / "background" / synthetic_dataset.resstock_chars.name).write_bytes(b"x")
+    return root
+
+
+def test_partial_resolution_refuses_a_partition_that_differs_from_the_configured_upgrade(synthetic_dataset, tmp_path):
+    root = _one_product_root(synthetic_dataset, tmp_path)
     catalog = _catalog(_entry("resstock", "2025_release_1", key="u5", partition=5))
     cfg = _cfg(synthetic_dataset, dataset_resstock="resstock:2025_release_1:amy2018:u5:DC")
     assert cfg.data.upgrade == "0"
-    out = resolve_dataset_paths(cfg, catalog, root)
-    assert out.data.upgrade == "0"  # comstock (configured path) must still be read at upgrade=0
+    with pytest.raises(ValueError, match=r"data\.upgrade") as exc:
+        resolve_dataset_paths(cfg, catalog, root)
+    assert str(root) not in str(exc.value)  # names fields, not paths
+    assert cfg.data.upgrade == "0"
 
 
-@pytest.mark.xfail(strict=True, reason="QA-F7: a symlink under the data root can point the resolved dir outside it")
+def test_partial_resolution_refuses_a_state_that_differs_from_the_configured_state(synthetic_dataset, tmp_path):
+    root = tmp_path
+    (root / "background").mkdir()
+    (root / "input/resstock/timeseries_individual_buildings/upgrade=0/state=MD").mkdir(parents=True)
+    (root / "background" / synthetic_dataset.resstock_chars.name).write_bytes(b"x")
+    catalog = _catalog(
+        _entry(
+            "resstock",
+            "2025_release_1",
+            state="MD",
+            path="input/resstock/timeseries_individual_buildings/upgrade=0/state=MD",
+        )
+    )
+    cfg = _cfg(synthetic_dataset, dataset_resstock="resstock:2025_release_1:amy2018:baseline:MD")
+    with pytest.raises(ValueError, match=r"data\.state"):
+        resolve_dataset_paths(cfg, catalog, root)
+
+
+def test_partial_resolution_with_a_matching_partition_still_works(synthetic_dataset, cat):
+    out = resolve_dataset_paths(_cfg(synthetic_dataset, dataset_resstock=RES), cat, synthetic_dataset.root)
+    assert (out.data.upgrade, out.data.state) == ("0", "DC")
+
+
 def test_symlink_out_of_the_data_root_is_refused(synthetic_dataset, tmp_path):
     root, outside = tmp_path / "root", tmp_path / "outside"
     (outside / "upgrade=0/state=DC").mkdir(parents=True)
@@ -490,6 +514,23 @@ def test_symlink_out_of_the_data_root_is_refused(synthetic_dataset, tmp_path):
     (root / "input/resstock").mkdir(parents=True)
     os.symlink(outside, root / "input/resstock/timeseries_individual_buildings")
     (root / "background" / synthetic_dataset.resstock_chars.name).write_bytes(b"x")
+    catalog = _catalog(_entry("resstock", "2025_release_1"))
+    with pytest.raises(ValueError, match="outside"):
+        resolve_dataset_paths(_cfg(synthetic_dataset, dataset_resstock=RES), catalog, root)
+    # the explicit opt-out documents the choice
+    out = resolve_dataset_paths(
+        _cfg(synthetic_dataset, dataset_resstock=RES), catalog, root, allow_symlinks_outside_root=True
+    )
+    assert out.data.resstock_timeseries_dir.startswith(str(root))
+
+
+def test_symlinked_characteristics_file_outside_the_root_is_refused(synthetic_dataset, tmp_path):
+    root, outside = tmp_path / "root", tmp_path / "outside"
+    (root / "input/resstock/timeseries_individual_buildings/upgrade=0/state=DC").mkdir(parents=True)
+    (root / "background").mkdir()
+    outside.mkdir()
+    (outside / "c.xlsx").write_bytes(b"x")
+    os.symlink(outside / "c.xlsx", root / "background" / synthetic_dataset.resstock_chars.name)
     catalog = _catalog(_entry("resstock", "2025_release_1"))
     with pytest.raises(ValueError, match="outside"):
         resolve_dataset_paths(_cfg(synthetic_dataset, dataset_resstock=RES), catalog, root)
@@ -710,3 +751,35 @@ def test_each_missing_piece_is_reported_by_its_own_message(synthetic_dataset, ca
     (other / "input/resstock/timeseries_individual_buildings/upgrade=0/state=DC").mkdir(parents=True)
     with pytest.raises(ValueError, match="background directory .* does not exist"):
         resolve_dataset_paths(cfg, cat, other)
+
+
+# --- dataset id forms: parse_dataset_id and config validation accept exactly the same strings ---------------
+
+
+@pytest.mark.parametrize(
+    "text, ok",
+    [
+        ("resstock:2025_release_1:amy2018:baseline:DC", True),
+        ("resstock/2025_release_1/amy2018/baseline/DC", True),
+        (" resstock:2025_release_1:amy2018:baseline:DC", False),
+        ("resstock:2025_release_1:amy2018:baseline:DC\n", False),
+        ("resstock:2025_release_1: amy2018:baseline:DC", False),
+        ("resstock:2025_release_1:amy2018:baseline:DC ", False),
+        ("resstock:2025_release_1:amy2018:baseline", False),
+        ("resstock:2025_release_1:amy2018::DC", False),
+        ("resstock/2025_release_1/amy2018/baseline/DC\n", False),
+    ],
+)
+def test_parse_and_config_validation_agree_on_dataset_id_forms(synthetic_dataset, text, ok):
+    from microgrid.community_load.dataset_resolution import parse_dataset_id
+
+    raw = build_tiny_config(synthetic_dataset)
+    raw["data"] = {**raw.get("data", {}), "dataset_resstock": text}
+    if ok:
+        assert parse_dataset_id(text).product == "resstock"
+        assert config_from_dict(raw).data.dataset_resstock == text
+    else:
+        with pytest.raises(ValueError):
+            parse_dataset_id(text)
+        with pytest.raises(ValueError, match="dataset_resstock"):
+            config_from_dict(raw)

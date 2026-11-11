@@ -6,8 +6,9 @@ for example ``resstock:2025_release_1:amy2018:baseline:DC``). The engine only ca
 uses, plus the load basis (gross demand or net of on-site generation) that is recorded with the run.
 
 Layout assumed (the project's data folder): ``<data_root>/background/`` holds the characteristics files and
-each catalog entry's ``relative_path`` ends in ``upgrade=<partition_id>/state=<state>`` under a
-``timeseries_individual_buildings`` directory. Characteristics file *names* stay as configured in
+each catalog entry's ``relative_path`` (relative to the data root) ends in
+``upgrade=<partition_id>/state=<state>``; the directory above ``upgrade=N`` becomes the product's
+``*_timeseries_dir``. Nothing else about the path is checked. Characteristics file *names* stay as configured in
 ``data.resstock_chars_file`` / ``data.comstock_chars_file``; they must exist under ``background/``.
 """
 
@@ -16,18 +17,23 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
-from microgrid.community_load.synthetic.config import ScenarioConfig
+from microgrid.community_load.synthetic.config import ScenarioConfig, split_dataset_id
 from microgrid.datasets import Catalog, CatalogEntry, DatasetId
 
 _PRODUCTS = ("resstock", "comstock")
 
 
 def parse_dataset_id(text: str) -> DatasetId:
-    """``product:release:weather:scenario:state`` (or the ``/``-separated ``str(DatasetId)`` form)."""
-    sep = ":" if ":" in text else "/"
-    parts = [p.strip() for p in text.split(sep)]
-    if len(parts) != 5 or not all(parts):
-        raise ValueError(f"dataset id must be 'product:release:weather:scenario:state', got {text!r}")
+    """``product:release:weather:scenario:state`` (or the ``/``-separated ``str(DatasetId)`` form); strict, nothing stripped.
+
+    Same rule as config validation (``synthetic.config.split_dataset_id``).
+    """
+    parts = split_dataset_id(text)
+    if parts is None:
+        raise ValueError(
+            f"dataset id must be 'product:release:weather:scenario:state' (or the '/' form), five non-empty "
+            f"parts with no surrounding whitespace, got {text!r}"
+        )
     return DatasetId(*parts)
 
 
@@ -51,6 +57,7 @@ def resolve_dataset_paths(
     *,
     require_verified: bool = False,
     allow_mixed_load_basis: bool = False,
+    allow_symlinks_outside_root: bool = False,
 ) -> ScenarioConfig:
     """A copy of ``cfg`` whose data paths and load basis come from the catalog entries it names by id.
 
@@ -58,7 +65,12 @@ def resolve_dataset_paths(
     unverified entries when ``require_verified``, a partition path that does not end in
     ``upgrade=<partition>/state=<state>``, resstock and comstock needing different partitions or states
     (the config has one of each), gross/net mixing unless ``allow_mixed_load_basis``, and any missing
-    directory or characteristics file. A product without an id keeps its configured paths.
+    directory or characteristics file. A product without an id keeps its configured paths; because the config
+    has a single ``data.upgrade`` / ``data.state``, a lone resolved product must already agree with them (it is
+    refused, naming the fields, rather than silently changing the partition the other product is read at).
+
+    Every resolved directory and file must stay inside the resolved data root after symlinks are followed;
+    a link that leaves it is refused unless ``allow_symlinks_outside_root=True`` (strict by default).
     """
     root = Path(data_root)
     ids = {p: getattr(cfg.data, f"dataset_{p}") for p in _PRODUCTS}
@@ -92,6 +104,19 @@ def resolve_dataset_paths(
             "Pass allow_mixed_load_basis=True to do it on purpose"
         )
 
+    if len(entries) == 1:
+        (only,) = entries.values()
+        for fld, want, have in (
+            ("upgrade", only.partition_id, cfg.data.upgrade),
+            ("state", only.state, cfg.data.state),
+        ):
+            if str(want) != str(have):
+                raise ValueError(
+                    f"only data.dataset_{next(iter(entries))} is set, and its {fld} ({want!r}) differs from "
+                    f"data.{fld} ({have!r}), which the other product is still read with; set both dataset ids "
+                    f"or change data.{fld} to match"
+                )
+
     background = root / "background"
     if not background.is_dir():
         raise ValueError(f"background directory {background} does not exist")
@@ -102,6 +127,18 @@ def resolve_dataset_paths(
         chars = background / getattr(cfg.data, f"{p}_chars_file")
         if not chars.is_file():
             raise ValueError(f"dataset {e.dataset_id}: characteristics file {chars} does not exist")
+        if not allow_symlinks_outside_root:
+            real_root = root.resolve()
+            for what, path in (
+                ("directory", part),
+                ("characteristics file", chars),
+                ("background directory", background),
+            ):
+                if not path.resolve().is_relative_to(real_root):
+                    raise ValueError(
+                        f"dataset {e.dataset_id}: {what} {path} resolves outside the data root {root} "
+                        "(a symlink?); pass allow_symlinks_outside_root=True to allow it"
+                    )
 
     out = copy.deepcopy(cfg)
     first = next(iter(entries.values()))

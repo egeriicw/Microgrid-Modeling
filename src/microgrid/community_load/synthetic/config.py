@@ -495,6 +495,20 @@ def config_from_dict(raw: object, *, source: str = "<dict>", default_name: str =
     return cfg
 
 
+def split_dataset_id(text: str) -> list[str] | None:
+    """The five parts of a dataset id, or None if ``text`` is not a well-formed id.
+
+    Accepted forms (one rule, shared by config validation and ``parse_dataset_id``): exactly five non-empty
+    parts separated by ``:`` (``product:release:weather:scenario:state``) or, when the text has no ``:``, by
+    ``/`` (the ``str(DatasetId)`` form). No part may carry leading or trailing whitespace or a newline: nothing
+    is stripped, so ``" resstock:..."`` and ``"...:DC\\n"`` are rejected rather than quietly repaired.
+    """
+    parts = text.split(":" if ":" in text else "/")
+    if len(parts) != 5 or any(not p or p != p.strip() for p in parts):
+        return None
+    return parts
+
+
 def validate_config(cfg: ScenarioConfig) -> None:
     """Raise ValueError if any config invariants are violated."""
     errors: list[str] = []
@@ -517,10 +531,17 @@ def validate_config(cfg: ScenarioConfig) -> None:
         errors.append(f"archetype_filters.min_pool_size must be an integer of 0 or more, got {mps!r}")
     for fld in ("dataset_resstock", "dataset_comstock"):
         value = getattr(cfg.data, fld)
-        if value is not None and (not isinstance(value, str) or len([p for p in value.split(":") if p.strip()]) != 5):
-            errors.append(f"data.{fld} must be a dataset id 'product:release:weather:scenario:state', got {value!r}")
-        if value is not None and not value.startswith(fld.removeprefix("dataset_") + ":"):
-            errors.append(f"data.{fld} must start with '{fld.removeprefix('dataset_')}:', got {value!r}")
+        if value is None:
+            continue
+        product = fld.removeprefix("dataset_")
+        parts = split_dataset_id(value) if isinstance(value, str) else None
+        if parts is None:
+            errors.append(
+                f"data.{fld} must be a dataset id 'product:release:weather:scenario:state' "
+                f"(no surrounding whitespace, five non-empty parts), got {value!r}"
+            )
+        elif parts[0] != product:
+            errors.append(f"data.{fld} must start with '{product}:', got {value!r}")
     for fld in ("resstock_load_basis", "comstock_load_basis"):
         if getattr(cfg.data, fld) not in (None, "gross", "net"):
             errors.append(f"data.{fld} must be 'gross' or 'net', got {getattr(cfg.data, fld)!r}")
