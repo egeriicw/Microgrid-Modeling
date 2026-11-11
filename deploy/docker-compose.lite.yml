@@ -1,0 +1,67 @@
+# LITE stack: the API on a small disk (about 1 to 2 GB instead of 4 to 6 GB). Run with `make lite-up`.
+#   docker compose --project-directory . -f deploy/docker-compose.lite.yml up -d --build --wait api
+#
+# WHAT THIS IS: two services (migrate, api) built from the SAME image as the full stack (microgrid-api:dev), with the
+# database in a SQLite file inside a named volume. No PostgreSQL, PostGIS, TimescaleDB, Redis, web page or worker.
+# WHAT YOU LOSE: PostGIS (spatial SQL) and TimescaleDB (time-series SQL) and the production-mode checks. Nothing in the
+# engine or API today needs them (the migrations are SQLite-portable); the full stack is the production-like check.
+#
+# DEVELOPMENT MODE, ON PURPOSE: the API refuses SQLite and a missing JWT secret unless MICROGRID_ENVIRONMENT is
+# development or test. This file is the ONLY place that sets development; the full stack stays production. Because of
+# that, this stack is for local demos on 127.0.0.1 and must NOT be exposed beyond this laptop. It needs no secrets file.
+#
+# The project name differs from the full stack, so the two never share volumes. They both use port 8000 by default:
+# run one at a time (or set API_PORT).
+name: microgrid-lite
+
+x-lite-env: &lite-env
+  MICROGRID_ENVIRONMENT: development
+  MICROGRID_DATABASE_URL: sqlite:////db/microgrid.db
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  MICROGRID_DATA_DIR: /data
+  MICROGRID_OUTPUT_DIR: /outputs
+
+services:
+  # One-shot: applies migrations (alembic upgrade head) to the SQLite file, then exits 0. api waits for it.
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+      target: api
+    image: microgrid-api:dev
+    command: ["python", "-m", "microgrid_api.db.migrate"]
+    restart: "no"
+    environment: *lite-env
+    volumes:
+      - litedb:/db
+    mem_limit: 512m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+      target: api
+    image: microgrid-api:dev
+    environment: *lite-env
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    volumes:
+      - ${MICROGRID_DATA_DIR:-./data}:/data:ro
+      - outputs:/outputs
+      - litedb:/db
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    mem_limit: ${API_MEM_LIMIT:-1g}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  litedb:
+  outputs:

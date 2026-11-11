@@ -3,7 +3,7 @@
 FROM python:3.12-slim-bookworm AS base
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN useradd --create-home --uid 10001 app \
- && mkdir -p /outputs /data && chown app:app /outputs
+ && mkdir -p /outputs /data /db && chown app:app /outputs /db
 WORKDIR /app
 
 # Layer 1: the engine package (changes least often after its dependencies).
