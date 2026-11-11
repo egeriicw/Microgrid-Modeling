@@ -19,7 +19,8 @@ DEPLOY = ROOT / "deploy"
 COMPOSE_PATH = DEPLOY / "docker-compose.yml"
 COMPOSE = yaml.safe_load(COMPOSE_PATH.read_text())
 SERVICES = COMPOSE["services"]
-REQUIRED = {"db", "redis", "api", "worker", "web"}
+REQUIRED = {"db", "redis", "api", "worker", "web", "migrate"}
+ONE_SHOT = {"migrate"}  # runs and exits; no healthcheck by design
 SECRET_WORDS = ("PASSWORD", "SECRET", "TOKEN", "KEY")
 
 
@@ -36,7 +37,8 @@ def test_required_services_present_and_no_dropped_ones():
 
 def test_every_service_has_healthcheck():
     for name, svc in SERVICES.items():
-        assert svc.get("healthcheck", {}).get("test"), f"{name} lacks a healthcheck"
+        if name not in ONE_SHOT:
+            assert svc.get("healthcheck", {}).get("test"), f"{name} lacks a healthcheck"
 
 
 def test_depends_on_uses_health_conditions():
@@ -44,8 +46,9 @@ def test_depends_on_uses_health_conditions():
         deps = svc.get("depends_on", {})
         assert isinstance(deps, dict) or not deps, f"{name}: use the mapping form with conditions"
         for dep, cond in deps.items():
-            assert cond.get("condition") == "service_healthy", f"{name}->{dep} must wait for health"
-    assert set(SERVICES["api"]["depends_on"]) == {"db", "redis"}
+            expected = "service_completed_successfully" if dep in ONE_SHOT else "service_healthy"
+            assert cond.get("condition") == expected, f"{name}->{dep} must wait for {expected}"
+    assert set(SERVICES["api"]["depends_on"]) == {"db", "redis", "migrate"}
     assert set(SERVICES["worker"]["depends_on"]) >= {"db", "redis"}
 
 
