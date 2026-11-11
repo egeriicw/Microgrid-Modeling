@@ -1,0 +1,47 @@
+{
+  "engine_version": "0.1.0",
+  "runs": [
+    {
+      "peak_kw": 74.3362045288086,
+      "annual_energy_kwh": 421167.5625,
+      "load_factor": 0.6467708322561782,
+      "soft_score": 0.0,
+      "feasible": true
+    },
+    {
+      "peak_kw": 322.423095703125,
+      "annual_energy_kwh": 1819672.25,
+      "load_factor": 0.644262602345737,
+      "soft_score": 0.0,
+      "feasible": true
+    },
+    {
+      "peak_kw": 258.5119934082031,
+      "annual_energy_kwh": 1465803.375,
+      "load_factor": 0.6472781018443479,
+      "soft_score": 0.0,
+      "feasible": true
+    },
+    {
+      "peak_kw": 316.1662902832031,
+      "annual_energy_kwh": 1785955.625,
+      "load_factor": 0.6448385522597083,
+      "soft_score": 0.0,
+      "feasible": true
+    },
+    {
+      "peak_kw": 95.19120025634766,
+      "annual_energy_kwh": 539134.75,
+      "load_factor": 0.6465415145480751,
+      "soft_score": 0.0,
+      "feasible": true
+    },
+    {
+      "peak_kw": 204.9849090576172,
+      "annual_energy_kwh": 1162488.75,
+      "load_factor": 0.6473851944299907,
+      "soft_score": 0.0,
+      "feasible": true
+    }
+  ]
+}

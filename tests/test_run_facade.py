@@ -1,50 +1,28 @@
-"""Engine facade on the committed fixture dataset (FR-ENG-8; data-free tests are in test_run_facade_core.py).
+"""Engine facade on the generated synthetic dataset (FR-ENG-8; data-free tests are in test_run_facade_core.py).
 
-Tests that need real parquet/Excel inputs skip until the synthetic fixture dataset described in
-tests/fixtures/data/README.md exists (needs background/chars_resstock.xlsx, background/chars_comstock.xlsx and
-input/{resstock,comstock}/timeseries_individual_buildings/upgrade=0/state=DC/*.parquet). They un-skip
-automatically when those files appear.
+The dataset comes from the session fixture ``synthetic_dataset`` (tests/fixtures/synthetic_data.py), which writes
+the real on-disk layout under a temp directory; no committed data files are needed.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
 from microgrid.community_load.synthetic import config as cfg_mod
 from microgrid.community_load.synthetic import run
 
-FIXTURES = Path(__file__).parent / "fixtures" / "data"
-HAVE_FIXTURES = (
-    (FIXTURES / "background" / "chars_resstock.xlsx").exists()
-    and (FIXTURES / "background" / "chars_comstock.xlsx").exists()
-    and any((FIXTURES / "input" / "resstock").rglob("*.parquet"))
-)
-needs_fixtures = pytest.mark.skipif(
-    not HAVE_FIXTURES,
-    reason="needs the synthetic fixture dataset (tests/fixtures/data: chars_*.xlsx + parquet timeseries), "
-    "being built by the data-engineer; not yet merged",
-)
-
 
 @pytest.fixture
-def tiny_config() -> dict:
-    return build_tiny_config()
+def tiny_config(synthetic_dataset) -> dict:
+    return build_tiny_config(synthetic_dataset)
 
 
-def build_tiny_config() -> dict:
-    """Minimal scenario dict pointing at tests/fixtures/data/."""
+def build_tiny_config(ds) -> dict:
+    """Minimal scenario dict pointing at the generated synthetic dataset ``ds`` (read-only use)."""
     return {
         "scenario": {"name": "tiny"},
         "rng": {"composition_seed": 1, "archetype_seed": 2, "perturbation_seed": 3},
-        "data": {
-            "background_dir": str(FIXTURES / "background"),
-            "resstock_chars_file": "chars_resstock.xlsx",
-            "comstock_chars_file": "chars_comstock.xlsx",
-            "resstock_timeseries_dir": str(FIXTURES / "input/resstock/timeseries_individual_buildings"),
-            "comstock_timeseries_dir": str(FIXTURES / "input/comstock/timeseries_individual_buildings"),
-        },
+        "data": ds.data,
         "composition": {
             "total_buildings": 4,
             "method": "dirichlet",
@@ -75,7 +53,6 @@ def test_prebuilt_scenarioconfig_with_missing_inputs_fails_loudly(tmp_path):
         run.run_scenario(cfg)
 
 
-@needs_fixtures
 def test_returns_run_result(tiny_config):
     result = run.run_scenario(tiny_config)
     assert result.engine_version
@@ -85,7 +62,6 @@ def test_returns_run_result(tiny_config):
     assert result.to_dict()["n_attempted"] == 6
 
 
-@needs_fixtures
 def test_progress_events(tiny_config):
     events: list[run.ProgressEvent] = []
     run.run_scenario(tiny_config, progress=events.append)
@@ -93,7 +69,6 @@ def test_progress_events(tiny_config):
     assert events[0].stage == "building_pool" and events[-1].stage == "finished"
 
 
-@needs_fixtures
 def test_cooperative_cancel_stops_early(tiny_config):
     calls = {"n": 0}
 
@@ -104,3 +79,20 @@ def test_cooperative_cancel_stops_early(tiny_config):
     with pytest.raises(run.RunCancelled) as exc:
         run.run_scenario(tiny_config, should_cancel=should_cancel)
     assert exc.value.n_attempted == 1
+
+
+def test_tiny_config_pool_is_nonempty_and_excludes_bad_rows(synthetic_dataset, tiny_config):
+    """Guards the tiny config against fixture drift: every category has candidates after the completeness filter
+    and the deliberately bad rows are gone."""
+    from pathlib import Path
+
+    from microgrid.community_load.synthetic import archetype
+
+    cfg = cfg_mod.config_from_dict(tiny_config)
+    bg = Path(cfg.data.background_dir)
+    pool = archetype.build_archetype_pool(bg / cfg.data.resstock_chars_file, bg / cfg.data.comstock_chars_file, cfg)
+    for category in ("mf_small", "mf_mid"):
+        assert pool.residential[category], category
+    in_pool = {int(b) for ids in pool.residential.values() for b in ids}
+    assert not in_pool & set(synthetic_dataset.bad_resstock_ids)
+    assert any(m["feasible"] for m in run.run_scenario(tiny_config).metrics)

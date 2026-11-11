@@ -25,6 +25,15 @@ from microgrid.community_load.synthetic.config import (
 from microgrid.community_load.synthetic.rng import RNGBundle, make_rng_bundle
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--update-golden",
+        action="store_true",
+        default=False,
+        help="regenerate tests/golden/*.json (only with an intentional methodology change + version bump)",
+    )
+
+
 @pytest.fixture(scope="session")
 def synthetic_dataset(tmp_path_factory: pytest.TempPathFactory):
     """Session-scoped synthetic ResStock/ComStock dataset in the real on-disk layout (FR-DATA-2)."""
