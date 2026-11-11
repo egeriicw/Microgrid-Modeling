@@ -1,0 +1,26 @@
+{
+  "name": "echarts-35k-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Story 1.12 spike: can Apache ECharts handle 35,040-point series with zoom and a linked load+temperature tooltip?",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "measure": "node measure/measure.mjs"
+  },
+  "dependencies": {
+    "echarts": "6.1.0",
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vitest": "4.1.12"
+  }
+}
