@@ -92,7 +92,8 @@ class AttributeFilter:
                 raise ValueError(f"{where}: `in` needs a non-empty `values` list")
             if not all(_is_scalar(v) for v in self.values):
                 raise ValueError(
-                    f"{where}: `values` must be strings, finite numbers or booleans (no NaN or infinity), got {list(self.values)!r}"
+                    f"{where}: `values` must be strings, finite numbers or booleans (no NaN or infinity), "
+                    f"got {list(self.values)!r}"
                 )
             object.__setattr__(self, "values", tuple(self.values))
         elif self.op == "range":

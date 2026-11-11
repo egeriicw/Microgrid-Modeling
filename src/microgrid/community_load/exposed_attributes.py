@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml
 
 from microgrid.community_load.registry import BuildingTypeRegistry, default_registry
 from microgrid.community_load.synthetic.attribute_filters import (
@@ -26,6 +25,7 @@ from microgrid.community_load.synthetic.attribute_filters import (
     AttributeFilter,
     parse_attribute_filter,
 )
+from microgrid.community_load.synthetic.strict_yaml import load_yaml_strict
 from microgrid.datasets import describe_characteristics
 
 SOURCES = ("resstock", "comstock")
@@ -87,7 +87,9 @@ def _parse_attribute(entry: object, index: int, registry: BuildingTypeRegistry |
     ops = entry["operators"]
     if not isinstance(ops, list) or not ops:
         raise ValueError(f"{where}: operators must be a non-empty list")
-    for op in ops:
+    for n, op in enumerate(ops):
+        if op in ops[:n]:
+            raise ValueError(f"{where}: duplicate operator {op!r} in operators")
         if op not in OPERATORS:
             raise ValueError(f"{where}: unknown operator {op!r} (one of {', '.join(OPERATORS)})")
         if op not in _OPERATORS_BY_KIND[kind]:
@@ -141,6 +143,8 @@ def _parse_attribute(entry: object, index: int, registry: BuildingTypeRegistry |
 @dataclass(frozen=True)
 class ExposedAttributes:
     attributes: tuple[ExposedAttribute, ...]
+    #: the registry that defines valid building types (None = the packaged default); not part of equality
+    registry: BuildingTypeRegistry | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def from_dict(cls, data: object, registry: BuildingTypeRegistry | None = None) -> ExposedAttributes:
@@ -149,7 +153,8 @@ class ExposedAttributes:
         unknown = sorted(set(data) - _TOP_KEYS)
         if unknown:
             raise ValueError(f"exposed attributes: unknown top-level key(s) {', '.join(unknown)}")
-        if data.get("version") != 1:
+        version = data.get("version")
+        if isinstance(version, bool) or version != 1:
             raise ValueError(f"exposed attributes: version must be 1, got {data.get('version')!r}")
         raws = data.get("attributes", [])
         if not isinstance(raws, list):
@@ -160,11 +165,11 @@ class ExposedAttributes:
             if a.key in seen:
                 raise ValueError(f"exposed attributes: duplicate key {a.key!r}")
             seen.add(a.key)
-        return cls(tuple(parsed))
+        return cls(tuple(parsed), registry)
 
     @classmethod
     def from_yaml(cls, path: Path | str, registry: BuildingTypeRegistry | None = None) -> ExposedAttributes:
-        return cls.from_dict(yaml.safe_load(Path(path).read_text()), registry)
+        return cls.from_dict(load_yaml_strict(Path(path).read_text()), registry)
 
     def get(self, key: str) -> ExposedAttribute:
         for a in self.attributes:
@@ -176,6 +181,8 @@ class ExposedAttributes:
         """Attributes to offer for a source (and optionally one building type), in display order."""
         if source not in SOURCES:
             raise ValueError(f"source must be one of {SOURCES}, got {source!r}")
+        if building_type is not None and building_type not in (self.registry or default_registry()):
+            raise ValueError(f"unknown building type {building_type!r} (not in the building-type registry)")
         out = [
             a
             for a in self.attributes
@@ -198,6 +205,8 @@ class ExposedAttributes:
         offered (unknown, inactive, wrong source or type, operator not allowed, value out of range or not a
         listed choice) is an error.
         """
+        if isinstance(selections, str | bytes | Mapping) or not isinstance(selections, Sequence):
+            raise ValueError(f"selections must be a list of selection mappings, got {type(selections).__name__}")
         offered = {a.key: a for a in self.active_for(source, building_type)}
         out: list[AttributeFilter] = []
         seen: set[str] = set()
@@ -238,6 +247,16 @@ class ExposedAttributes:
 
     @staticmethod
     def _check_values(attr: ExposedAttribute, f: AttributeFilter, where: str) -> None:
+        picked_all = [f.value] if f.op == "equals" else list(f.values or ())
+        if attr.kind == "numeric":
+            ok = all(isinstance(v, int | float) and not isinstance(v, bool) for v in picked_all)
+        elif attr.kind == "categorical":
+            ok = all(isinstance(v, str) for v in picked_all)
+        else:
+            ok = not picked_all and f.min is None and f.max is None
+        if not ok:
+            want = {"numeric": "numbers", "categorical": "text", "boolean": "no values"}[attr.kind]
+            raise ValueError(f"{where}: {attr.key!r} is a {attr.kind} attribute and takes {want}, got {picked_all!r}")
         if attr.choices is not None:
             picked = [f.value] if f.op == "equals" else list(f.values or ())
             for v in picked:
@@ -268,16 +287,95 @@ class ExposedAttributes:
 def default_exposed_attributes() -> ExposedAttributes:
     """The starter set shipped with the package (``exposed_attributes.yaml``)."""
     text = resources.files("microgrid.community_load").joinpath("exposed_attributes.yaml").read_text()
-    return ExposedAttributes.from_dict(yaml.safe_load(text), default_registry())
+    return ExposedAttributes.from_dict(load_yaml_strict(text), default_registry())
 
 
-def check_against_data(exposed: ExposedAttributes, df: pd.DataFrame, source: str) -> list[str]:
-    """Problems for active attributes whose column is missing from ``df`` (never silently dropped)."""
-    problems = []
+class DataFinding(str):
+    """One problem found by ``check_against_data``: a readable message that also carries structure.
+
+    It *is* the message string (so existing callers that print or search the list keep working) with
+    ``attribute`` (key), ``column``, ``problem`` (``missing_column`` / ``kind_mismatch`` /
+    ``choices_not_in_data``) and ``details`` (the values not found, or the dtype seen).
+    """
+
+    attribute: str
+    column: str
+    problem: str
+    details: tuple[str, ...]
+
+    def __new__(cls, message: str, attribute: str, column: str, problem: str, details: tuple[str, ...] = ()):
+        obj = super().__new__(cls, message)
+        obj.attribute, obj.column, obj.problem, obj.details = attribute, column, problem, details
+        return obj
+
+
+def _column_fits_kind(s: pd.Series, kind: str) -> bool:
+    values = s.dropna()
+    if values.empty:
+        return True  # nothing to contradict the declared kind
+    is_bool = pd.api.types.is_bool_dtype(s)
+    is_num = pd.api.types.is_numeric_dtype(s) and not is_bool
+    if kind == "numeric":
+        return is_num
+    if kind == "boolean":
+        if is_bool:
+            return True
+        text = values.astype("string").str.strip().str.lower()
+        return not is_num and bool(text.isin(["true", "false"]).all())
+    return not is_bool and not is_num  # categorical: text
+
+
+def check_against_data(exposed: ExposedAttributes, df: pd.DataFrame, source: str) -> list[DataFinding]:
+    """Problems for active attributes against the real table (never silently dropped).
+
+    Reports, per attribute: a column missing from ``df``; a declared ``kind`` that does not fit the column's
+    dtype (numeric needs numbers, boolean needs booleans or "true"/"false" text, categorical needs text); and,
+    for categorical attributes with declared ``choices``, the choices that never occur in the data.
+    """
+    problems: list[DataFinding] = []
     for a in exposed.active_for(source):
         col = a.columns[source]
         if col not in df.columns:
-            problems.append(f"{source}: attribute {a.key!r} uses column {col!r}, which is not in the data")
+            problems.append(
+                DataFinding(
+                    f"{source}: attribute {a.key!r} uses column {col!r}, which is not in the data",
+                    a.key,
+                    col,
+                    "missing_column",
+                )
+            )
+            continue
+        series = df[col]
+        if isinstance(series, pd.DataFrame):
+            problems.append(
+                DataFinding(f"{source}: column {col!r} appears more than once in the data", a.key, col, "kind_mismatch")
+            )
+            continue
+        if not _column_fits_kind(series, a.kind):
+            problems.append(
+                DataFinding(
+                    f"{source}: attribute {a.key!r} is declared {a.kind} but column {col!r} has dtype {series.dtype}",
+                    a.key,
+                    col,
+                    "kind_mismatch",
+                    (str(series.dtype),),
+                )
+            )
+            continue
+        if a.choices is not None:
+            present = {str(v) for v in series.dropna().unique()}
+            missing = tuple(c for c in a.choices if c not in present)
+            if missing:
+                problems.append(
+                    DataFinding(
+                        f"{source}: attribute {a.key!r} declares choices not found in column {col!r}: "
+                        f"{', '.join(missing)}",
+                        a.key,
+                        col,
+                        "choices_not_in_data",
+                        missing,
+                    )
+                )
     return problems
 
 

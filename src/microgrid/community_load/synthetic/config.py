@@ -11,13 +11,12 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
-
 from microgrid.community_load.synthetic.attribute_filters import (
     AttributeFilter,
     check_attribute_filter_raw,
     parse_attribute_filters,
 )
+from microgrid.community_load.synthetic.strict_yaml import load_yaml_strict
 
 # ---------------------------------------------------------------------------
 # Sub-configs
@@ -447,8 +446,7 @@ def _text(value: object) -> str:
 def load_config(path: Path | str) -> ScenarioConfig:
     """Load a YAML scenario config file and return a typed ScenarioConfig."""
     path = Path(path)
-    with path.open() as f:
-        raw = yaml.safe_load(f) or {}
+    raw = load_yaml_strict(path.read_text()) or {}
     return config_from_dict(raw, source=str(path), default_name=path.stem)
 
 

@@ -24,7 +24,7 @@ _PRODUCTS = ("resstock", "comstock")
 
 
 def parse_dataset_id(text: str) -> DatasetId:
-    """``product:release:weather:scenario:state`` (or the ``/``-separated ``str(DatasetId)`` form); strict, nothing stripped.
+    """``product:release:weather:scenario:state`` (or the ``/`` form of ``str(DatasetId)``); nothing is stripped.
 
     Same rule as config validation (``synthetic.config.split_dataset_id``).
     """

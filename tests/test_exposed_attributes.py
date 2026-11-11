@@ -64,7 +64,10 @@ def test_starter_columns_exist_in_the_generated_fixture(synthetic_dataset):
     res = load_resstock_characteristics(synthetic_dataset.resstock_chars)
     com = load_comstock_characteristics(synthetic_dataset.comstock_chars)
     ex = default_exposed_attributes()
-    assert check_against_data(ex, res, "resstock") == []
+    problems_res = check_against_data(ex, res, "resstock")
+    assert [p for p in problems_res if p.problem != "choices_not_in_data"] == []
+    # the shipped choices are real-data values; the tiny fixture only has some of them (reported, not hidden)
+    assert all(p.problem == "choices_not_in_data" for p in problems_res)
     # commercial columns the starter set names that the fixture does not have are reported, never ignored
     problems = check_against_data(ex, com, "comstock")
     assert all("comstock" in p for p in problems)

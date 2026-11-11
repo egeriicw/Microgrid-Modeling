@@ -1,7 +1,7 @@
 """Independent QA review of Sprint 1 stories 1.6b (FR-ENG-11) and 1.11b (FR-DATA-8, engine side).
 
-Tests marked ``xfail(strict=True)`` document real gaps found in review; they flip to failures the day the gap
-is fixed, which is the signal to remove the marker. Nothing here changes production behavior.
+Review tests for the stories above. Gaps found in review were first recorded as ``xfail(strict=True)`` and the
+markers were removed when the fix pass landed; everything here now passes.
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def test_pool_warning_threshold_is_strictly_fewer_than(synthetic_dataset, matche
     assert bool(got.warnings) is warns
 
 
-# --- silent or cryptic behaviours found in review (strict xfail: fix flips them) --------------------------
+# --- silent or cryptic behaviours found in review (each was a strict xfail until fixed) --------------------------
 
 
 def test_in_nan_is_rejected_so_it_cannot_match_missing_values():
@@ -632,9 +632,6 @@ def test_check_against_data_names_every_missing_column():
     assert all("not in the data" in p for p in problems)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-F9: check_against_data does not compare declared choices with the data values"
-)
 def test_check_against_data_flags_choices_that_do_not_exist_in_the_data():
     d = ExposedAttributes.from_dict(
         {
@@ -655,9 +652,6 @@ def test_check_against_data_flags_choices_that_do_not_exist_in_the_data():
     assert any("ghost" in p for p in problems)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-F10: to_filters accepts NaN bounds and wrong-typed numeric values (fail only later)"
-)
 def test_to_filters_rejects_nan_and_text_for_numeric_attributes():
     d = default_exposed_attributes()
     with pytest.raises(ValueError):

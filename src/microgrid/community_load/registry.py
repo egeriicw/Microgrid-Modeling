@@ -18,13 +18,12 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from microgrid.community_load.synthetic.config import (
     CommercialFilterConfig,
     ResidentialFilterConfig,
     ScenarioConfig,
 )
+from microgrid.community_load.synthetic.strict_yaml import load_yaml_strict
 from microgrid.geo.types import Structure, UseClass
 
 _SOURCES = ("resstock", "comstock")
@@ -140,7 +139,7 @@ class BuildingTypeRegistry:
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> BuildingTypeRegistry:
-        return cls.from_dict(yaml.safe_load(Path(path).read_text()) or {})
+        return cls.from_dict(load_yaml_strict(Path(path).read_text()) or {})
 
     def extended(self, *entries: dict[str, Any]) -> BuildingTypeRegistry:
         """A new registry with extra types appended (the original is unchanged)."""
@@ -175,7 +174,7 @@ class BuildingTypeRegistry:
 def default_registry() -> BuildingTypeRegistry:
     """The registry shipped with the package (``building_types.yaml``)."""
     text = resources.files("microgrid.community_load").joinpath("building_types.yaml").read_text()
-    return BuildingTypeRegistry.from_dict(yaml.safe_load(text))
+    return BuildingTypeRegistry.from_dict(load_yaml_strict(text))
 
 
 def with_default_filters(cfg: ScenarioConfig, registry: BuildingTypeRegistry) -> ScenarioConfig:
