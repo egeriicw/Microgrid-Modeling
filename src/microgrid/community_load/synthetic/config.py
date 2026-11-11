@@ -7,6 +7,7 @@ file into a ScenarioConfig dataclass that every other module receives.
 from __future__ import annotations
 
 import difflib
+import math
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
@@ -114,10 +115,21 @@ class PerturbationConfig:
 
 @dataclass
 class ConvergenceConfig:
+    """Adaptive-stopping criteria (used only when ``ensemble.mode`` is ``adaptive``).
+
+    ``rule="legacy_window"`` (default, unchanged behaviour) uses ``lookback_window``, ``min_stable_window``,
+    ``epsilon`` and ``metrics``. ``rule="prd_default"`` is the FR-ENG-6 rule (provisional, owner-approved
+    2026-11-06): ``epsilon`` (relative change of the ensemble mean of annual energy, peak kW and the mean hourly
+    profile), ``consecutive_checks`` (M) and ``se_target`` (relative standard error of the P50 profile).
+    """
+
     lookback_window: int = 10
     min_stable_window: int = 10
     epsilon: float = 0.01
     metrics: list[str] = field(default_factory=lambda: ["peak_kw", "annual_energy_kwh", "load_factor"])
+    rule: str = "legacy_window"
+    consecutive_checks: int = 3
+    se_target: float = 0.02
 
 
 @dataclass
@@ -288,14 +300,19 @@ def _parse_convergence(d: dict) -> ConvergenceConfig:
         min_stable_window=int(d.get("min_stable_window", 10)),
         epsilon=float(d.get("epsilon", 0.01)),
         metrics=d.get("metrics", ["peak_kw", "annual_energy_kwh", "load_factor"]),
+        rule=d.get("rule", "legacy_window"),
+        consecutive_checks=d.get("consecutive_checks", 3),
+        se_target=d.get("se_target", 0.02),
     )
 
 
 def _parse_ensemble(d: dict) -> EnsembleConfig:
+    mode = d.get("mode", "fixed")
     return EnsembleConfig(
-        mode=d.get("mode", "fixed"),
+        mode=mode,
         min_runs=int(d.get("min_runs", 20)),
-        max_runs=int(d.get("max_runs", 50)),
+        # FR-ENG-6: an adaptive run defaults to up to 1,000 runs; the fixed-mode default (50) is unchanged.
+        max_runs=int(d.get("max_runs", 1000 if mode == "adaptive" else 50)),
         check_every=int(d.get("check_every", 10)),
     )
 
@@ -354,7 +371,15 @@ _SECTION_KEYS = {
     "perturbation": {"enabled", "max_temporal_shift_hours", "energy_tolerance", "end_use_factors"},
     "feasibility": {"hard", "soft"},
     "ensemble": {"mode", "min_runs", "max_runs", "check_every"},
-    "convergence": {"lookback_window", "min_stable_window", "epsilon", "metrics"},
+    "convergence": {
+        "lookback_window",
+        "min_stable_window",
+        "epsilon",
+        "metrics",
+        "rule",
+        "consecutive_checks",
+        "se_target",
+    },
     "validation": {"benchmarks", "min_cv_peak"},
     "output": {f.name for f in fields(OutputConfig)},
     "archetype_filters": {"resstock", "comstock", "min_pool_size"},
@@ -429,11 +454,64 @@ def _check_raw_config(raw: dict) -> list[str]:
                 for metric, body in bounds.items():
                     _check_keys(f"feasibility.soft.bounds.{metric}", body, _MIN_MAX, errors)
 
+    _check_ensemble_convergence_raw(raw, errors)
+
     pert = raw.get("perturbation")
     if isinstance(pert, dict) and isinstance(pert.get("end_use_factors"), dict):
         for group, body in pert["end_use_factors"].items():
             _check_keys(f"perturbation.end_use_factors.{group}", body, {"sigma"}, errors)
     return errors
+
+
+_LEGACY_ONLY = ("lookback_window", "min_stable_window", "metrics")
+_PRD_ONLY = ("consecutive_checks", "se_target")
+CONVERGENCE_RULES = ("legacy_window", "prd_default")
+
+
+def _is_number(v: object, *, integer: bool) -> bool:
+    if isinstance(v, bool):
+        return False
+    return isinstance(v, int) if integer else isinstance(v, (int, float)) and math.isfinite(v)
+
+
+def _check_ensemble_convergence_raw(raw: dict, errors: list[str]) -> None:
+    """Type-check the ensemble and convergence sections (no bool-as-number, no text-as-number) and reject
+    criteria that belong to the other rule, so nothing is silently ignored."""
+    ens = raw.get("ensemble")
+    if isinstance(ens, dict):
+        for key in ("min_runs", "max_runs", "check_every"):
+            if key in ens and not _is_number(ens[key], integer=True):
+                errors.append(f"ensemble.{key}: expected a whole number, got {ens[key]!r}")
+            elif key in ens and ens[key] < 1:
+                errors.append(f"ensemble.{key} must be at least 1, got {ens[key]}")
+    conv = raw.get("convergence")
+    if not isinstance(conv, dict):
+        return
+    for key in ("lookback_window", "min_stable_window", "consecutive_checks"):
+        if key in conv and not _is_number(conv[key], integer=True):
+            errors.append(f"convergence.{key}: expected a whole number, got {conv[key]!r}")
+        elif key in conv and conv[key] < 1:
+            errors.append(f"convergence.{key} must be at least 1, got {conv[key]}")
+    for key in ("epsilon", "se_target"):
+        if key in conv and not _is_number(conv[key], integer=False):
+            errors.append(f"convergence.{key}: expected a finite number, got {conv[key]!r}")
+        elif key in conv and conv[key] <= 0:
+            errors.append(f"convergence.{key} must be positive, got {conv[key]}")
+    if "rule" in conv and conv["rule"] not in CONVERGENCE_RULES:
+        errors.append(f"convergence.rule: must be one of {', '.join(CONVERGENCE_RULES)}, got {conv['rule']!r}")
+    if "metrics" in conv:
+        m = conv["metrics"]
+        if not isinstance(m, list) or not m or any(x not in _METRICS for x in m):
+            errors.append(f"convergence.metrics: expected a non-empty list drawn from {', '.join(_METRICS)}, got {m!r}")
+    rule = conv.get("rule", "legacy_window")
+    if rule == "prd_default":
+        for key in _LEGACY_ONLY:
+            if key in conv:
+                errors.append(f"convergence.{key}: only used by rule 'legacy_window'; remove it or change the rule")
+    elif rule == "legacy_window":
+        for key in _PRD_ONLY:
+            if key in conv:
+                errors.append(f"convergence.{key}: only used by rule 'prd_default'; remove it or change the rule")
 
 
 def _text(value: object) -> str:
@@ -512,6 +590,24 @@ _FILTER_DEFAULTS: dict[str, Any] = {
 }
 
 
+def _convergence_to_dict(c: ConvergenceConfig) -> dict[str, Any]:
+    """Only the keys the chosen rule uses, so the snapshot passes the strict key check on replay."""
+    if c.rule == "prd_default":
+        return {
+            "rule": c.rule,
+            "epsilon": c.epsilon,
+            "consecutive_checks": c.consecutive_checks,
+            "se_target": c.se_target,
+        }
+    return {
+        "rule": c.rule,
+        "lookback_window": c.lookback_window,
+        "min_stable_window": c.min_stable_window,
+        "epsilon": c.epsilon,
+        "metrics": list(c.metrics),
+    }
+
+
 def config_to_dict(cfg: ScenarioConfig) -> dict[str, Any]:
     """The mapping ``config_from_dict`` accepts for ``cfg``: ``config_from_dict(config_to_dict(c)) == c``.
 
@@ -577,7 +673,7 @@ def config_to_dict(cfg: ScenarioConfig) -> dict[str, Any]:
             },
         },
         "ensemble": asdict(cfg.ensemble),
-        "convergence": asdict(cfg.convergence),
+        "convergence": _convergence_to_dict(cfg.convergence),
         "validation": asdict(cfg.validation),
         "output": asdict(cfg.output),
     }
@@ -611,6 +707,25 @@ def validate_config(cfg: ScenarioConfig) -> None:
         errors.append(f"ensemble.max_runs must be at least 1, got {cfg.ensemble.max_runs}")
     if cfg.convergence.epsilon <= 0 or cfg.convergence.lookback_window < 1:
         errors.append("convergence.epsilon must be positive and lookback_window at least 1")
+    if cfg.convergence.rule not in CONVERGENCE_RULES:
+        errors.append(f"convergence.rule must be one of {', '.join(CONVERGENCE_RULES)}, got {cfg.convergence.rule!r}")
+    if cfg.convergence.min_stable_window < 1:
+        errors.append(f"convergence.min_stable_window must be at least 1, got {cfg.convergence.min_stable_window}")
+    if cfg.convergence.consecutive_checks < 1:
+        errors.append(f"convergence.consecutive_checks must be at least 1, got {cfg.convergence.consecutive_checks}")
+    if not cfg.convergence.se_target > 0:
+        errors.append(f"convergence.se_target must be positive, got {cfg.convergence.se_target}")
+    if not cfg.convergence.metrics or any(m not in _METRICS for m in cfg.convergence.metrics):
+        errors.append(f"convergence.metrics must be a non-empty list drawn from {', '.join(_METRICS)}")
+    if cfg.ensemble.check_every < 1:
+        errors.append(f"ensemble.check_every must be at least 1, got {cfg.ensemble.check_every}")
+    if cfg.ensemble.min_runs < 1:
+        errors.append(f"ensemble.min_runs must be at least 1, got {cfg.ensemble.min_runs}")
+    if cfg.ensemble.mode == "adaptive" and cfg.ensemble.min_runs > cfg.ensemble.max_runs:
+        errors.append(
+            f"ensemble.min_runs ({cfg.ensemble.min_runs}) exceeds max_runs ({cfg.ensemble.max_runs}): "
+            "an adaptive run could never check convergence"
+        )
     bad_pct = [p for p in cfg.output.percentiles if not 0.0 < p < 1.0]
     if bad_pct:
         errors.append(f"output.percentiles must be between 0 and 1 (exclusive), got {bad_pct}")

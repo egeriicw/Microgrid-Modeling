@@ -17,7 +17,9 @@ from microgrid import __version__
 from microgrid.community_load.synthetic import archetype, ensemble
 from microgrid.community_load.synthetic._types import ArchetypePool, EnsembleResult, NeighborhoodResult
 from microgrid.community_load.synthetic.config import ScenarioConfig, config_from_dict, config_to_dict
+from microgrid.community_load.synthetic.convergence import ConvergenceCheck
 from microgrid.community_load.synthetic.pool_preview import preview_pools
+from microgrid.community_load.synthetic.results import SCHEMA_VERSION, ResultsModel, build_results
 
 Stage = Literal["building_pool", "running", "checking_convergence", "finished"]
 
@@ -33,6 +35,8 @@ class ProgressEvent:
     max_runs: int
     converged: bool | None
     message: str
+    # Latest convergence check (``ConvergenceCheck.to_dict()``), or None before the first check.
+    convergence: dict[str, Any] | None = None
 
 
 class RunCancelled(Exception):
@@ -72,15 +76,21 @@ class RunResult:
     pool_summary: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Dataset ids used and their load basis, per product (FR-DATA-8); empty when paths were hard-coded.
     datasets: dict[str, dict[str, str | None]] = field(default_factory=dict)
+    # Envelopes, splits, load-duration curves and seasonal profiles computed by the engine (FR-ENG-5/7).
+    results: ResultsModel | None = None
 
     @property
     def converged(self) -> bool:
         return self.ensemble.converged
 
-    def to_dict(self) -> dict[str, Any]:
-        """JSON-serializable summary (no time series)."""
+    def to_dict(self, *, include_results: bool = True) -> dict[str, Any]:
+        """JSON-serializable document (schema: docs/reference/results-schema.md, ``schema_version``).
+
+        ``include_results=False`` omits the time-series ``results`` block, leaving the compact summary.
+        """
         e = self.ensemble
-        return {
+        doc: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
             "engine_version": self.engine_version,
             "seeds": dict(self.seeds),
             "config_snapshot": self.config_snapshot,
@@ -91,7 +101,15 @@ class RunResult:
             "n_attempted": int(e.n_attempted),
             "n_rejected": int(e.n_rejected),
             "diversity_metrics": {k: float(v) for k, v in e.diversity_metrics.items()},
+            "convergence": {
+                "rule": self.config_snapshot.get("convergence", {}).get("rule", "legacy_window"),
+                "converged": bool(e.converged),
+                "checks": [c.to_dict() for c in e.convergence_checks],
+            },
         }
+        if include_results and self.results is not None:
+            doc["results"] = self.results.to_dict()
+        return doc
 
 
 def run_scenario(
@@ -126,9 +144,15 @@ def run_scenario(
 
     max_runs = cfg.ensemble.max_runs
 
+    latest: dict[str, Any] | None = None
+
     def emit(stage: Stage, run_index: int, n_att: int, n_feas: int, converged: bool | None, message: str) -> None:
         if progress is not None:
-            progress(ProgressEvent(stage, run_index, n_att, n_feas, max_runs, converged, message))
+            progress(ProgressEvent(stage, run_index, n_att, n_feas, max_runs, converged, message, latest))
+
+    def on_convergence(check: ConvergenceCheck) -> None:
+        nonlocal latest
+        latest = check.to_dict()
 
     if pool is None:
         bg = Path(cfg.data.background_dir)
@@ -159,7 +183,9 @@ def run_scenario(
         state = "converged" if converged else "not converged yet"
         emit("checking_convergence", n_att - 1, n_att, n_feas, converged, f"convergence check: {state}")
 
-    ens = ensemble.run_ensemble(pool, cfg, dirs, before_run=before_run, after_run=after_run, on_check=on_check)
+    ens = ensemble.run_ensemble(
+        pool, cfg, dirs, before_run=before_run, after_run=after_run, on_check=on_check, on_convergence=on_convergence
+    )
 
     snapshot = config_to_dict(cfg)  # the shape config_from_dict accepts, so a snapshot can be replayed
     snapshot["rng"] = dict(ens.seeds)  # the seeds actually used, so the snapshot alone replays the run
@@ -170,6 +196,7 @@ def run_scenario(
         engine_version=__version__,
         config_snapshot=snapshot,
         pool_summary=pool_summary,
+        results=build_results(ens),
         datasets={
             product: {"dataset_id": ds_id, "load_basis": getattr(cfg.data, f"{product}_load_basis")}
             for product in ("resstock", "comstock")
