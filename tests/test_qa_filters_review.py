@@ -496,11 +496,6 @@ def test_synthetic_layer_boundary_is_strict_for_datasets_and_for_the_new_communi
     assert "microgrid.core" in banned and "microgrid.geo" in banned
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-F8: tests/test_architecture.py bans synthetic -> community_load.sources/categorize but not "
-    "-> community_load.dataset_resolution / permissions / exposed_attributes (they sit above the engine)",
-)
 @pytest.mark.parametrize("mod", ["dataset_resolution", "permissions", "exposed_attributes"])
 def test_engine_may_not_import_the_modules_that_sit_above_it(mod):
     from tests.test_architecture import FORBIDDEN, _under
