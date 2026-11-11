@@ -5,6 +5,25 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added (Batch 2, 2026-11-11)
+- Celery worker (`microgrid_api.worker`), run service layer, DB cancel flag, `/ready` Redis check, migration 0002.
+- Attribute filters (eight operators, pool preview with warnings), exposed-attribute list, `filters.use` permission flag, dataset-id resolution (`resolve_dataset_paths`), `config_to_dict`.
+- `scripts/inspect_dataset.py` (read-only report on real data), `scripts/catalog_fill.py`, `microgrid.datasets.pathsafety`.
+- Lite Docker stack (`make lite-up/lite-down/lite-nuke`), `deploy/preflight.sh` fail-closed disk guard, `make disk-plan`.
+- Research notes: `docs/research/footprint-sources-dc.md`, `docs/research/hosting-options.md` (unverified).
+
+### Changed (Batch 2)
+- **`RunResult.config_snapshot` changed shape**: it is now the `config_from_dict` shape (so it can be replayed); the API only reads `composition.total_buildings`.
+- Dataset ids and filter values are stricter (padded ids, NaN/inf bounds rejected). A lone dataset id that disagrees with `data.upgrade`/`data.state` is refused.
+- `catalog_fill` records a content hash of the dataset's files (no mtimes). Old file-hash values are not comparable.
+- `scripts/inspect_dataset.py --hash` now requires `--out`; a corrupt sampled parquet is a per-file ERROR note, not an abort.
+- No entry in this batch changes numeric results (verified byte-identical).
+
+### Fixed (Batch 2)
+- Worker: terminal run states can no longer be overwritten by late writes; cancel no longer races the worker claim.
+- Preflight disk guard failed open on leading-zero or huge values; now fails closed.
+- Inspector could write a report inside the data folder via a differently capitalised path on macOS (identity check).
+
 ### Added (Wave A, 2026-11-11)
 - `run_scenario` facade with typed `ProgressEvent`s, `RunCancelled`, `RunResult.to_dict()`, `config_from_dict`; observer hooks on `run_ensemble`. No numbers change.
 - Golden determinism test, replay test and full-ensemble seed-robustness test running on a generated synthetic dataset.
