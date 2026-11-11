@@ -3,9 +3,12 @@
 The input catalog is never modified. The output is a text copy of the input (comments preserved) with the two fields
 set on the chosen entry; the result is re-validated with the strict catalog parser before it is left on disk.
 
-``manifest_sha256`` is the sha256 of the manifest FILE you pass (a manifest covers a whole data root, so it is the
-fingerprint of the data root snapshot that contained this dataset). ``size_bytes`` is the sum of the sizes of the
-manifest files under the entry's ``relative_path``.
+Both values describe THIS dataset only, i.e. the manifest files under the entry's ``relative_path``:
+``manifest_sha256`` is a CONTENT hash (``manifest.content_hash``: sha256 over the sorted lines
+``relpath<TAB>size<TAB>sha256`` of those files; no mtimes, no other products) and ``size_bytes`` is the sum of their
+sizes. The same bytes copied to another folder or machine give the same hash; one changed byte changes it. (Earlier
+versions hashed the whole manifest FILE, which carried mtimes and every other product; do not compare old and new
+values.)
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from pathlib import Path
 import yaml
 
 from microgrid.datasets.catalog import CatalogError, load_catalog, parse_catalog
-from microgrid.datasets.manifest import read_manifest, sha256_file
+from microgrid.datasets.manifest import content_hash, read_manifest
+from microgrid.datasets.pathsafety import same_file
 
 _FIELDS = ("manifest_sha256", "size_bytes")
 
@@ -38,7 +42,7 @@ def _set_fields(block: list[str], values: dict[str, str]) -> list[str]:
 
 def fill_catalog(catalog_path: Path, manifest_path: Path, key: str, out_path: Path) -> Path:
     catalog_path, manifest_path, out_path = Path(catalog_path), Path(manifest_path), Path(out_path)
-    if out_path.resolve() == catalog_path.resolve():
+    if same_file(out_path, catalog_path):
         raise CatalogError(f"refusing to write {out_path} in place; choose a new output file")
     if out_path.exists() or out_path.is_symlink():
         raise CatalogError(f"output {out_path} already exists; choose a new file name (nothing is overwritten)")
@@ -54,7 +58,7 @@ def fill_catalog(catalog_path: Path, manifest_path: Path, key: str, out_path: Pa
     size = sum(f.size for rel, f in manifest.files.items() if rel.startswith(prefix))
     if size == 0:
         raise CatalogError(f"manifest {manifest_path} lists no files under {entry.relative_path}; not filling {key}")
-    values = {"manifest_sha256": sha256_file(manifest_path), "size_bytes": str(size)}
+    values = {"manifest_sha256": content_hash(manifest, entry.relative_path), "size_bytes": str(size)}
 
     lines = catalog_path.read_text().splitlines()
     blocks = _blocks(lines)

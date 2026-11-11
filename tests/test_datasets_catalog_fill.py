@@ -31,8 +31,9 @@ def test_fill_sets_hash_and_size_and_keeps_comments(tmp_path, manifest_file):
     fill_catalog(CATALOG, manifest_file, KEY, out)
     cat = load_catalog(out)
     e = next(x for x in cat.entries if str(x.dataset_id) == KEY)
-    assert e.manifest_sha256 == hashlib.sha256(manifest_file.read_bytes()).hexdigest()
     m = mf.read_manifest(manifest_file)
+    assert e.manifest_sha256 == mf.content_hash(m, e.relative_path)
+    assert e.manifest_sha256 != hashlib.sha256(manifest_file.read_bytes()).hexdigest()  # not the file hash any more
     prefix = e.relative_path + "/"
     assert e.size_bytes == sum(f.size for r, f in m.files.items() if r.startswith(prefix)) > 0
     other = next(x for x in cat.entries if str(x.dataset_id) != KEY)
@@ -86,3 +87,44 @@ def test_cli(tmp_path, manifest_file):
         text=True,
     )
     assert bad.returncode == 2 and "Traceback" not in bad.stderr
+
+
+# --------------------------------------------------------------------------------------------- content hash
+
+
+def _fe(size: int, sha: str, mtime: int = 0) -> mf.FileEntry:
+    return mf.FileEntry(size, sha, mtime)
+
+
+def test_content_hash_ignores_mtime_and_other_products_and_catches_one_byte():
+    a = mf.Manifest(
+        {"input/x/a.parquet": _fe(5, "aa", 1), "input/x/b.parquet": _fe(6, "bb", 2), "input/y/c": _fe(1, "cc")}
+    )
+    same_other_mtime = mf.Manifest(
+        {"input/x/a.parquet": _fe(5, "aa", 999), "input/x/b.parquet": _fe(6, "bb", 888), "input/y/c": _fe(9, "zz")}
+    )
+    moved = mf.Manifest({"input/x/a.parquet": _fe(5, "aa"), "input/x/b.parquet": _fe(6, "bb")})
+    changed = mf.Manifest(
+        {"input/x/a.parquet": _fe(5, "aa"), "input/x/b.parquet": _fe(6, "bX"), "input/y/c": _fe(1, "cc")}
+    )
+    h = mf.content_hash(a, "input/x")
+    assert h == mf.content_hash(same_other_mtime, "input/x/")  # mtimes and other datasets do not matter
+    assert h == mf.content_hash(moved, "input/x")
+    assert h != mf.content_hash(changed, "input/x")  # one changed hash
+    assert mf.content_hash(a, "input/y") != h  # another entry differs
+    assert mf.content_hash(a, "input/x") != mf.content_hash(mf.Manifest({"input/x/a.parquet": _fe(5, "aa")}), "input/x")
+    with pytest.raises(CatalogError, match="no files"):
+        mf.content_hash(a, "input/zzz")
+    assert mf.content_hash(a, "input/x") != mf.content_hash(a, "input")  # prefix is a folder boundary, not a string
+
+
+def test_fill_hash_is_identical_for_copied_data_with_new_mtimes(tmp_path, synthetic_dataset):
+    out = []
+    for i in range(2):
+        root = tmp_path / f"data{i}"
+        shutil.copytree(synthetic_dataset.root, root, copy_function=shutil.copyfile)  # new mtimes
+        m = mf.write_manifest(mf.build_manifest(root), tmp_path / f"m{i}.json")
+        dst = tmp_path / f"new{i}.yaml"
+        fill_catalog(CATALOG, m, KEY, dst)
+        out.append(next(e for e in load_catalog(dst).entries if str(e.dataset_id) == KEY))
+    assert out[0].manifest_sha256 == out[1].manifest_sha256 and out[0].size_bytes == out[1].size_bytes
