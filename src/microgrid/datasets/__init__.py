@@ -12,6 +12,7 @@ from microgrid.datasets.catalog import (
     parse_catalog,
     resolve_data_root,
 )
+from microgrid.datasets.dictionary import describe_characteristics
 from microgrid.datasets.identity import DatasetId
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "CatalogEntry",
     "CatalogError",
     "DatasetId",
+    "describe_characteristics",
     "load_catalog",
     "parse_catalog",
     "resolve_data_root",
