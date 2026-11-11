@@ -1,15 +1,14 @@
 """FR-D3 — OEDI input fetcher. RED placeholder; transport is always mocked
 (NFR-12: no network in tests). See docs/infrastructure.md §7.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-dl = pytest.importorskip(
-    "scripts.download_oedi", reason="FR-D3: download_oedi not implemented"
-)
+dl = pytest.importorskip("scripts.download_oedi", reason="FR-D3: download_oedi not implemented")
 
 pytestmark = pytest.mark.xfail(reason="FR-D3 not implemented", strict=False)
 
