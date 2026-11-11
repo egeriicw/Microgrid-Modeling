@@ -643,3 +643,68 @@ def test_config_snapshot_replays_through_config_from_dict(synthetic_dataset):
     replayed = config_from_dict(result.config_snapshot)
     assert replayed.archetype_filters.resstock["mf_small"].attributes == [F("in.geometry_stories", "range", min=1)]
     assert replayed.rng.composition_seed == result.seeds["composition_seed"]
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Mutation survivors of the author's suite (each of these passed with the production line disabled)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_commercial_categories_honor_attribute_filters(synthetic_dataset):
+    from microgrid.community_load.synthetic import archetype
+    from microgrid.community_load.synthetic.config import CommercialFilterConfig
+
+    com = archetype.load_comstock_characteristics(synthetic_dataset.comstock_chars)
+    btypes = sorted(com["in.comstock_building_type"].dropna().unique())
+    base = archetype._filter_comstock_category(com, CommercialFilterConfig(building_types=btypes))
+    assert base
+    keep_none = CommercialFilterConfig(building_types=btypes, attributes=[F("in.number_stories", "range", min=999)])
+    assert archetype._filter_comstock_category(com, keep_none) == []
+    some = CommercialFilterConfig(building_types=btypes, attributes=[F("in.number_stories", "range", max=2)])
+    got = archetype._filter_comstock_category(com, some)
+    assert set(got) <= set(base)
+    assert got == com[com["bldg_id"].isin(base) & (com["in.number_stories"] <= 2)]["bldg_id"].tolist()
+    assert preview_pool(com, keep_none).matched == 0
+
+
+def test_resstock_and_comstock_in_different_states_is_refused(synthetic_dataset, tmp_path):
+    root = tmp_path
+    (root / "background").mkdir()
+    (root / "input/resstock/timeseries_individual_buildings/upgrade=0/state=DC").mkdir(parents=True)
+    (root / "input/comstock/timeseries_individual_buildings/upgrade=0/state=MD").mkdir(parents=True)
+    for name in (synthetic_dataset.resstock_chars.name, synthetic_dataset.comstock_chars.name):
+        (root / "background" / name).write_bytes(b"x")
+    catalog = _catalog(
+        _entry("resstock", "2025_release_1"),
+        _entry(
+            "comstock",
+            "2025_release_3",
+            state="MD",
+            path="input/comstock/timeseries_individual_buildings/upgrade=0/state=MD",
+        ),
+    )
+    cfg = _cfg(synthetic_dataset, dataset_resstock=RES, dataset_comstock="comstock:2025_release_3:amy2018:baseline:MD")
+    with pytest.raises(ValueError, match="different states"):
+        resolve_dataset_paths(cfg, catalog, root)
+
+
+def test_product_in_the_wrong_field_is_refused_even_when_config_validation_is_bypassed(synthetic_dataset, cat):
+    cfg = _cfg(synthetic_dataset, dataset_resstock=RES)
+    cfg.data.dataset_resstock = COM  # a hand-built ScenarioConfig skips config_from_dict's prefix check
+    with pytest.raises(ValueError, match="names a comstock dataset"):
+        resolve_dataset_paths(cfg, cat, synthetic_dataset.root)
+
+
+def test_each_missing_piece_is_reported_by_its_own_message(synthetic_dataset, cat, tmp_path):
+    cfg = _cfg(synthetic_dataset, dataset_resstock=RES)
+    # background present with the characteristics file, partition directory absent
+    (tmp_path / "background").mkdir()
+    (tmp_path / "background" / synthetic_dataset.resstock_chars.name).write_bytes(b"x")
+    with pytest.raises(ValueError, match="directory .* does not exist") as exc:
+        resolve_dataset_paths(cfg, cat, tmp_path)
+    assert "background" not in str(exc.value).split("directory", 1)[0]
+    # partition present, background directory absent
+    other = tmp_path / "other"
+    (other / "input/resstock/timeseries_individual_buildings/upgrade=0/state=DC").mkdir(parents=True)
+    with pytest.raises(ValueError, match="background directory .* does not exist"):
+        resolve_dataset_paths(cfg, cat, other)
