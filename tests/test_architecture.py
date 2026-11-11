@@ -62,6 +62,8 @@ def _imports(path: Path) -> set[str]:
             found.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             found.add(node.module)
+            # `from pkg import submodule` imports pkg.submodule too
+            found.update(f"{node.module}.{a.name}" for a in node.names)
     return found
 
 
