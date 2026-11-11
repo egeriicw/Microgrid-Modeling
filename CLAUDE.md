@@ -53,3 +53,15 @@ DC (the owner's local copy may be older; unconfirmed).
 `src/microgrid/` library (core, geo, community_load{registry,categorize,sources,synthetic}, der/dispatch/economics
 stubs, study) · `tests/` · `configs/scenarios/` · `docs/` (PRD, architecture-and-stack, sprint-plan, agent-team,
 decision-log, traceability-matrix, sprints/, adr/, reference/) · `api/` and `web/` are scaffolds (placeholder tests only).
+
+## Working with sub-agents (lessons learned)
+- Agent worktrees (`isolation: "worktree"`) start from `main`, NOT from the working branch. Begin every brief with
+  `git merge --ff-only <integration or working branch>` and ask the agent to confirm `CLAUDE.md` exists.
+- Pattern that worked (Wave A): build in parallel worktrees (disjoint directories) -> independent `qa-engineer` review of each
+  branch (mutation checks, hostile inputs, cross-branch mismatch hunt) -> fix agents clear the QA conditions -> lead merges
+  everything on an `integration/*` branch, re-runs all checks, then pushes `HEAD:<working branch>`.
+- Verify agent claims yourself; they have been wrong or incomplete (examples: credentials in settings repr, env-name
+  mismatch between components, tests that never un-skip).
+- `.claude/worktrees/` is git-ignored; never commit it. Agents must not edit shared records; the lead does.
+- API checks: `uv run --project api --extra dev pytest api/tests -q`; lint/format/types run from `api/`
+  (`uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy`).

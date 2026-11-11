@@ -5,6 +5,18 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added (Wave A, 2026-11-11)
+- `run_scenario` facade with typed `ProgressEvent`s, `RunCancelled`, `RunResult.to_dict()`, `config_from_dict`; observer hooks on `run_ensemble`. No numbers change.
+- Golden determinism test, replay test and full-ensemble seed-robustness test running on a generated synthetic dataset.
+- `microgrid.datasets` (dataset identity, catalog, safe manifest tooling, characteristics dictionary), `scripts/data_manifest.py`, synthetic fixture generator.
+- `api/` service skeleton (`/api/v1/health`, `/ready` with db and schema checks, fail-loud settings, CORS, Alembic migrations packaged with `python -m microgrid_api.db.migrate`, SQLAlchemy spine models).
+- Local Docker Compose stack definition (db with PostGIS+TimescaleDB, redis, migrate, api, worker placeholder, web placeholder), runbook, compose static checks in CI.
+
+### Fixed (Wave A)
+- `RunCancelled` can be pickled (needed by queue workers).
+- Manifest writes could overwrite a data file through a symlinked temporary name; filesystem errors now exit 2 with a clear message.
+- API settings no longer silently fall back to SQLite or print credentials embedded in connection URLs.
+
 ### Added
 - **Building-type registry (FR-ENG-1).** Building types are now data (`community_load/building_types.yaml`):
   single-family detached and attached, multifamily small/mid/large, private commercial, community-scale warehouse,
