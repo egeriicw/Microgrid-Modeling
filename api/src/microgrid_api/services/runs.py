@@ -52,6 +52,9 @@ def _path_keys_present(snapshot: dict[str, Any]) -> list[str]:
     return sorted(found)
 
 
+path_keys_present = _path_keys_present  # public alias for the HTTP layer
+
+
 def server_side_data_section(settings: Settings) -> dict[str, str]:
     """Build the snapshot `data` paths from MICROGRID_DATA_DIR using the engine's default layout, verifying each
     stays under the data root after symlink resolution. Messages never include path values."""
@@ -94,6 +97,7 @@ def create_run(
     *,
     validate: bool = True,
     trusted_data_paths: bool = False,
+    owner: str | None = None,
 ) -> Run:
     """Store a queued run. Unset seeds are resolved HERE, before execution, so the exact seeds are on the row and
     the stored snapshot alone replays the run. ``validate`` (default) checks the config with the engine's strict
@@ -116,6 +120,7 @@ def create_run(
         engine_version=ENGINE_VERSION,
         status=RunStatus.queued.value,
         progress={},
+        owner=owner,
     )
     session.add(run)
     session.commit()

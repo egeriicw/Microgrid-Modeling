@@ -77,6 +77,9 @@ class Run(Base):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # Added in 0003: the API key subject that created the run. NULL for rows created before ownership existed
+    # (visible to admins only).
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class RunEvent(Base):

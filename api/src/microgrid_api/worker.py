@@ -8,8 +8,9 @@ Design:
   A redelivered task is a no-op unless the run is still ``queued`` (atomic claim), so a run cannot execute twice.
 * Terminal states are final: every completion/failure/cancel/progress write is an atomic UPDATE guarded by
   ``status = 'running'``, so a late write can never overwrite or resurrect a cancelled/failed/succeeded run.
-* Documented limitation: a worker that dies mid-run leaves the row ``running`` forever; no reaper exists yet.
-  ``find_stale_running`` is the tested read-only building block a later reaper will use.
+* A worker that dies mid-run leaves the row ``running``; the reaper (``reap_stale_runs``, Celery beat task
+  ``microgrid.reap_stale_runs`` or ``python -m microgrid_api.reaper``) marks rows older than the hard limit plus a
+  margin as ``failed`` using ``find_stale_running``.
 * The engine is reached only through the facade ``run_scenario`` (FR-ENG-8).
 * Failure messages stored on the row are a safe summary (exception class only); the traceback goes to the log.
 """
@@ -90,6 +91,36 @@ def find_stale_running(session: Session, older_than_seconds: int) -> list[uuid.U
         select(Run.id).where(Run.status == RunStatus.running.value, Run.started_at < cutoff).order_by(Run.started_at)
     )
     return list(rows)
+
+
+REAPER_TASK_NAME = "microgrid.reap_stale_runs"
+REAPED_MESSAGE = "run exceeded the time limit and its worker is presumed lost"
+
+
+def reaper_threshold_s(settings: Settings) -> int:
+    """A run is stuck once it has been ``running`` longer than the hard task limit plus a safety margin."""
+    return settings.task_time_limit_s + settings.reaper_margin_s
+
+
+def reap_stale_runs(session: Session, older_than_seconds: int) -> list[uuid.UUID]:
+    """Mark ``running`` rows older than ``older_than_seconds`` as ``failed`` (their worker died). Each row is
+    updated with the same guarded UPDATE the worker uses (``status = 'running'``), so a run that finished between
+    the read and the write is left alone. Returns the ids actually reaped."""
+    reaped: list[uuid.UUID] = []
+    for rid in find_stale_running(session, older_than_seconds):
+        if _finish(session, rid, RunStatus.failed, error_message=REAPED_MESSAGE):
+            logger.warning("run %s reaped: running for more than %ss", rid, older_than_seconds)
+            reaped.append(rid)
+    return reaped
+
+
+def reap_once(settings: Settings, session_factory: SessionFactory) -> list[uuid.UUID]:
+    with session_factory() as session:
+        return reap_stale_runs(session, reaper_threshold_s(settings))
+
+
+def _reap_task_body() -> int:
+    return len(reap_once(_settings_override or Settings(), _session_factory()))
 
 
 def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> None:
@@ -177,8 +208,13 @@ def make_celery(settings: Settings) -> Celery:
         worker_prefetch_multiplier=1,  # long tasks: do not reserve work another worker could take
         broker_connection_retry_on_startup=True,
         task_default_queue="microgrid",
+        # Run `celery -A microgrid_api.worker beat` (or worker -B) to schedule the reaper.
+        beat_schedule={
+            "reap-stale-runs": {"task": REAPER_TASK_NAME, "schedule": settings.reaper_interval_s},
+        },
     )
     app.task(name=TASK_NAME, max_retries=0)(_run_engine_task_body)  # no autoretry: engine failures are final
+    app.task(name=REAPER_TASK_NAME, max_retries=0)(_reap_task_body)
     return app
 
 

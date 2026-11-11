@@ -67,3 +67,13 @@ def test_round_trip_and_parity_postgres():
     _round_trip(PG)
     assert _diffs(PG) == []
     command.downgrade(_cfg(PG), "base")
+
+
+def test_0003_adds_and_removes_runs_owner(tmp_path):
+    url = f"sqlite:///{tmp_path / 'owner.db'}"
+    cfg = _cfg(url)
+    command.upgrade(cfg, "head")
+    assert "owner" in {c["name"] for c in inspect(create_engine(url)).get_columns("runs")}
+    command.downgrade(cfg, "0002")
+    assert "owner" not in {c["name"] for c in inspect(create_engine(url)).get_columns("runs")}
+    command.upgrade(cfg, "head")

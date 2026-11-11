@@ -321,7 +321,12 @@ def test_soft_limit_must_be_below_hard_limit():
 
 
 def test_make_celery_requires_redis_url_outside_development():
-    s = Settings(environment="production", database_url="postgresql+psycopg://u@h/d", jwt_secret="x" * 32)
+    s = Settings(
+        environment="production",
+        database_url="postgresql+psycopg://u@h/d",
+        jwt_secret="x" * 32,
+        api_keys=[{"subject": "a", "role": "admin", "key": "k" * 20}],
+    )
     with pytest.raises(ConfigurationError) as ei:
         worker.make_celery(s)
     assert "MICROGRID_REDIS_URL" in str(ei.value)

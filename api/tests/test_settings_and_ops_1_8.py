@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
-from microgrid_api.config import ConfigurationError, Settings
+from microgrid_api.config import ApiKey, ConfigurationError, Settings
 from microgrid_api.main import create_app
 
 SECRET = "S3CRETjwt"
@@ -43,7 +43,12 @@ def test_production_requires_jwt_secret_and_never_echoes_it():
 
 
 def test_production_ok_and_secret_not_in_repr():
-    s = Settings(environment="production", database_url="postgresql+psycopg://u:pw@h/db", jwt_secret=SECRET)
+    s = Settings(
+        environment="production",
+        database_url="postgresql+psycopg://u:pw@h/db",
+        jwt_secret=SECRET,
+        api_keys=[ApiKey(subject="a", role="admin", key="k" * 20)],
+    )
     assert SECRET not in repr(s) and SECRET not in str(s.model_dump())
 
 

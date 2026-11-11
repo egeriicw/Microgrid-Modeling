@@ -10,6 +10,7 @@ SECRETS = {
     "MICROGRID_DATABASE_URL": ("postgresql+psycopg://microgrid:S3CRETPW@db:5432/microgrid", "S3CRETPW"),
     "MICROGRID_REDIS_URL": ("redis://:REDISPW@redis:6379/0", "REDISPW"),
     "MICROGRID_JWT_SECRET": ("JWTSECRET123", "JWTSECRET123"),
+    "MICROGRID_API_KEYS": ('[{"subject":"a","role":"admin","key":"APIKEYSECRET123456"}]', "APIKEYSECRET123456"),
 }
 
 
