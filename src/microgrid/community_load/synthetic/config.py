@@ -421,14 +421,22 @@ def load_config(path: Path | str) -> ScenarioConfig:
     path = Path(path)
     with path.open() as f:
         raw = yaml.safe_load(f) or {}
+    return config_from_dict(raw, source=str(path), default_name=path.stem)
 
+
+def config_from_dict(raw: object, *, source: str = "<dict>", default_name: str = "unnamed") -> ScenarioConfig:
+    """Parse and strictly validate an already-loaded config mapping (same rules as a YAML file).
+
+    ``source`` prefixes error messages (a file path for YAML, ``<dict>`` for in-memory configs).
+    """
     problems = _check_raw_config(raw) if isinstance(raw, dict) else ["top level: expected a mapping"]
     if problems:
-        raise ValueError(f"{path}: invalid configuration:\n" + "\n".join(f"  - {p}" for p in problems))
+        raise ValueError(f"{source}: invalid configuration:\n" + "\n".join(f"  - {p}" for p in problems))
+    assert isinstance(raw, dict)
 
     scenario = raw.get("scenario", {})
     cfg = ScenarioConfig(
-        name=_text(scenario.get("name")) or path.stem,
+        name=_text(scenario.get("name")) or default_name,
         description=_text(scenario.get("description")),
     )
     if "rng" in raw:
@@ -455,7 +463,7 @@ def load_config(path: Path | str) -> ScenarioConfig:
     try:
         validate_config(cfg)
     except ValueError as exc:
-        raise ValueError(f"{path}: {exc}") from None
+        raise ValueError(f"{source}: {exc}") from None
     return cfg
 
 

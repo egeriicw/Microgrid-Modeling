@@ -16,6 +16,7 @@ Convergence check (adaptive mode):
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -259,6 +260,10 @@ def run_ensemble(
     pool: ArchetypePool,
     cfg: ScenarioConfig,
     data_dirs: dict[str, Path],
+    *,
+    before_run: Callable[[int, int, int], None] | None = None,
+    after_run: Callable[[NeighborhoodResult, int, int], None] | None = None,
+    on_check: Callable[[bool, int, int], None] | None = None,
 ) -> EnsembleResult:
     """Run the full ensemble generation loop.
 
@@ -267,6 +272,11 @@ def run_ensemble(
 
     Returns an EnsembleResult containing all feasible runs, convergence
     history, percentile envelopes, and representative cases.
+
+    Optional observer hooks (they never change sampling or numbers; a hook may raise to abort):
+      before_run(run_index, n_attempted, n_feasible)   called before each run
+      after_run(result, n_attempted, n_feasible)       called after each run, feasible or not
+      on_check(converged, n_attempted, n_feasible)     called after each adaptive convergence check
     """
     # Random seeds unless the config fixes them; always recorded in the result so the run can be replayed.
     used = seed_triple(resolve_seeds(cfg.rng))
@@ -279,6 +289,8 @@ def run_ensemble(
     n_attempted = 0
 
     for i in range(ens_cfg.max_runs):
+        if before_run is not None:
+            before_run(i, n_attempted, len(feasible_runs))
         run_rng = derive_run_rng(root_rng, i)
         result = _run_single(i, pool, cfg, run_rng, data_dirs)
         all_runs.append(result)
@@ -286,11 +298,16 @@ def run_ensemble(
 
         if result.feasible:
             feasible_runs.append(result)
+        if after_run is not None:
+            after_run(result, n_attempted, len(feasible_runs))
 
         if ens_cfg.mode == "adaptive":
             n_feasible = len(feasible_runs)
             if n_feasible >= ens_cfg.min_runs and n_feasible % ens_cfg.check_every == 0:
-                if _check_convergence(feasible_runs, cfg.convergence):
+                is_converged = _check_convergence(feasible_runs, cfg.convergence)
+                if on_check is not None:
+                    on_check(is_converged, n_attempted, n_feasible)
+                if is_converged:
                     converged = True
                     logger.info(
                         "Ensemble converged after %d attempts (%d feasible).",
