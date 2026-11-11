@@ -16,6 +16,7 @@ from microgrid.community_load.synthetic import (
     outputs,
     perturbation,
     rng,
+    run,
     validation,
 )
 
@@ -31,4 +32,5 @@ __all__ = [
     "ensemble",
     "validation",
     "outputs",
+    "run",
 ]

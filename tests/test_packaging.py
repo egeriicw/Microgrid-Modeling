@@ -13,8 +13,6 @@ import sys
 import tomllib
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
@@ -43,6 +41,7 @@ EXPECTED_PUBLIC_SURFACE = {
     "ensemble",
     "validation",
     "outputs",
+    "run",
 }
 
 
@@ -103,6 +102,5 @@ def test_public_surface_is_pinned_and_importable():
         assert hasattr(synthetic, name), f"synthetic.{name} missing"
 
 
-@pytest.mark.xfail(reason="FR-ENG-8: run facade arrives in Sprint 1 story 1.9", strict=True)
 def test_run_facade_is_top_level():
     from microgrid.community_load.synthetic.run import run_scenario  # noqa: F401
