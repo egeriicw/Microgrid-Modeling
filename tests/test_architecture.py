@@ -4,6 +4,7 @@
     economics -> dispatch -> der          (each also uses geo + core)
     community_load  (categorize, sources -> synthetic; uses geo + core)
     geo -> core                           (geography is the shared reference layer)
+    datasets  (dataset identity, catalog, manifest; stdlib + pandas only, imports no other microgrid package)
 
 `geo` and `community_load` are parallel siblings: load profiling reads geography,
 never the reverse. The SNLG engine (`synthetic`) knows nothing about geography.
@@ -19,7 +20,7 @@ import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "microgrid"
 
-_ALL = ["core", "geo", "community_load", "der", "dispatch", "economics", "study"]
+_ALL = ["core", "geo", "community_load", "der", "dispatch", "economics", "study", "datasets"]
 
 
 def _ban(*allowed: str) -> list[str]:
@@ -30,7 +31,8 @@ def _ban(*allowed: str) -> list[str]:
 FORBIDDEN = {
     "microgrid.core": _ban("core"),
     "microgrid.geo": _ban("core", "geo"),
-    "microgrid.community_load": _ban("core", "geo", "community_load"),
+    "microgrid.datasets": _ban("datasets"),
+    "microgrid.community_load": _ban("core", "geo", "community_load", "datasets"),
     "microgrid.community_load.synthetic": _ban("community_load")
     + ["microgrid.community_load.sources", "microgrid.community_load.categorize"],
     "microgrid.der": _ban("core", "geo", "der"),
