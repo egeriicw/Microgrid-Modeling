@@ -25,6 +25,14 @@ from microgrid.community_load.synthetic.config import (
 from microgrid.community_load.synthetic.rng import RNGBundle, make_rng_bundle
 
 
+@pytest.fixture(scope="session")
+def synthetic_dataset(tmp_path_factory: pytest.TempPathFactory):
+    """Session-scoped synthetic ResStock/ComStock dataset in the real on-disk layout (FR-DATA-2)."""
+    from tests.fixtures.synthetic_data import build_synthetic_dataset
+
+    return build_synthetic_dataset(tmp_path_factory.mktemp("synthetic_data"))
+
+
 @pytest.fixture
 def rng_bundle() -> RNGBundle:
     return make_rng_bundle(
