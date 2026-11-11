@@ -4,7 +4,7 @@
     economics -> dispatch -> der          (each also uses geo + core)
     community_load  (categorize, sources -> synthetic; uses geo + core)
     geo -> core                           (geography is the shared reference layer)
-    datasets  (dataset identity, catalog, manifest; stdlib + pandas only, imports no other microgrid package)
+    datasets  (dataset identity, catalog, manifest; stdlib + pandas + PyYAML only, imports no other microgrid package)
 
 `geo` and `community_load` are parallel siblings: load profiling reads geography,
 never the reverse. The SNLG engine (`synthetic`) knows nothing about geography.

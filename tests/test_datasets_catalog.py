@@ -150,3 +150,33 @@ class TestDataRoot:
         monkeypatch.delenv("MICROGRID_DATA_DIR", raising=False)
         with pytest.raises(CatalogError, match="MICROGRID_DATA_DIR"):
             resolve_data_root(None)
+
+
+def test_manifest_hash_and_size_default_to_none(tmp_path):
+    e = load_catalog(_write(tmp_path, [_entry()])).entries[0]
+    assert e.manifest_sha256 is None and e.size_bytes is None
+
+
+def test_manifest_hash_and_size_accepted_when_valid(tmp_path):
+    digest = "a" * 64
+    e = load_catalog(_write(tmp_path, [_entry(manifest_sha256=digest, size_bytes=1234)])).entries[0]
+    assert e.manifest_sha256 == digest and e.size_bytes == 1234
+    e0 = load_catalog(_write(tmp_path, [_entry(manifest_sha256=None, size_bytes=0)])).entries[0]
+    assert e0.manifest_sha256 is None and e0.size_bytes == 0
+
+
+@pytest.mark.parametrize(
+    "mutation, message",
+    [
+        ({"manifest_sha256": "abc"}, "manifest_sha256"),
+        ({"manifest_sha256": "G" * 64}, "manifest_sha256"),
+        ({"manifest_sha256": 12345}, "manifest_sha256"),
+        ({"size_bytes": -1}, "size_bytes"),
+        ({"size_bytes": "10"}, "size_bytes"),
+        ({"size_bytes": True}, "size_bytes"),
+        ({"size_bytes": 1.5}, "size_bytes"),
+    ],
+)
+def test_manifest_hash_and_size_validated(tmp_path, mutation, message):
+    with pytest.raises(CatalogError, match=message):
+        load_catalog(_write(tmp_path, [_entry(**mutation)]))

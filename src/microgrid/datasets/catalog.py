@@ -31,7 +31,7 @@ _REQUIRED = (
     "license",
     "relative_path",
 )
-_OPTIONAL = ("verified", "notes")
+_OPTIONAL = ("verified", "notes", "manifest_sha256", "size_bytes")
 _TOP_KEYS = ("version", "datasets")
 
 
@@ -54,6 +54,8 @@ class CatalogEntry:
     relative_path: str  # partition directory, relative to the data root
     verified: bool = False  # False until release/layout confirmed against the real files and documentation
     notes: str = ""
+    manifest_sha256: str | None = None  # FR-DATA-8: sha256 of this dataset's manifest, when recorded
+    size_bytes: int | None = None  # FR-DATA-8: total size of the dataset on disk, when recorded
 
     @property
     def dataset_id(self) -> DatasetId:
@@ -118,7 +120,21 @@ def _parse_entry(raw: Any, i: int) -> CatalogEntry:
     verified = raw.get("verified", False)
     if not isinstance(verified, bool):
         raise CatalogError(f"{where}: verified must be true or false")
-    return CatalogEntry(**vals, verified=verified, notes=str(raw.get("notes", "")))
+    digest = raw.get("manifest_sha256")
+    if digest is not None and not (
+        isinstance(digest, str) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest.lower())
+    ):
+        raise CatalogError(f"{where}: manifest_sha256 must be 64 hex characters or null, got {digest!r}")
+    size = raw.get("size_bytes")
+    if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 0):
+        raise CatalogError(f"{where}: size_bytes must be a non-negative integer or null, got {size!r}")
+    return CatalogEntry(
+        **vals,
+        verified=verified,
+        notes=str(raw.get("notes", "")),
+        manifest_sha256=None if digest is None else digest.lower(),
+        size_bytes=size,
+    )
 
 
 def parse_catalog(doc: Any) -> Catalog:

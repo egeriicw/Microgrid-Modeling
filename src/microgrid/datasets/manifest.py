@@ -298,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except (OSError, RuntimeError) as exc:  # unreadable file, permission problem, symlink loop: never a traceback
-        where = f" ({exc.filename})" if getattr(exc, "filename", None) else ""
+        where = f" ({getattr(exc, 'filename', None)})" if getattr(exc, "filename", None) else ""
         print(f"error: filesystem problem{where}: {exc}", file=sys.stderr)
         return 2
 
