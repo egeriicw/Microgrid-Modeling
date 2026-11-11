@@ -48,3 +48,6 @@
 - Process: six builders in parallel worktrees -> independent QA on five of them -> fix passes -> lead integration (`integration/batch-2`). QA found: two high-severity worker races, a fail-open disk guard (a guard that said OK when confused), a macOS case-sensitivity gap in the inspector's safety check, a cross-product dataset-partition mismatch, a hole in the architecture test's import scanner, a non-replayable config snapshot, and tests that passed with the safeguard removed (mutation checks).
 - Root: **851 passed, 3 skipped**; ruff, format, mypy clean (49 source files). API: **119 passed, 3 skipped, 27 expected failures**; ruff/format/mypy clean. `docker compose config -q` passes for full, CI-overlay and lite.
 - Not run anywhere: Docker images, a real Redis broker with a live worker, GitHub CI, the owner's real data, a case-insensitive filesystem.
+
+## 2026-11-11 Story 1.12 chart spike
+Merged into `integration/batch-2`. ECharts recommended with lttb sampling and an app-drawn tooltip (hover 7.5 ms vs 1.9 s naive at 35,040 points). 27 spike tests pass; root checks unchanged (851 passed). Unverified: M2/GPU, Safari/Firefox, keyboard operation. No independent QA yet. Evidence: `docs/research/echarts-spike.md`.

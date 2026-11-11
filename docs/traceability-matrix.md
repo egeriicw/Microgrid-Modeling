@@ -48,3 +48,5 @@ test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06;
 | FR-PLAT-5 | MUST | CI gates merges | 1 | tests/test_ci_config.py | .github/workflows/ci.yml, pyproject tool config | sprint-1-backlog | Done (coverage gate pending) |
 | FR-PLAT-6 | SHOULD | Public demo with live capped computation | 4 (stretch) |  |  |  | Not started |
 | FR-PLAT-7 | SHOULD |  | 4 |  |  |  | Not started |
+
+<!-- 2026-11-11: story 1.12 (chart spike) supports FR-WEB chart requirements; evidence docs/research/echarts-spike.md; QA pending -->

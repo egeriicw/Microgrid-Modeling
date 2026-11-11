@@ -33,7 +33,8 @@ only as a description of the original engine, and plan to update or retire the r
 Done (cloud-verifiable): 1.1 packaging, 1.2 CI, 1.3 strict config, 1.4 RNG/replay, 1.5 building-type registry, 1.6 fixtures + catalog +
 manifest, 1.6b filters (library side), 1.7 compose (static only), 1.8 API skeleton, 1.9 run facade, 1.10 Celery worker,
 1.11b dataset ids (engine side), the owner-run data inspector, the lite stack + disk guard, research notes.
-Open: 1.11 performance baseline (owner machine), 1.12 chart spike (see below), real-data confirmation, and the carry-overs in
+1.12 chart spike merged (ECharts confirmed with tuned settings; cloud-VM measurements only, not yet QA-reviewed; owner check on Mac: `npm run dev` in `web/spikes/echarts-35k`, compare 'tuned + lttb' vs 'lttb + DOM overlay tooltip').
+Open: 1.11 performance baseline (owner machine), real-data confirmation, and the carry-overs in
 `docs/sprints/sprint-2-backlog.md` section A.
 
 ### What to do next

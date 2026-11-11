@@ -10,6 +10,7 @@ marked **[numbers change]**.
 - Attribute filters (eight operators, pool preview with warnings), exposed-attribute list, `filters.use` permission flag, dataset-id resolution (`resolve_dataset_paths`), `config_to_dict`.
 - `scripts/inspect_dataset.py` (read-only report on real data), `scripts/catalog_fill.py`, `microgrid.datasets.pathsafety`.
 - Lite Docker stack (`make lite-up/lite-down/lite-nuke`), `deploy/preflight.sh` fail-closed disk guard, `make disk-plan`.
+- Chart spike (story 1.12): `web/spikes/echarts-35k/`, `docs/research/echarts-spike.md` (ECharts confirmed with settings; 27 vitest tests).
 - Research notes: `docs/research/footprint-sources-dc.md`, `docs/research/hosting-options.md` (unverified).
 
 ### Changed (Batch 2)
