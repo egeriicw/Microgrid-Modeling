@@ -18,6 +18,38 @@ export function parseNumber(raw: string): number {
 const isWhole = (n: number) => Number.isInteger(n);
 
 /**
+ * Mirror of the engine's composition rule (composition.py / config.py):
+ *  1. fixed-count types are taken out first; their sum must not exceed the total;
+ *  2. the remainder (total - fixed) is split among the fraction-range types, each with min..max as a share of the
+ *     remainder, so 0 <= min <= max <= 1 per type and sum(min) <= 1 <= sum(max) overall;
+ *  3. if the remainder is 0, fraction types get 0 buildings and their ranges are ignored (not an error);
+ *  4. with no fraction types at all, fixed counts must add up exactly to the total (UI rule, stricter than the engine).
+ */
+function checkEntries(c: Composition): string | undefined {
+  const counts = c.entries.filter((x) => x.mode === "count");
+  const ranges = c.entries.filter((x) => x.mode === "fraction");
+  const countValues = counts.map((x) => x.count);
+  if (countValues.some((v) => !Number.isFinite(v))) return "Every fixed count needs a number.";
+  if (countValues.some((v) => !isWhole(v) || v < 0)) return "Fixed counts must be whole numbers, 0 or more.";
+  const fixed = countValues.reduce((a, b) => a + b, 0);
+  if (fixed > c.totalBuildings) return "Fixed counts exceed the total number of buildings.";
+  if (!Number.isFinite(c.totalBuildings) || c.totalBuildings < 1) return undefined; // the total's own error is shown
+  const remainder = c.totalBuildings - fixed;
+  if (ranges.length === 0) {
+    return remainder === 0 ? undefined : `Fixed counts must add up to the total (${c.totalBuildings}); ${remainder} building(s) are unassigned.`;
+  }
+  if (remainder === 0) return undefined;
+  if (ranges.some((x) => !Number.isFinite(x.minFraction) || !Number.isFinite(x.maxFraction))) return "Every fraction needs a number.";
+  if (ranges.some((x) => x.minFraction < 0 || x.maxFraction > 1)) return "Fractions must be between 0 and 1.";
+  if (ranges.some((x) => x.minFraction > x.maxFraction)) return "Each minimum fraction must be at most its maximum.";
+  const sumMin = ranges.reduce((a, x) => a + x.minFraction, 0);
+  const sumMax = ranges.reduce((a, x) => a + x.maxFraction, 0);
+  if (sumMin > 1 + 1e-9) return `The minimum fractions add up to more than 1 (${Number(sumMin.toFixed(4))}), so no composition is possible.`;
+  if (sumMax < 1 - 1e-9) return `The maximum fractions add up to less than 1 (${Number(sumMax.toFixed(4))}), so no composition is possible.`;
+  return undefined;
+}
+
+/**
  * Input-shape checks for instant feedback while typing. The API re-validates everything and is the authority;
  * these never encode methodology (no sampling or feasibility rules here).
  */
@@ -31,30 +63,9 @@ export function validateComposition(c: Composition): CompositionErrors {
 
   if (c.entries.length === 0) {
     e.entries = "Add at least one building type.";
-  } else if (c.entries.some((x) => !Number.isFinite(x.value))) {
-    e.entries = "Every building type needs a number.";
   } else {
-    const fractions = c.entries.filter((x) => x.mode === "fraction");
-    const counts = c.entries.filter((x) => x.mode === "count");
-    const fixed = counts.reduce((sum, x) => sum + x.value, 0);
-    const fractionSum = fractions.reduce((sum, x) => sum + x.value, 0);
-    if (fractions.some((x) => x.value < 0 || x.value > 1)) {
-      e.entries = "Fractions must be between 0 and 1.";
-    } else if (counts.some((x) => !isWhole(x.value) || x.value < 0)) {
-      e.entries = "Fixed counts must be whole numbers, 0 or more.";
-    } else if (fixed > c.totalBuildings) {
-      e.entries = "Fixed counts exceed the total number of buildings.";
-    } else if (Number.isFinite(c.totalBuildings) && c.totalBuildings > 0) {
-      // Rule: a fraction is a share of the TOTAL. Fixed counts plus fraction shares must account for every building,
-      // i.e. fractions must sum to 1 - fixed/total. With no fixed counts that is "fractions sum to 1".
-      const needed = 1 - fixed / c.totalBuildings;
-      if (Math.abs(fractionSum - needed) > 1e-6) {
-        e.entries =
-          counts.length === 0
-            ? "Fractions must sum to 1."
-            : `Fixed counts plus fractions must add up to the total: fractions must sum to ${Number(needed.toFixed(6))}.`;
-      }
-    }
+    e.entries = checkEntries(c);
+    if (e.entries === undefined) delete e.entries;
   }
 
   if (!Number.isFinite(c.seed) || !isWhole(c.seed) || c.seed < 0) e.seed = "Seed must be a whole number, 0 or more.";

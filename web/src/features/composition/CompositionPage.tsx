@@ -3,14 +3,16 @@ import { Alert, Box, Button, FormHelperText, LinearProgress, Link as MuiLink, Pa
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useApiClient } from "../../api/context";
-import { DEMO_RUN_ID, type Composition, type EntryMode } from "../../api/types";
+import { DEMO_RUN_ID, type Composition, type CompositionEntry, type EntryMode } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { parseNumber as num, validateComposition } from "./validate";
 
 interface EntryForm {
   typeId: string;
   mode: EntryMode;
-  value: string;
+  min: string;
+  max: string;
+  count: string;
 }
 
 export function CompositionPage() {
@@ -29,10 +31,12 @@ export function CompositionPage() {
 
   const entries: EntryForm[] = useMemo(
     () =>
-      (types.data ?? []).map((t, _i, all) => ({
+      (types.data ?? []).map((t) => ({
         typeId: t.id,
         mode: "fraction" as EntryMode,
-        value: String(1 / all.length),
+        min: "0", // engine defaults: 0..1
+        max: "1",
+        count: "0",
         ...overrides[t.id],
       })),
     [types.data, overrides],
@@ -43,7 +47,11 @@ export function CompositionPage() {
     totalBuildings: num(total),
     seed: num(seed),
     maxRuns: num(maxRuns),
-    entries: entries.map((e) => ({ typeId: e.typeId, mode: e.mode, value: num(e.value) })),
+    entries: entries.map((e): CompositionEntry =>
+      e.mode === "count"
+        ? { typeId: e.typeId, mode: "count", count: num(e.count) }
+        : { typeId: e.typeId, mode: "fraction", minFraction: num(e.min), maxFraction: num(e.max) },
+    ),
     ...(can.useFilters && vintage !== "Any" ? { vintageFilter: vintage } : {}),
   };
   const errors = validateComposition(composition);
@@ -82,7 +90,7 @@ export function CompositionPage() {
 
       <Typography variant="h2" sx={{ fontSize: "1.2rem", mb: 1 }}>Building types</Typography>
       <Typography variant="body2" sx={{ mb: 1 }}>
-        Give each type either a share of the total (a fraction between 0 and 1) or a fixed number of buildings.
+        Fixed-count types are taken out first. The remaining buildings are shared among the other types, each within its min to max fraction of that remainder.
       </Typography>
       {(types.data ?? []).map((t) => {
         const e = entries.find((x) => x.typeId === t.id)!;
@@ -98,10 +106,17 @@ export function CompositionPage() {
               slotProps={{ select: { native: true } }}
               sx={{ minWidth: 150 }}
             >
-              <option value="fraction">Fraction</option>
+              <option value="fraction">Fraction range</option>
               <option value="count">Fixed count</option>
             </TextField>
-            <TextField size="small" label={`${t.label} value`} value={e.value} onChange={(ev) => setEntry(t.id, { value: ev.target.value })} slotProps={{ htmlInput: { inputMode: "decimal" } }} />
+            {e.mode === "count" ? (
+              <TextField size="small" label={`${t.label} count`} value={e.count} onChange={(ev) => setEntry(t.id, { count: ev.target.value })} slotProps={{ htmlInput: { inputMode: "numeric" } }} />
+            ) : (
+              <>
+                <TextField size="small" label={`${t.label} min fraction`} value={e.min} onChange={(ev) => setEntry(t.id, { min: ev.target.value })} slotProps={{ htmlInput: { inputMode: "decimal" } }} />
+                <TextField size="small" label={`${t.label} max fraction`} value={e.max} onChange={(ev) => setEntry(t.id, { max: ev.target.value })} slotProps={{ htmlInput: { inputMode: "decimal" } }} />
+              </>
+            )}
           </Box>
         );
       })}

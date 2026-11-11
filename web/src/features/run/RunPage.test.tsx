@@ -10,7 +10,7 @@ const comp: Composition = {
   totalBuildings: 10,
   seed: 1,
   maxRuns: 100,
-  entries: [{ typeId: "sf", mode: "fraction", value: 1 }],
+  entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }],
 };
 
 async function startedRun(runsPerPoll: number) {

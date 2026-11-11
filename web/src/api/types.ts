@@ -23,11 +23,13 @@ export interface FilterOption {
 
 export type EntryMode = "fraction" | "count";
 
-export interface CompositionEntry {
-  typeId: string;
-  mode: EntryMode;
-  value: number;
-}
+/**
+ * Mirrors the engine's category config: either a fixed count, or a fraction range (min..max share of the buildings
+ * left after fixed counts are taken out). See src/microgrid/community_load/synthetic/composition.py.
+ */
+export type CompositionEntry =
+  | { typeId: string; mode: "fraction"; minFraction: number; maxFraction: number }
+  | { typeId: string; mode: "count"; count: number };
 
 export interface Composition {
   name: string;

@@ -7,7 +7,7 @@ const comp: Composition = {
   totalBuildings: 10,
   seed: 1,
   maxRuns: 50,
-  entries: [{ typeId: "sf", mode: "fraction", value: 1 }],
+  entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }],
 };
 
 describe("mock ApiClient", () => {

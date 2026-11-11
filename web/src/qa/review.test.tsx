@@ -21,8 +21,8 @@ const ok: Composition = {
   seed: 1,
   maxRuns: 200,
   entries: [
-    { typeId: "a", mode: "fraction", value: 0.5 },
-    { typeId: "b", mode: "fraction", value: 0.5 },
+    { typeId: "a", mode: "fraction", minFraction: 0.2, maxFraction: 0.8 },
+    { typeId: "b", mode: "fraction", minFraction: 0, maxFraction: 1 },
   ],
 };
 
@@ -31,20 +31,29 @@ describe("QA: composition validation holes", () => {
     expect(validateComposition({ ...ok, totalBuildings: NaN }).totalBuildings).toBeTruthy();
     expect(validateComposition({ ...ok, seed: -1 }).seed).toBeTruthy();
     expect(validateComposition({ ...ok, maxRuns: Infinity }).maxRuns).toBeTruthy();
-    expect(validateComposition({ ...ok, entries: [{ typeId: "a", mode: "fraction", value: -0.1 }] }).entries).toBeTruthy();
+    expect(validateComposition({ ...ok, entries: [{ typeId: "a", mode: "fraction", minFraction: -0.1, maxFraction: 1 }] }).entries).toBeTruthy();
   });
 
-  // DEFECT D1: mixing fixed counts with fractions skips the fraction-sum check, so 60 fixed + fractions summing to
-  // 100% of 100 buildings (160 buildings) is accepted.
-  it("rejects fixed counts plus fractions that over-fill the total", () => {
-    const e = validateComposition({
+  // D1 (resolved, with a changed expectation): QA first expected "60 fixed + fraction 1 of 100" to be rejected as
+  // over-filling. The engine removes fixed counts first and applies the fraction ranges to the REMAINDER (40 here), so
+  // this composition is valid. Over-filling is caught where it is real: fixed counts above the total.
+  it("accepts 60 fixed + a 0..1 range (the range applies to the remaining 40) and rejects fixed above the total", () => {
+    const valid = validateComposition({
       ...ok,
       entries: [
-        { typeId: "a", mode: "count", value: 60 },
-        { typeId: "b", mode: "fraction", value: 1 },
+        { typeId: "a", mode: "count", count: 60 },
+        { typeId: "b", mode: "fraction", minFraction: 0, maxFraction: 1 },
       ],
     });
-    expect(e.entries).toBeTruthy();
+    expect(valid).toEqual({});
+    const over = validateComposition({
+      ...ok,
+      entries: [
+        { typeId: "a", mode: "count", count: 101 },
+        { typeId: "b", mode: "fraction", minFraction: 0, maxFraction: 1 },
+      ],
+    });
+    expect(over.entries).toMatch(/exceed/i);
   });
 
   // DEFECT D2: no upper bounds. A seed above the 32/64-bit range or a billion max runs passes client validation.
