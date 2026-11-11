@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Uuid, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from microgrid_api.db.base import Base
@@ -72,6 +72,11 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now(), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Added in 0002 (story 1.10). `result` is RunResult.to_dict() and is set only on success; `error_message` is a
+    # SAFE summary (never a raw exception message); `cancel_requested` is the cooperative cancel flag.
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class RunEvent(Base):

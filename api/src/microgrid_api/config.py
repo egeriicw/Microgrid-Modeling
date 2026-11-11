@@ -32,7 +32,11 @@ class Settings(BaseSettings):
     # MICROGRID_DATABASE_URL (postgresql+psycopg://...). SQLite default only in development/test.
     # repr=False: connection URLs can embed passwords and must never show up when settings are printed or logged.
     database_url: str | None = Field(default=None, repr=False)
-    redis_url: str | None = Field(default=None, repr=False)  # MICROGRID_REDIS_URL (used from story 1.10)
+    # MICROGRID_REDIS_URL: Celery broker and the /ready Redis check. May embed a password: repr=False, never logged.
+    redis_url: str | None = Field(default=None, repr=False)
+    # Hard / soft per-run limits for the worker (seconds). The soft limit fires first so the run is marked failed.
+    task_time_limit_s: int = Field(default=3600, gt=60)  # MICROGRID_TASK_TIME_LIMIT_S
+    task_soft_time_limit_s: int = Field(default=3300, gt=0)  # MICROGRID_TASK_SOFT_TIME_LIMIT_S
     jwt_secret: SecretStr | None = None  # MICROGRID_JWT_SECRET; no default, required outside development
     data_dir: Path | None = None  # MICROGRID_DATA_DIR, read-only data root
     output_dir: Path | None = None  # MICROGRID_OUTPUT_DIR, writable outputs
@@ -55,6 +59,8 @@ class Settings(BaseSettings):
             raise ConfigurationError(
                 f"MICROGRID_JWT_SECRET is required when MICROGRID_ENVIRONMENT is '{self.environment}'."
             )
+        if self.task_soft_time_limit_s >= self.task_time_limit_s:
+            raise ConfigurationError("MICROGRID_TASK_SOFT_TIME_LIMIT_S must be smaller than MICROGRID_TASK_TIME_LIMIT_S.")
         if "*" in self.cors_origins:
             raise ConfigurationError("cors_origins (MICROGRID_CORS_ORIGINS) must not contain '*'; list origins.")
         return self
