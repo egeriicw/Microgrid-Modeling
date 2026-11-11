@@ -125,31 +125,21 @@ def test_make_does_not_ignore_a_preflight_failure():
         assert "\t-./deploy/preflight.sh" not in raw and "\t@-./deploy/preflight.sh" not in raw
 
 
-# --- fail-OPEN defects found by hostile inputs (see QA report). strict xfail: they flip to failures once fixed. ---
+# --- fail-OPEN defects found by hostile inputs (QA-1..3), fixed in the fail-closed pass. ---
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-1: leading-zero override (08, 09) is an invalid octal in bash arithmetic; the test errors and the guard passes",
-)
 @pytest.mark.parametrize("val", ["08", "09"])
 def test_leading_zero_override_must_not_pass_with_no_free_space(tmp_path, val):
     r = _preflight(tmp_path, "lite", "1000", env={"PREFLIGHT_MIN_FREE_GB": val})
     assert r.returncode != 0, r.stdout + r.stderr
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-2: huge override overflows 64-bit arithmetic, wraps negative, and the guard passes"
-)
 @pytest.mark.parametrize("val", ["9999999999999", "99999999999999999999"])
 def test_absurdly_large_override_must_refuse(tmp_path, val):
     r = _preflight(tmp_path, "lite", str(100 * GB_KB), env={"PREFLIGHT_MIN_FREE_GB": val})
     assert r.returncode != 0, r.stdout + r.stderr
 
 
-@pytest.mark.xfail(
-    strict=True, reason="QA-3: a >19 digit Available value makes `[ -lt ]` error out and the guard passes"
-)
 def test_absurdly_large_available_value_must_not_pass_on_an_arithmetic_error(tmp_path):
     r = _preflight(tmp_path, "lite", "99999999999999999999999")
     assert "integer expression expected" not in r.stderr and "value too great" not in r.stderr

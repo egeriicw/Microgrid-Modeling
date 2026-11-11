@@ -36,7 +36,8 @@ To point at data elsewhere, edit `MICROGRID_DATA_DIR` in `deploy/.env` (default 
 The database password and JWT secret in the template are development-only values. Never commit `deploy/.env`
 (it is git-ignored).
 
-Automated check: `make smoke` (or `./deploy/tests/test_compose_smoke.sh`). It builds and starts db, redis and web,
+Automated check: `make smoke` (or `./deploy/tests/test_compose_smoke.sh`). It first runs the free-disk preflight (full
+mode) and stops if that refuses, before creating `deploy/.env` or calling Docker. Then it builds and starts db, redis and web,
 then `migrate` and `api`; waits for each to be healthy; fetches `/api/v1/health`; and FAILS unless `/api/v1/ready`
 reports `"ready":true` (database reachable and migrations applied). The worker is skipped unless
 `SMOKE_REQUIRE_WORKER=1`. It stops the stack at the end but keeps volumes.
@@ -70,12 +71,38 @@ docker image prune     # dangling images
 ```
 **Never run `docker volume prune`, `docker system prune --volumes`, or `docker compose down -v`.** They delete named
 volumes, and `pgdata` holds the database (configs, runs, results, calibration uploads) while `outputs` holds run
-outputs. To wipe them on purpose, use `make nuke`, which asks you to type DELETE first.
+outputs. To wipe them on purpose, use `make nuke` (full stack) or `make lite-nuke` (lite stack only), which ask you to type DELETE
+first. `make lite-nuke` removes only the `microgrid-lite_*` volumes and never touches the full stack's `microgrid_*` volumes.
 
 ## Small disk
 
 A full disk can freeze macOS, so check before you start. With about 6.7 GB free (as `df` reports), do NOT run the full
 stack. Use the lite stack.
+
+**First commands to run on your Mac (in this order).** Run from the repo root. Nothing here deletes anything.
+```bash
+df -h /System/Volumes/Data                 # 1. real free space
+make disk-plan                             # 2. prints the size plan (runs nothing)
+docker system df                           # 3. what Docker already uses (BEFORE)
+./deploy/preflight.sh lite                 # 4. expect: "preflight: OK (about 6.7 GB free, 5 GB needed for lite)." and exit 0
+./deploy/preflight.sh full                 # 5. expect: "preflight: REFUSING to start the full stack: ... 12 GB needed" and exit 1
+make -n lite-up                            # 6. prints the commands lite-up would run (runs nothing)
+make lite-up && curl -fsS http://127.0.0.1:8000/api/v1/health   # 7. expect a small JSON health reply
+docker system df                           # 8. Docker use AFTER
+make lite-down                             # 9. stops the containers; KEEPS the volumes
+```
+Step 5 refusing is the correct, expected result at about 6.7 GB free. What to paste back (plain language): the output of
+steps 1, 3 and 8 (so we can compare before and after); the two preflight messages from steps 4 and 5; the health reply
+from step 7; how long `make lite-up` took the first time; and, if anything failed, the last 30 lines of its output.
+
+**Preflight guard details.** It fails closed: any value it cannot read with certainty makes it refuse (exit non-zero).
+`PREFLIGHT_MIN_FREE_GB` must be a whole number from 1 to 99999 with no leading zeros, spaces or signs, otherwise the
+script refuses. `PREFLIGHT_MIN_FREE_GB=0` is the one explicit way to switch the guard off: it prints a loud
+"DISABLED" warning and checks nothing. `make smoke` and `./deploy/tests/test_compose_smoke.sh` run the full-mode
+preflight first, and `make up` runs it before creating `deploy/.env`, so a refused run leaves no new file behind.
+
+**Where the thresholds come from.** The 12 GB (full) and 5 GB (lite) limits are headroom over the estimates below, not
+measurements: roughly the estimate's upper end plus a few GB so macOS keeps free space. Measure with `docker system df`.
 
 **Step 1: look, change nothing.**
 ```bash
@@ -92,6 +119,7 @@ point the check at it: `PREFLIGHT_PATH=/Volumes/External make up`.
 ```bash
 make lite-up     # api + migrate only, one image, SQLite file in a named volume; API at http://127.0.0.1:8000
 make lite-down   # stops and removes containers; the lite volumes (SQLite file, outputs) are KEPT
+make lite-nuke   # DESTRUCTIVE, asks you to type DELETE: removes ONLY the lite volumes (microgrid-lite_*); like `make nuke` for the full stack
 ```
 What lite gives you: the same API image as the full stack, the data folder mounted read-only, loopback-only port,
 healthcheck, non-root user and dropped capabilities. What you lose: PostGIS (spatial SQL), TimescaleDB (time-series
@@ -146,8 +174,8 @@ ESTIMATE. The root package needs only numpy, pandas, pyarrow, pyyaml and openpyx
 
 | Scenario | Estimated disk | Basis |
 |---|---|---|
-| Full stack: images + build cache + empty volumes | about 4 to 6 GB ESTIMATE | db 2.1 to 3.0 GB + api 0.7 + small images 0.1 + build cache 0.5 to 1 + volumes 0.1 |
-| Lite stack | about 1 to 2 GB ESTIMATE | api image 0.7 + build cache 0.5 to 1 |
+| Full stack: images + build cache + empty volumes | about 5 to 8 GB of new use, ESTIMATE | db 2.1 to 3.0 GB + api 0.7 + small images 0.1 + build cache 0.5 to 1 + volumes 0.1 |
+| Lite stack | about 1.5 to 3 GB of new use, ESTIMATE | api image 0.7 + build cache 0.5 to 1 + base image layers and build overhead (QA's more cautious range) |
 | Your `data/` folder | about 11 GB, already used | read-only mount, never copied |
 
 Lite saves roughly 3 GB, almost all of it the `db` image. A smaller real Postgres is possible (postgres:17-alpine, about

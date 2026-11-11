@@ -1,4 +1,4 @@
-# LITE stack: the API on a small disk (about 1 to 2 GB instead of 4 to 6 GB). Run with `make lite-up`.
+# LITE stack: the API on a small disk (about 1.5 to 3 GB of new use instead of about 5 to 8 GB, estimates). Run with `make lite-up`.
 #   docker compose --project-directory . -f deploy/docker-compose.lite.yml up -d --build --wait api
 #
 # WHAT THIS IS: two services (migrate, api) built from the SAME image as the full stack (microgrid-api:dev), with the
