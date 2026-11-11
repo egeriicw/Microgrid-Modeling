@@ -38,9 +38,13 @@ class RunCancelled(Exception):
     """Raised between runs when ``should_cancel`` returns True; carries the partial counts."""
 
     def __init__(self, n_attempted: int, n_feasible: int) -> None:
-        super().__init__(f"run cancelled after {n_attempted} attempted runs ({n_feasible} feasible)")
+        # Pass the real constructor args to Exception so unpickling (which calls cls(*args)) works.
+        super().__init__(n_attempted, n_feasible)
         self.n_attempted = n_attempted
         self.n_feasible = n_feasible
+
+    def __str__(self) -> str:
+        return f"run cancelled after {self.n_attempted} attempted runs ({self.n_feasible} feasible)"
 
 
 def _metrics_row(r: NeighborhoodResult) -> dict[str, Any]:
