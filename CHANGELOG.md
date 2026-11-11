@@ -5,6 +5,12 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added (Sprint 2 batch A, 2026-11-11)
+- HTTP run API (`/api/v1/runs` create/list/detail/events SSE/cancel/results, demo compositions), bearer API-key roles, run ownership (migration 0003), stuck-run reaper, `api/openapi.json` export with staleness test, server-side output dir and size caps.
+- Engine: `convergence.rule: prd_default` (opt-in), results model schema 1.0 with 15-minute envelopes, load-duration and seasonal arrays; `ProgressEvent.convergence`.
+- Web app `web/` (React shell, composition form, run screen, results charts) against a mock API.
+- Changed: stricter convergence/ensemble validation; `to_dict()` now includes `schema_version`, `convergence`, `results`. No **[numbers change]** for fixed runs (verified byte-identical).
+
 ### Added (Batch 2, 2026-11-11)
 - Celery worker (`microgrid_api.worker`), run service layer, DB cancel flag, `/ready` Redis check, migration 0002.
 - Attribute filters (eight operators, pool preview with warnings), exposed-attribute list, `filters.use` permission flag, dataset-id resolution (`resolve_dataset_paths`), `config_to_dict`.

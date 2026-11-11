@@ -3,6 +3,9 @@
 Carries the Day-14 checkpoint (about 2026-11-20). Stories reference `docs/PRD.md` FR IDs. Each follows the process in
 `CLAUDE.md` ("Working with sub-agents"): parallel build -> independent QA with mutation checks -> fix pass -> lead integration.
 
+## Status (2026-11-11, batch A merged)
+Done: A1 (HTTP run endpoints), A2 reaper (function/CLI; real queue half is A3), convergence rule + results model, React shell on a MOCK API. Next batch: generated typed API client wired to the real API; filters admin API (A4); A3 real Redis/worker; meter placeholder; temperature/ENG-10; auth UI; compose web/worker services; CI web job (stanza proposed by frontend agent).
+
 ## A. Carry-overs from Sprint 1 (found by QA, deliberately deferred)
 | # | Story | Source |
 |---|---|---|

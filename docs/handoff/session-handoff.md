@@ -29,6 +29,9 @@ only as a description of the original engine, and plan to update or retire the r
 - Branch `claude/loving-pascal-x8khbu` holds everything. Nothing is merged to `main`; no pull request exists. Process used:
   parallel build in worktrees -> independent QA -> fix pass -> lead integration (see `CLAUDE.md`).
 
+## 3b. Sprint 2 batch A (2026-11-11) - merged on `integration/sprint-2-a`
+HTTP run API with API-key roles, engine convergence (`prd_default` opt-in) + results model, web shell on a mock API; all QA'd. Baseline now: root 944 passed/3 skipped; API 231 passed/3 skipped/27 xfailed; web 97 tests. OWNER DECISIONS PENDING: make `prd_default` the default convergence rule and confirm placeholders (3 consecutive checks, SE target 0.02, L2 norm); run-folder retention; size caps. Next: generated API client for web, filters admin API, A3 real worker, CI web job (.github stanza in progress log/agent report: node 22, npm ci, typecheck, lint, test, build).
+
 ## 4. Sprint 1 status
 Done (cloud-verifiable): 1.1 packaging, 1.2 CI, 1.3 strict config, 1.4 RNG/replay, 1.5 building-type registry, 1.6 fixtures + catalog +
 manifest, 1.6b filters (library side), 1.7 compose (static only), 1.8 API skeleton, 1.9 run facade, 1.10 Celery worker,

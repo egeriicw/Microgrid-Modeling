@@ -50,3 +50,5 @@ test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06;
 | FR-PLAT-7 | SHOULD |  | 4 |  |  |  | Not started |
 
 <!-- 2026-11-11: story 1.12 (chart spike) supports FR-WEB chart requirements; evidence docs/research/echarts-spike.md; QA pending -->
+
+<!-- Sprint 2 batch A: FR-ENG-5/6/7 -> tests/test_convergence_prd.py, test_convergence_config.py, test_results_model.py, test_qa_sprint2_engine.py; FR-WEB-2/5 (API side) -> api/tests/test_http_runs.py, test_auth_roles.py, test_reaper.py, test_qa_sprint2_http.py, test_fix_pass_results.py; FR-WEB-1/2/3/8 (UI, mock API) -> web/src tests + web/e2e. -->

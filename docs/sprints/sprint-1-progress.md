@@ -51,3 +51,7 @@
 
 ## 2026-11-11 Story 1.12 chart spike
 Merged into `integration/batch-2`. ECharts recommended with lttb sampling and an app-drawn tooltip (hover 7.5 ms vs 1.9 s naive at 35,040 points). 27 spike tests pass; root checks unchanged (851 passed). Unverified: M2/GPU, Safari/Firefox, keyboard operation. No independent QA yet. Evidence: `docs/research/echarts-spike.md`.
+
+## 2026-11-11 Sprint 2 batch A (HTTP API, convergence/results, web shell)
+Built in parallel, each independently QA'd (mutation checks), fixed, merged on `integration/sprint-2-a`. Root 944 passed/3 skipped; API 231 passed/3 skipped/27 xfailed; web 97 tests, tsc/eslint/build clean; lint/format/mypy clean; openapi check passes.
+QA findings fixed: client-controlled output path (HIGH), false convergence on rejected runs (HIGH), no caps for admin/client, seed/offset/Last-Event-ID bounds, web form rules, chart band visibility, phone layout, session persistence. Not verified: real Redis/worker, Postgres over HTTP, Docker, real data, real browser/GPU/Mac, touch.
