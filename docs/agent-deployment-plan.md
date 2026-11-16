@@ -4,7 +4,7 @@
 **Purpose:** a hand-off plan for running a team of agents on this repository until the product meets its goals.
 **Builds on, does not replace:** [`CLAUDE.md`](../CLAUDE.md), [`agent-team.md`](./agent-team.md),
 [`sprint-plan.md`](./sprint-plan.md), [`handoff/session-handoff.md`](./handoff/session-handoff.md). Where this plan and
-those files disagree, this plan lists the change explicitly in section 4.3 so the lead can apply it.
+those files disagree, this plan lists the change explicitly in section 4.4 so the lead can apply it.
 
 ---
 
@@ -127,7 +127,40 @@ A fresh lead session is started for each wave. The hand-off document carries the
 | `ux-reviewer` (**new**) | Screenshot review of each screen on phone and desktop width, plain-language labels, keyboard and contrast checks | Nothing (findings only) | Read, search, shell, Playwright | Lead |
 | `records-keeper` (**new**) | After each integration: traceability matrix, progress log, decision log entries from agent reports | `docs/traceability-matrix.md`, `docs/sprints/` | Read, search, edit | Lead |
 
-### 4.3 Changes to the current setup
+### 4.3 Models by role
+Each role runs on the model that fits the cost of its mistakes, not the volume of its output. Three rules set the tiers:
+
+1. **A silent error gets the strongest model.** Wrong numbers, a missed security hole or a bad boundary decision do not
+   fail a test on their own, so those roles run on the top tier.
+2. **The reviewer is never weaker than the builder it reviews.** Independent QA is the safety net of the wave loop.
+3. **Work that tests catch, or that follows a template, runs one tier down.** A wrong endpoint or component fails CI
+   and costs a fix pass, not trust.
+
+| Tier | Model | Roles | Why |
+|---|---|---|---|
+| 1 | Fable 5.2 (`fable`) | Lead / PM · `architect` · `modeling-engineer` · `qa-engineer` · `security-reviewer` · `validation-scientist` | Planning, integration and judgment across the whole codebase; methodology and accuracy claims; adversarial review. All but the lead and QA are low-volume, so the cost is small. |
+| 2 | Opus 5.5 (`opus`) | `backend-engineer` · `frontend-engineer` · `data-engineer` · `devops-engineer` | Well-specified building against written acceptance criteria and an OpenAPI contract, with tests, types, CI and a tier-1 review behind it. This is where most tokens are spent. |
+| 3 | Sonnet 5.5 (`sonnet`) | `tech-writer` · `ux-reviewer` · `records-keeper` | Structured writing and checklist review from material that already exists. |
+| 4 | Haiku 5.5 (`haiku`) | No standing role. Used by the lead for throwaway lookups: file searches, log greps, "which tests cover this file". | Fast and cheap; never for anything that lands in the repository. |
+
+**Moving a task between tiers (the lead decides per brief, and says so in the wave report):**
+- **Up:** a tier-2 builder that fails QA twice on the same finding is re-run on tier 1. Any tier-2 story that touches a
+  trust boundary (auth, uploads, file paths, the worker's cancel and terminal-state writes) or changes a database
+  migration is built on tier 1 from the start. The calibration maths in Wave 3 is tier 1 even though the screen is tier 2.
+- **Down:** mechanical work inside a tier-1 or tier-2 role (renames, moving the v1 specs to the archive, applying an
+  agreed lint fix across files) may run on tier 3.
+- **Never down:** QA and security review of a tier-1 build, and anything `validation-scientist` signs.
+
+**How it is set:** a `model:` line in each agent file's header (`fable`, `opus` or `sonnet`), so the tier travels with
+the role and does not depend on the lead remembering it. A per-brief override is allowed only under the rules above.
+The lead session itself is started on Fable 5.2. Model names stay out of commits, pull requests and code comments, as
+`CLAUDE.md` requires; the agent-file header and this plan are the only places they appear.
+
+**Cost control:** tier 1 is expensive mainly through the lead's long context and through QA volume. Keep the lead's
+context small (conclusions, not file dumps), give QA the diff and the acceptance criteria only, and track tokens per
+wave in the report. If spend becomes a concern, the first lever is fewer parallel builders, not a weaker reviewer.
+
+### 4.4 Changes to the current setup
 1. Add `ux-reviewer` and `records-keeper` agent files. The charter names a UX role but no agent exists, and the stale
    matrix shows the lead does not have time for records. `records-keeper` runs alone, after integration, so the rule
    "builders never edit shared records" still holds.
@@ -136,6 +169,8 @@ A fresh lead session is started for each wave. The hand-off document carries the
    integration branch and confirm `CLAUDE.md` exists (the lesson already recorded in `CLAUDE.md`).
 4. Add the web checks to `CLAUDE.md` commands: `npm --prefix web run typecheck`, `lint`, `test`, `build`.
 5. Update `CLAUDE.md` "Where things live": `api/` and `web/` are no longer scaffolds.
+6. Add the `model:` line from 4.3 to all twelve agent files. None of the ten existing files sets one today, so every
+   sub-agent currently inherits whatever model the lead session happens to run on.
 
 ---
 
@@ -187,7 +222,7 @@ Dates assume the owner actions in 3.1 happen by 2026-11-17. Each wave lists buil
 | Open PR for the current line into `main`; watch the first CI run; fix what it finds | Lead, `devops-engineer` |
 | Enable the `api` and `web` CI jobs (Node 22, `npm ci`, typecheck, lint, test, build); make the image build blocking | `devops-engineer` |
 | Close PRs 2 to 8 as superseded (if approved); move v1 specs (`api-spec`, `data-model`, `frontend-spec`, `infrastructure`, `implementation-plan`, `test-plan`, `requirements`) to `docs/archive/` | Lead, `tech-writer` |
-| Correct the traceability matrix; add the two agent files and the roster changes in 4.3 | `records-keeper`, lead |
+| Correct the traceability matrix; add the two agent files and the roster and model changes in 4.4 | `records-keeper`, lead |
 | Setup script and permission allowlist (E1, E5) | `devops-engineer` |
 
 **Exit:** `main` holds the current line, CI is green with engine, API and web jobs blocking.
@@ -336,6 +371,6 @@ and every item in steps 1, 3 and 4 is a methodology decision for the owner.
 ---
 
 ## 13. Kick-off message for the lead session
-> You are the Project Manager and Project Lead. Read `CLAUDE.md`, then `docs/handoff/session-handoff.md`, then
+> (Start this session on Fable 5.2.) You are the Project Manager and Project Lead. Read `CLAUDE.md`, then `docs/handoff/session-handoff.md`, then
 > `docs/agent-deployment-plan.md`. Run the baseline checks and report the numbers. Then run Wave 0 from the deployment
 > plan. The owner's answers to section 3.1 and section 9 are: [paste]. Do not start Wave 1 until CI is green on `main`.
