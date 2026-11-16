@@ -127,38 +127,56 @@ A fresh lead session is started for each wave. The hand-off document carries the
 | `ux-reviewer` (**new**) | Screenshot review of each screen on phone and desktop width, plain-language labels, keyboard and contrast checks | Nothing (findings only) | Read, search, shell, Playwright | Lead |
 | `records-keeper` (**new**) | After each integration: traceability matrix, progress log, decision log entries from agent reports | `docs/traceability-matrix.md`, `docs/sprints/` | Read, search, edit | Lead |
 
-### 4.3 Models by role
-Each role runs on the model that fits the cost of its mistakes, not the volume of its output. Three rules set the tiers:
+### 4.3 Models by role, and the lead's criticality review
+**Owner rule (2026-11-16):** only the lead and the `architect` run on Fable 5.2. Every other role runs on Opus 5.5,
+Sonnet 5.5 or Haiku 5.5. The lead reviews the work, rates how critical each piece is, and that rating decides the
+model and the depth of review.
 
-1. **A silent error gets the strongest model.** Wrong numbers, a missed security hole or a bad boundary decision do not
-   fail a test on their own, so those roles run on the top tier.
-2. **The reviewer is never weaker than the builder it reviews.** Independent QA is the safety net of the wave loop.
-3. **Work that tests catch, or that follows a template, runs one tier down.** A wrong endpoint or component fails CI
-   and costs a fix pass, not trust.
+#### Default model per role
+| Model | Roles | Why |
+|---|---|---|
+| Fable 5.2 (`fable`) | Lead / PM · `architect` | Planning, integration, criticality decisions and structural design across the whole codebase. These two are also the final reviewers of critical work. |
+| Opus 5.5 (`opus`) | `modeling-engineer` · `backend-engineer` · `frontend-engineer` · `data-engineer` · `devops-engineer` · `qa-engineer` · `security-reviewer` · `validation-scientist` | Building against written acceptance criteria, and independent review. The strongest model the lead may delegate to. |
+| Sonnet 5.5 (`sonnet`) | `tech-writer` · `ux-reviewer` · `records-keeper` | Structured writing and checklist review from material that already exists. |
+| Haiku 5.5 (`haiku`) | No standing role | Throwaway lookups and purely mechanical edits the lead hands out. |
 
-| Tier | Model | Roles | Why |
-|---|---|---|---|
-| 1 | Fable 5.2 (`fable`) | Lead / PM · `architect` · `modeling-engineer` · `qa-engineer` · `security-reviewer` · `validation-scientist` | Planning, integration and judgment across the whole codebase; methodology and accuracy claims; adversarial review. All but the lead and QA are low-volume, so the cost is small. |
-| 2 | Opus 5.5 (`opus`) | `backend-engineer` · `frontend-engineer` · `data-engineer` · `devops-engineer` | Well-specified building against written acceptance criteria and an OpenAPI contract, with tests, types, CI and a tier-1 review behind it. This is where most tokens are spent. |
-| 3 | Sonnet 5.5 (`sonnet`) | `tech-writer` · `ux-reviewer` · `records-keeper` | Structured writing and checklist review from material that already exists. |
-| 4 | Haiku 5.5 (`haiku`) | No standing role. Used by the lead for throwaway lookups: file searches, log greps, "which tests cover this file". | Fast and cheap; never for anything that lands in the repository. |
+These are defaults. The lead changes the model per brief according to the rating below, within the owner rule: a
+delegated agent is never raised to Fable.
 
-**Moving a task between tiers (the lead decides per brief, and says so in the wave report):**
-- **Up:** a tier-2 builder that fails QA twice on the same finding is re-run on tier 1. Any tier-2 story that touches a
-  trust boundary (auth, uploads, file paths, the worker's cancel and terminal-state writes) or changes a database
-  migration is built on tier 1 from the start. The calibration maths in Wave 3 is tier 1 even though the screen is tier 2.
-- **Down:** mechanical work inside a tier-1 or tier-2 role (renames, moving the v1 specs to the archive, applying an
-  agreed lint fix across files) may run on tier 3.
-- **Never down:** QA and security review of a tier-1 build, and anything `validation-scientist` signs.
+#### Criticality rating (the lead decides, at wave planning, for every story)
+The lead reads each story's acceptance criteria and the code it will touch, then rates it. The question is: *if this
+is wrong, will a test or CI catch it, and what does it cost if nothing does?*
 
-**How it is set:** a `model:` line in each agent file's header (`fable`, `opus` or `sonnet`), so the tier travels with
-the role and does not depend on the lead remembering it. A per-brief override is allowed only under the rules above.
-The lead session itself is started on Fable 5.2. Model names stay out of commits, pull requests and code comments, as
-`CLAUDE.md` requires; the agent-file header and this plan are the only places they appear.
+| Rating | A story is this when it ... | Builder | Independent review | Final check |
+|---|---|---|---|---|
+| **Critical** | changes the numbers (sampling, convergence, aggregation, calibration maths); crosses a trust boundary (auth, roles, uploads, file paths); changes a database migration or the worker's cancel and terminal-state writes; states an accuracy or licence claim; or cannot be undone | Opus | `qa-engineer` on Opus, plus `security-reviewer` or `validation-scientist` on Opus where the roster says so | **The lead reads the full diff itself on Fable** and signs it off by name in the wave report. Structural changes also go to the `architect`. |
+| **Standard** | adds behaviour that tests, types and CI will catch: an endpoint, a screen, a chart, a compose service, a script | Opus (Sonnet allowed when the story is small and the contract is fully written) | `qa-engineer` on Opus | Lead re-runs every check and reads the QA findings and the risky parts of the diff |
+| **Routine** | follows a template or changes no behaviour: documentation, records, renames, moving old specs to the archive, applying an agreed lint fix | Sonnet or Haiku | None, or a Sonnet checklist pass | Lead spot-checks the diff |
 
-**Cost control:** tier 1 is expensive mainly through the lead's long context and through QA volume. Keep the lead's
-context small (conclusions, not file dumps), give QA the diff and the acceptance criteria only, and track tokens per
-wave in the report. If spend becomes a concern, the first lever is fewer parallel builders, not a weaker reviewer.
+Rules that go with the rating:
+1. **The rating is written down.** Each story in the wave plan carries its rating, its model and one line of reason.
+   The owner sees it before the wave starts and can change it.
+2. **When in doubt, rate up.** A story that is partly critical is critical.
+3. **The lead may re-rate mid-wave.** A standard story is raised to critical if QA finds a silent-error or
+   trust-boundary defect in it, or if the builder fails QA twice on the same finding. Raising it adds the lead's own
+   full-diff review; it does not change the builder's model.
+4. **The reviewer is never on a weaker model than the builder.**
+5. **Critical work is never built or reviewed below Opus.** Mechanical sub-steps inside a critical story (a rename,
+   a file move) may still be handed to Sonnet or Haiku as separate briefs.
+6. **The lead's review time is the scarce resource.** At most two or three critical stories per wave run at once, so
+   the lead can read each diff properly. This, not the number of builders, sets the pace for critical work.
+
+Because QA, security and validation review now run on the same model as the builders they check, the lead's own Fable
+review of critical work is the layer that stands above them. That is why it is mandatory and not delegated.
+
+**How it is set:** a `model:` line in each agent file's header (`fable` for the architect only; `opus` or `sonnet`
+for the rest), so the default travels with the role. Per-brief changes follow the table above. The lead session itself
+is started on Fable 5.2. Model names stay out of commits, pull requests and code comments, as `CLAUDE.md` requires;
+the agent-file header and this plan are the only places they appear.
+
+**Cost control:** keep the lead's context small (conclusions, not file dumps), give reviewers the diff and the
+acceptance criteria only, and report tokens per wave. If spend becomes a concern, the first levers are fewer parallel
+builders and moving standard stories to Sonnet, not a lighter review of critical work.
 
 ### 4.4 Changes to the current setup
 1. Add `ux-reviewer` and `records-keeper` agent files. The charter names a UX role but no agent exists, and the stale
@@ -180,20 +198,22 @@ wave in the report. If spend becomes a concern, the first lever is fewer paralle
 Every wave follows the pattern that already worked, with a pull request added at the end.
 
 1. **Plan.** Lead reads the hand-off, runs the baseline checks, picks stories whose owner inputs are in hand, checks
-   that their write areas do not overlap, and posts the wave plan to the owner.
+   that their write areas do not overlap, **rates each story critical, standard or routine and assigns its model
+   (section 4.3)**, and posts the wave plan to the owner.
 2. **Build in parallel.** At most **five** builders at once, each in a worktree branched from `integration/<wave>`.
    Tests first.
 3. **Independent QA.** A `qa-engineer` instance per builder branch. It receives the acceptance criteria and the diff,
    not the builder's summary. Security or validation review is added where the roster says so.
 4. **Fix pass.** The builder role clears each QA finding. A finding is closed by a test, not by an explanation.
-5. **Integrate.** Lead merges into `integration/<wave>`, re-runs every check itself, reads the diffs.
+5. **Integrate.** Lead merges into `integration/<wave>`, re-runs every check itself, and reviews each story to the
+   depth its rating requires (full diff for critical work).
 6. **Record.** `records-keeper` updates the matrix and logs; lead updates the hand-off.
 7. **Land.** One pull request per wave into `main`. Merge only when CI is green. The owner has asked for no PRs without
    a request, so F1 must include standing permission for one PR per wave, or the lead asks each time.
 8. **Report.** Short owner note: done, not done, measured numbers, what is unverified, decisions needed.
 
 ### 5.2 Brief template for a sub-agent
-Goal in one sentence · FR IDs and the acceptance criteria copied in full · files it may write · files to read first ·
+Goal in one sentence · criticality rating and model · FR IDs and the acceptance criteria copied in full · files it may write · files to read first ·
 what is already decided (decision-log lines) · what is out of scope · "tests first" · the checks to run · the report
 format from the agent file · "stop and report if this needs a methodology change, spending, deletion or publishing".
 
