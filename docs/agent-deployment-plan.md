@@ -130,7 +130,9 @@ A fresh lead session is started for each wave. The hand-off document carries the
 ### 4.3 Models by role, and the lead's criticality review
 **Owner rule (2026-11-16):** only the lead and the `architect` run on Fable 5.2. Every other role runs on Opus 5.5,
 Sonnet 5.5 or Haiku 5.5. The lead reviews the work, rates how critical each piece is, and that rating decides the
-model and the depth of review.
+model and the depth of review. **Exception:** the three reviewer roles (`qa-engineer`, `security-reviewer`,
+`validation-scientist`) may move up to Fable 5.2, but only to clear a major bottleneck to pace (see "Reviewer
+escalation" below). Builders never move up.
 
 #### Default model per role
 | Model | Roles | Why |
@@ -141,7 +143,7 @@ model and the depth of review.
 | Haiku 5.5 (`haiku`) | No standing role | Throwaway lookups and purely mechanical edits the lead hands out. |
 
 These are defaults. The lead changes the model per brief according to the rating below, within the owner rule: a
-delegated agent is never raised to Fable.
+builder is never raised to Fable, and a reviewer only under the escalation rule.
 
 #### Criticality rating (the lead decides, at wave planning, for every story)
 The lead reads each story's acceptance criteria and the code it will touch, then rates it. The question is: *if this
@@ -149,7 +151,7 @@ is wrong, will a test or CI catch it, and what does it cost if nothing does?*
 
 | Rating | A story is this when it ... | Builder | Independent review | Final check |
 |---|---|---|---|---|
-| **Critical** | changes the numbers (sampling, convergence, aggregation, calibration maths); crosses a trust boundary (auth, roles, uploads, file paths); changes a database migration or the worker's cancel and terminal-state writes; states an accuracy or licence claim; or cannot be undone | Opus | `qa-engineer` on Opus, plus `security-reviewer` or `validation-scientist` on Opus where the roster says so | **The lead reads the full diff itself on Fable** and signs it off by name in the wave report. Structural changes also go to the `architect`. |
+| **Critical** | changes the numbers (sampling, convergence, aggregation, calibration maths); crosses a trust boundary (auth, roles, uploads, file paths); changes a database migration or the worker's cancel and terminal-state writes; states an accuracy or licence claim; or cannot be undone | Opus | `qa-engineer` on Opus, plus `security-reviewer` or `validation-scientist` on Opus where the roster says so | **The lead reads the full diff itself on Fable** and signs it off by name in the wave report (or an escalated reviewer does the read, under the rule below). Structural changes also go to the `architect`. |
 | **Standard** | adds behaviour that tests, types and CI will catch: an endpoint, a screen, a chart, a compose service, a script | Opus (Sonnet allowed when the story is small and the contract is fully written) | `qa-engineer` on Opus | Lead re-runs every check and reads the QA findings and the risky parts of the diff |
 | **Routine** | follows a template or changes no behaviour: documentation, records, renames, moving old specs to the archive, applying an agreed lint fix | Sonnet or Haiku | None, or a Sonnet checklist pass | Lead spot-checks the diff |
 
@@ -166,11 +168,30 @@ Rules that go with the rating:
 6. **The lead's review time is the scarce resource.** At most two or three critical stories per wave run at once, so
    the lead can read each diff properly. This, not the number of builders, sets the pace for critical work.
 
-Because QA, security and validation review now run on the same model as the builders they check, the lead's own Fable
-review of critical work is the layer that stands above them. That is why it is mandatory and not delegated.
+Because QA, security and validation review normally run on the same model as the builders they check, the lead's own
+Fable review of critical work is the layer that stands above them. It is mandatory, and it is delegated only through
+the escalation below.
+
+#### Reviewer escalation (the only way a delegated agent reaches Fable)
+The lead's full-diff review is the narrowest point in the loop. When it becomes a major bottleneck, a reviewer may
+take that review on the higher model so the wave keeps moving.
+
+| Question | Answer |
+|---|---|
+| Who may move up | `qa-engineer`, `security-reviewer`, `validation-scientist`. No builder, no other role. |
+| What counts as a major bottleneck | Any one of: (a) three or more critical stories have passed Opus review and are waiting on the lead's full-diff read; (b) a critical story has waited more than one working day for that read; (c) the wave's exit date will be missed because of the review queue, by the lead's own forecast. A slow or difficult review is not a bottleneck; a queue is. |
+| Who decides | The reviewer or the lead raises it; the lead confirms the condition is met and launches the reviewer on Fable. A reviewer cannot move itself up. |
+| What the escalated review covers | One named critical story per escalation. The reviewer does the full-diff read the lead would have done, in its own specialty: QA for behaviour and tests, security for trust boundaries, validation for numbers and claims. |
+| What the lead still does | Re-runs every check, reads the reviewer's findings, and signs the story off. Methodology changes and anything in the "ask the owner" list still stop at the owner. |
+| When it ends | With that story. The next review starts on Opus again unless the condition still holds. |
+| What is recorded | Story, reviewer, which condition was met, and the outcome, in the wave report. The owner can see how often it happened. |
+
+If escalation is needed in two waves running, the cause is planning, not review speed: the lead schedules fewer
+critical stories in parallel or splits them smaller, and says so in the next wave plan.
 
 **How it is set:** a `model:` line in each agent file's header (`fable` for the architect only; `opus` or `sonnet`
-for the rest), so the default travels with the role. Per-brief changes follow the table above. The lead session itself
+for the rest), so the default travels with the role. Per-brief changes follow the tables above; a reviewer escalation
+is a per-brief override by the lead, never a change to the agent file. The lead session itself
 is started on Fable 5.2. Model names stay out of commits, pull requests and code comments, as `CLAUDE.md` requires;
 the agent-file header and this plan are the only places they appear.
 
