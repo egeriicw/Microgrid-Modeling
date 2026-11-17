@@ -2,8 +2,9 @@
 # (.dockerignore keeps node_modules, web/dist, data/ and secrets out). Multi-arch: both base images publish arm64
 # [verify with `docker buildx imagetools inspect node:22-bookworm-slim`].
 #
-# Contract with the web app: the real API client calls same-origin /api/v1 by default, so this build sets NO
-# VITE_API_MODE (that would select the mock client) and NO VITE_API_BASE_URL. nginx proxies /api/ to the api service.
+# Contract with the web app: this build sets NO VITE_API_MODE and NO VITE_API_BASE_URL, so the app uses its own
+# production default. With the client switch from the web story (W1-WEB) that default is the real API client on
+# same-origin /api/v1, which nginx proxies to the api service; an app build from before that story uses its mock data.
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /web

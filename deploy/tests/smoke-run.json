@@ -17,7 +17,7 @@
         "mf_mid": {"building_type_heights": ["Multi-Family with 5+ Units, 4-7 Stories"]}
       }
     },
-    "ensemble": {"mode": "fixed", "max_runs": 6},
+    "ensemble": {"mode": "fixed", "max_runs": 300},
     "perturbation": {"enabled": false}
   },
   "seeds": {"composition_seed": 1, "archetype_seed": 2, "perturbation_seed": 3}

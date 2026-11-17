@@ -24,6 +24,10 @@ web/dist
 .env
 **/.env
 deploy/.env
+# every variant too (.env.local, .env.production, ...): Vite bakes VITE_* values from them into the public bundle.
+# No image needs deploy/.env.example; compose reads it from the host, not from a build context.
+.env.*
+**/.env.*
 # bulky or irrelevant data formats
 *.parquet
 *.csv
