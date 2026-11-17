@@ -81,7 +81,8 @@ export interface RunStatus {
   maxRuns: number | null;
   feasible: number;
   rejected: number;
-  converged: boolean;
+  /** The engine's latest convergence answer: null = not checked (yet) or not reported. */
+  converged: boolean | null;
   /** The server's error message for a failed run. */
   message?: string;
   /** Seeds the run used (resolved by the server at creation, so present from the start). */

@@ -33,6 +33,12 @@ function Layout() {
           <Typography variant="h6" component="p" sx={{ mr: 2 }}>
             Community Energy Profiler
           </Typography>
+          {client.kind === "mock" && (
+            // Black on Okabe-Ito yellow: high contrast, and not conveyed by colour alone (the text says it).
+            <Typography variant="body2" component="p" sx={{ bgcolor: "#F0E442", color: "#000", px: 1, py: 0.5, borderRadius: 1, fontWeight: 600 }}>
+              Demo data — not connected to a server
+            </Typography>
+          )}
           {session && (
             <>
               <Box component="nav" aria-label="Main" sx={{ display: "flex", gap: 1, flexGrow: 1 }}>

@@ -9,6 +9,11 @@ import { ApiError, type ApiClient, type FieldError, type RunEvent, type RunReque
 type Schemas = components["schemas"];
 
 export const KEY_STORAGE = "microgrid.apiKey";
+const API_KEY_PATTERN = /^[\x21-\x7e]+$/;
+const BAD_KEY_MESSAGE =
+  "That API key contains characters a key cannot have (spaces, line breaks or non-English letters). Copy the key again and paste only the key.";
+/** The stream answered 200 but is not an event stream (e.g. a proxy or login page): retrying will not help. */
+class NotAStream extends ApiError {}
 
 export interface HttpClientOptions {
   /** Default `/api/v1` (same origin; nginx or the Vite dev server proxies it to the API). */
@@ -117,7 +122,13 @@ export class HttpApiClient implements ApiClient {
   private async send(path: string, init: RequestInit = {}, key = this.key): Promise<Response> {
     if (!key) throw new ApiError(401, "Sign in first.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${key}`);
+    try {
+      headers.set("Authorization", `Bearer ${key}`);
+    } catch {
+      // A stored key the runtime cannot send (the runtime's message may contain the key, so it is never shown).
+      if (key === this.key) this.signedOut();
+      throw new ApiError(401, BAD_KEY_MESSAGE);
+    }
     if (init.body !== undefined) headers.set("Content-Type", "application/json");
     let res: Response;
     try {
@@ -152,6 +163,8 @@ export class HttpApiClient implements ApiClient {
   async login(apiKey: string): Promise<Session> {
     const key = apiKey.trim();
     if (!key) throw new ApiError(401, "Paste your API key.");
+    // Printable ASCII only: anything else cannot travel in an HTTP header. The message never repeats the key.
+    if (!API_KEY_PATTERN.test(key)) throw new ApiError(400, BAD_KEY_MESSAGE);
     // Cheapest authenticated endpoint. It proves the key is valid; it does NOT report the role (API gap).
     await this.send("/demo-compositions", {}, key);
     this.write(key);
@@ -223,30 +236,39 @@ export class HttpApiClient implements ApiClient {
         const headers: Record<string, string> = { Accept: "text/event-stream" };
         if (lastId !== undefined) headers["Last-Event-ID"] = lastId;
         const res = await this.send(this.runPath(runId, "/events"), { headers, signal });
+        const type = (res.headers.get("content-type") ?? "").toLowerCase();
+        if (!type.startsWith("text/event-stream")) {
+          void res.body?.cancel().catch(() => undefined);
+          throw new NotAStream(0, "The server did not answer with a progress stream (a proxy or login page may be in the way).");
+        }
         if (!res.body) throw unreachable();
         const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        const parser = new SseParser();
-        for (;;) {
-          const { value, done } = await reader.read();
-          const text = done ? decoder.decode() : decoder.decode(value, { stream: true });
-          for (const m of parser.push(text)) {
-            const ev = runEventFrom(m.event, m.data, m.id);
-            if (!ev) continue;
-            if (ev.type === "progress" && ev.id) lastId = ev.id;
-            failures = 0;
-            onEvent(ev);
-            if (ev.type === "status") finished = true;
+        try {
+          const decoder = new TextDecoder();
+          const parser = new SseParser();
+          for (;;) {
+            const { value, done } = await reader.read();
+            const text = done ? decoder.decode() : decoder.decode(value, { stream: true });
+            for (const m of parser.push(text)) {
+              if (m.event !== "progress" && m.event !== "status") continue; // unknown events are ignored unparsed
+              const ev = runEventFrom(m.event, m.data, m.id);
+              if (!ev) continue;
+              if (ev.type === "progress" && ev.id) lastId = ev.id;
+              failures = 0;
+              onEvent(ev);
+              if (ev.type === "status") finished = true;
+            }
+            if (done || finished) break;
           }
-          if (done || finished) break;
-        }
-        if (finished) {
+        } finally {
+          // Always release the connection: after the final status, a bad event, a throwing handler or an abort.
           void reader.cancel().catch(() => undefined);
-          return;
         }
+        if (finished) return;
         // The stream ended without a final status (proxy timeout, server restart): reconnect and resume.
       } catch (e) {
         if (signal.aborted || isAbort(e)) return;
+        if (e instanceof NotAStream) throw e;
         if (e instanceof ApiError && e.status !== 0 && e.status < 500) throw e; // 401/403/404/422: retrying will not help
       }
       failures += 1;

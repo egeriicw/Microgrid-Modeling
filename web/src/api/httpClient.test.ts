@@ -100,6 +100,27 @@ describe("HttpApiClient: sign-in (FR-WEB-5)", () => {
     expect(sessionStorage.getItem(KEY_STORAGE)).toBeNull();
   });
 
+  it.each([["inner\nnewline-0123456789"], ["tab\tinside-0123456789"], ["space inside-0123456789"], ["ünïcode-key-0123456789"], ["emoji-🔑-0123456789"]])(
+    "rejects a key that cannot be a header value (%j) with a plain message that never echoes it",
+    async (bad) => {
+      const f = fakeFetch(() => json(200, { items: [] }));
+      const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
+      const err = (await c.login(bad).catch((e: unknown) => e)) as ApiError;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.message).toMatch(/characters/i);
+      expect(err.message).not.toContain("0123456789");
+      expect(f.calls).toHaveLength(0);
+      expect(sessionStorage.getItem(KEY_STORAGE)).toBeNull();
+    },
+  );
+
+  it("trims surrounding whitespace and newlines from a pasted key", async () => {
+    const f = fakeFetch(() => json(200, { items: [] }));
+    const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
+    await c.login("\n  secret-key\r\n");
+    expect(header(f.calls[0].init, "Authorization")).toBe("Bearer secret-key");
+  });
+
   it("rejects an empty key without calling the API", async () => {
     const f = fakeFetch(() => json(200, {}));
     const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
@@ -213,7 +234,7 @@ describe("HttpApiClient: runs", () => {
       maxRuns: 50,
       feasible: 4,
       rejected: 1,
-      converged: false,
+      converged: null, // the engine has not run a convergence check yet
       seeds: SEEDS,
       config: { ensemble: { max_runs: 50 }, rng: SEEDS },
       engineVersion: "0.3.0",

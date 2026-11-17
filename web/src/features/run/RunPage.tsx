@@ -9,6 +9,15 @@ import { useAuth } from "../../auth/AuthContext";
 
 const terminal = (s: RunStatus | undefined) => s !== undefined && isTerminal(s.state);
 
+/** Only the API's own answer is reported; "converged" appears only when the API says true. */
+function convergenceText(s: RunStatus): string {
+  if (s.converged === true) return "converged";
+  if (s.converged === null) return isTerminal(s.state) ? "not reported" : "not checked yet";
+  if (s.state === "succeeded") return "did not converge (stopped at the run limit)";
+  if (isTerminal(s.state)) return "did not converge (the run stopped)";
+  return "not converged yet";
+}
+
 export function RunPage({ pollMs = 1000 }: { pollMs?: number }) {
   const { runId = "" } = useParams();
   // Keyed by run id so a replay (same route, new id) starts with fresh stream state.
@@ -78,6 +87,9 @@ function RunView({ runId, pollMs }: { runId: string; pollMs: number }) {
             <LinearProgress variant="determinate" value={pct} aria-label="Run progress" sx={{ height: 10, borderRadius: 1 }} />
           )}
           <Typography data-testid="stage-text" sx={{ mt: 1 }} aria-live="polite">{s ? s.stage : "Starting"}</Typography>
+          {live && s?.cancelRequested && (
+            <Typography role="status" sx={{ mt: 1 }}>Cancelling… the run stops after its current step.</Typography>
+          )}
           {streamFailed && live && (
             <Typography variant="body2" color="text.secondary">Live updates are unavailable; checking for progress every few seconds.</Typography>
           )}
@@ -88,7 +100,7 @@ function RunView({ runId, pollMs }: { runId: string; pollMs: number }) {
               </Typography>
               <Typography>Feasible: {s.feasible}</Typography>
               <Typography>Rejected: {s.rejected}</Typography>
-              <Typography>Convergence: {s.converged ? "converged" : "not yet converged"}</Typography>
+              <Typography>Convergence: {convergenceText(s)}</Typography>
               {s.state === "failed" && <Alert severity="error" sx={{ mt: 2 }}>{s.message ?? "The run failed."}</Alert>}
             </Box>
           )}

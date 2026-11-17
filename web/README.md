@@ -24,7 +24,17 @@ npm test                        # generated-types check + vitest + testing-libra
 npm run gen:api                 # regenerate API types after api/openapi.json changes
 npm run typecheck && npm run lint && npm run build
 npm run e2e                     # Playwright against the mock (needs a Chromium matching @playwright/test)
+PW_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome npm run e2e   # use an installed Chromium
 ```
+
+`PW_CHROMIUM_EXECUTABLE` (optional) points Playwright at an already-installed Chromium when the bundled browser build
+does not match the `@playwright/test` version (the cloud image ships build 1243). With the mock client active, the
+header shows "Demo data — not connected to a server" on every page.
+
+**Security rule: server text is text.** Anything that comes from the server (error details today; admin-written
+filter labels and help text later) is rendered as plain text through React or `textContent`. Never use
+`dangerouslySetInnerHTML`, `innerHTML`/`outerHTML`, `insertAdjacentHTML`, or an HTML/markdown renderer on server
+strings. ESLint enforces the first three (`no-restricted-syntax` in `eslint.config.js`).
 
 Roles (admin / client / demo) only hide controls; the server enforces permissions. The real API does not report the
 caller's role yet, so with the real client every control is shown and the server's 403 is displayed.

@@ -17,6 +17,13 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "warn",
       // All HTTP lives in src/api/ (httpClient.ts).
       "no-restricted-globals": ["error", { name: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." }],
+      // Server text (error details, later admin-written labels and help) is always rendered as text, never as HTML.
+      "no-restricted-syntax": [
+        "error",
+        { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: "Render server text as text; no HTML injection (see web/README.md)." },
+        { selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]", message: "Use textContent; no HTML injection (see web/README.md)." },
+        { selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "Use textContent; no HTML injection (see web/README.md)." },
+      ],
       "no-restricted-properties": [
         "error",
         { object: "window", property: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." },

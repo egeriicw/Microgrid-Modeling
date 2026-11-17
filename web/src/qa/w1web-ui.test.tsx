@@ -187,7 +187,7 @@ describe("QA W1-WEB: the run screen on the real client", () => {
     expect(posts).toEqual([{ config: { scenario: { name: "t" }, ensemble: { mode: "adaptive", max_runs: 3 } }, seeds: SEEDS }]);
   });
 
-  it.fails("DEFECT (wording): a finished run that stopped without converging is not described as 'not yet converged'", async () => {
+  it("DEFECT (wording): a finished run that stopped without converging is not described as 'not yet converged'", async () => {
     const { client } = await realClient(() =>
       json(200, detail({ status: "succeeded", progress: { stage: "finished", run_index: 2, n_attempted: 3, n_feasible: 3, max_runs: 3, converged: false, message: "finished: 3 feasible of 3 attempted" } })),
     );
@@ -196,7 +196,7 @@ describe("QA W1-WEB: the run screen on the real client", () => {
     expect(screen.queryByText(/not yet converged/i)).toBeNull();
   });
 
-  it.fails("DEFECT (honesty): before any convergence check (converged: null) the screen does not assert 'not yet converged'", async () => {
+  it("DEFECT (honesty): before any convergence check (converged: null) the screen does not assert 'not yet converged'", async () => {
     const { client } = await realClient((url) => (url.endsWith("/events") ? sseBody(stream, true) : json(200, detail())));
     await renderReal(client, `/runs/${RUN_ID}`);
     await screen.findByText("run 2/3 rejected");

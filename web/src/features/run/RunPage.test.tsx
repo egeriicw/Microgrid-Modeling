@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createMockClient } from "../../api/mockClient";
-import { ApiError, type ApiClient, type Composition } from "../../api/types";
+import { ApiError, type ApiClient, type Composition, type RunStatus } from "../../api/types";
 import { renderApp } from "../../test/utils";
 
 const comp: Composition = {
@@ -88,6 +88,53 @@ describe("run screen (FR-WEB-2)", () => {
     const bar = await screen.findByRole("progressbar", { name: /run progress/i });
     expect(bar).not.toHaveAttribute("aria-valuenow");
     expect(screen.getByTestId("stage-text")).toHaveTextContent(/queued/i);
+  });
+});
+
+describe("convergence wording and cancelling (honest status)", () => {
+  const status = (over: Partial<RunStatus>): RunStatus => ({
+    runId: "r",
+    state: "running",
+    stage: "run 3/10 feasible",
+    completedRuns: 3,
+    maxRuns: 10,
+    feasible: 3,
+    rejected: 0,
+    converged: null,
+    seeds: null,
+    config: null,
+    engineVersion: "x",
+    cancelRequested: false,
+    ...over,
+  });
+  async function show(s: RunStatus) {
+    const base = createMockClient();
+    const client: ApiClient = { ...base, getRun: async () => s, watchRun: () => new Promise(() => undefined) };
+    await renderApp({ route: "/runs/r", role: "client", client });
+    await screen.findByText(/runs completed/i);
+  }
+
+  it.each([
+    [{ converged: null }, /convergence: not checked yet/i],
+    [{ converged: false }, /convergence: not converged yet/i],
+    [{ converged: true }, /convergence: converged/i],
+    [{ state: "succeeded" as const, converged: false }, /convergence: did not converge \(stopped at the run limit\)/i],
+    [{ state: "succeeded" as const, converged: null }, /convergence: not reported/i],
+  ])("%j is described as %s", async (over, text) => {
+    await show(status(over));
+    expect(screen.getByText(text)).toBeInTheDocument();
+    if (over.converged !== true) expect(screen.queryByText(/convergence: converged/i)).toBeNull();
+  });
+
+  it("shows Cancelling… while a cancel has been requested and the run is not yet terminal", async () => {
+    await show(status({ cancelRequested: true }));
+    expect(screen.getByText(/cancelling…/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cancel run/i })).toBeNull();
+  });
+
+  it("does not show Cancelling… once the run is cancelled", async () => {
+    await show(status({ state: "cancelled", cancelRequested: true }));
+    expect(screen.queryByText(/cancelling…/i)).toBeNull();
   });
 });
 

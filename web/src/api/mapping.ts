@@ -55,7 +55,7 @@ export function applyProgress(s: RunStatus, p: ProgressPayload): RunStatus {
     feasible,
     rejected: Math.max(0, attempted - feasible),
     maxRuns: num(p.max_runs) ?? s.maxRuns,
-    converged: p.converged === true,
+    converged: p.converged === undefined ? s.converged : typeof p.converged === "boolean" ? p.converged : null,
   };
 }
 
@@ -71,7 +71,7 @@ export function runStatusFromApi(r: RunOut | RunDetail): RunStatus {
     maxRuns: num(ensemble?.max_runs) ?? null,
     feasible: 0,
     rejected: 0,
-    converged: false,
+    converged: null,
     seeds: seedsFrom(r.seeds),
     config,
     engineVersion: r.engine_version,
@@ -85,6 +85,7 @@ export function runStatusFromApi(r: RunOut | RunDetail): RunStatus {
 
 /** Parse one SSE message from `/runs/{id}/events`; returns null for unknown event types. */
 export function runEventFrom(event: string, data: string, id: string | undefined): RunEvent | null {
+  if (event !== "status" && event !== "progress") return null; // checked before parsing: unknown data may not be JSON
   const parsed: unknown = JSON.parse(data);
   if (!isObj(parsed)) throw new Error("malformed run event: data is not an object");
   if (event === "status") {

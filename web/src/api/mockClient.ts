@@ -110,7 +110,7 @@ export function createMockClient(options: MockOptions = {}): ApiClient {
       n_attempted: r.completed,
       n_feasible: r.completed - rejected,
       max_runs: r.maxRuns,
-      converged: done,
+      converged: done ? true : null, // like the engine: null until a convergence check has run
       message: stageFor(r.completed / r.maxRuns),
     };
   };
@@ -124,7 +124,7 @@ export function createMockClient(options: MockOptions = {}): ApiClient {
       maxRuns: r.maxRuns,
       feasible: 0,
       rejected: 0,
-      converged: false,
+      converged: null,
       seeds: { ...r.seeds },
       config: structuredClone(r.config),
       engineVersion: "mock",

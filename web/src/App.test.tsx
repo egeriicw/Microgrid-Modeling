@@ -29,6 +29,19 @@ describe("role-aware shell", () => {
     expect(screen.getByRole("navigation")).not.toHaveTextContent(/demo results/i);
   });
 
+  it.each(["/login", "/composition", "/results/demo-run"])("shows the demo-data banner on %s when the mock client is active", async (route) => {
+    await renderApp({ route, role: route === "/login" ? undefined : "client" });
+    expect(await screen.findByText(/demo data — not connected to a server/i)).toBeInTheDocument();
+  });
+
+  it("shows no demo-data banner with the real client", async () => {
+    const base = createMockClient();
+    const client: ApiClient = { ...base, kind: "http" };
+    await renderApp({ route: "/composition", role: "client", client });
+    await screen.findByRole("navigation");
+    expect(screen.queryByText(/demo data/i)).toBeNull();
+  });
+
   it("signs out back to the sign-in page", async () => {
     const user = userEvent.setup();
     await renderApp({ route: "/composition", role: "client" });

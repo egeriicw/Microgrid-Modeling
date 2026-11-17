@@ -157,7 +157,7 @@ describe("QA W1-WEB: API key handling", () => {
     expect(sessionStorage.getItem(KEY_STORAGE)).toBe("new-key-0123456789abcd");
   });
 
-  it.fails("DEFECT: a key the runtime cannot put in a header fails as a plain sign-in error that does not echo the key", async () => {
+  it("DEFECT: a key the runtime cannot put in a header fails as a plain sign-in error that does not echo the key", async () => {
     const f = fakeFetch(() => json(200, { items: [] }));
     const c = new HttpApiClient({ fetch: f.fn, storage: sessionStorage });
     const bad = "abc\ndef-secret-0123456789";
@@ -237,14 +237,15 @@ describe("QA W1-WEB: progress stream (SSE over fetch) edge cases", () => {
     expect(calls.map((x) => hdr(x.init, "Last-Event-ID"))).toEqual([null, "4", "4", "9"]);
   });
 
-  it("an HTTP 200 HTML page (proxy error) ends in a rejection after a capped number of attempts, not a hang", async () => {
+  it("an HTTP 200 HTML page (proxy error) ends in a rejection, not a hang", async () => {
     const html = () => new Response("<html><body>502 Bad Gateway: upstream</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     const { c, calls } = await signedIn(html, { maxStreamRetries: 3 });
     await expect(collect(c)).rejects.toBeInstanceOf(ApiError);
-    expect(calls).toHaveLength(4);
+    // Was 4 (capped retries); fix D4 makes a non-event-stream 200 fail at once, so a single attempt.
+    expect(calls).toHaveLength(1);
   });
 
-  it.fails("DEFECT: a 200 response that is not text/event-stream is rejected at once instead of retried", async () => {
+  it("DEFECT: a 200 response that is not text/event-stream is rejected at once instead of retried", async () => {
     const html = () => new Response("<html>login page</html>", { status: 200, headers: { "content-type": "text/html" } });
     const { c, calls } = await signedIn(html, { maxStreamRetries: 3 });
     await expect(collect(c)).rejects.toBeInstanceOf(ApiError);
@@ -286,7 +287,7 @@ describe("QA W1-WEB: progress stream (SSE over fetch) edge cases", () => {
     await vi.waitFor(() => expect(t.state.cancelled).toBe(true));
   });
 
-  it.fails("DEFECT: a malformed event cancels the open stream before reconnecting (otherwise each retry leaks a connection)", async () => {
+  it("DEFECT: a malformed event cancels the open stream before reconnecting (otherwise each retry leaks a connection)", async () => {
     const streams: ReturnType<typeof trackedStream>[] = [];
     const { c } = await signedIn((_u, _i, n) => {
       const t = n === 1 ? trackedStream(["event: progress\nid: 1\ndata: {not json\n\n"], { stayOpen: true }) : trackedStream([status("succeeded")]);
@@ -297,7 +298,7 @@ describe("QA W1-WEB: progress stream (SSE over fetch) edge cases", () => {
     expect(streams[0].state.cancelled).toBe(true);
   });
 
-  it.fails("DEFECT: an unknown event type with non-JSON data is ignored, not treated as a broken stream", async () => {
+  it("DEFECT: an unknown event type with non-JSON data is ignored, not treated as a broken stream", async () => {
     const { c, calls } = await signedIn(() => sse(["event: heartbeat\ndata: tick\n\n", status("succeeded")]));
     expect(await collect(c)).toEqual([{ type: "status", status: "succeeded" }]);
     expect(calls).toHaveLength(1);
