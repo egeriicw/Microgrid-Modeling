@@ -93,5 +93,6 @@ def test_api_job_wires_postgres_for_the_opt_in_tests():
     assert "MICROGRID_TEST_DATABASE_URL" in env, "api tests select Postgres via MICROGRID_TEST_DATABASE_URL"
 
 
-def test_compose_smoke_stays_disabled_until_wave_1():
-    assert WORKFLOW["jobs"]["compose-smoke"].get("if") is False
+def test_compose_smoke_is_enabled_from_wave_1():
+    """Wave 1 (W1-DEPLOY) switched the end-to-end Compose smoke on; details in test_deploy_wave1.py."""
+    assert WORKFLOW["jobs"]["compose-smoke"].get("if") is None

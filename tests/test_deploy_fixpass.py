@@ -90,13 +90,12 @@ def test_migrate_service_is_one_shot_and_gates_api():
 
 
 @needs_make
-def test_make_up_starts_everything_except_the_placeholder_worker():
+def test_make_up_starts_every_service_including_the_worker():
     out = _make_n("up")
     line = next(ln for ln in out.splitlines() if " up " in ln)
-    assert line.split()[-5:] == ["db", "redis", "web", "migrate", "api"]
-    assert "worker" not in line
+    assert set(line.split()[-6:]) == {"db", "redis", "web", "migrate", "api", "worker"}
     make = (ROOT / "Makefile").read_text()
-    assert "1.10" in make and "worker" in make
+    assert "placeholder" not in make.lower()
 
 
 def test_smoke_script_fails_unless_ready_and_runs_migrate():
@@ -125,10 +124,10 @@ def test_runbook_covers_new_behaviour():
     low = RUNBOOK.lower()
     for phrase in ("make image-check", "migrate", "make smoke", "timescaledb-ha:pg17", "only you can verify", "worker"):
         assert phrase in low, phrase
-    assert "ready" in low and "story 1.10" in low
+    assert "ready" in low and "story 1.10" not in low
 
 
-def test_ci_has_blocking_compose_static_job_and_only_smoke_disabled():
+def test_ci_has_blocking_compose_static_job_and_nothing_disabled():
     job = CI["jobs"]["compose-config"]
     assert "if" not in job
     runs = " ".join(s.get("run", "") for s in job["steps"])
@@ -137,6 +136,5 @@ def test_ci_has_blocking_compose_static_job_and_only_smoke_disabled():
     assert f"{base} -f deploy/docker-compose.ci.yml config -q" in runs
     builds = [s for s in job["steps"] if "build" in s.get("run", "")]
     assert builds and all("continue-on-error" not in s for s in builds), "a failed image build must fail CI"
-    assert CI["jobs"]["compose-smoke"]["if"] is False
-    for on in ("lint", "engine", "api", "web"):
+    for on in ("lint", "engine", "api", "web", "compose-smoke"):
         assert "if" not in CI["jobs"][on]

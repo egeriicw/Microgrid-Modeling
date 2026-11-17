@@ -167,13 +167,11 @@ def test_dockerignore_excludes_data_and_junk():
     assert any(x in lines for x in ("**/*.parquet", "*.parquet"))
 
 
-def test_worker_placeholder_fails_loudly(tmp_path):
-    script = DEPLOY / "worker-entrypoint.sh"
-    assert script.exists()
-    env = {"PATH": "/usr/bin:/bin", "PYTHON": "python3", "PYTHONPATH": str(tmp_path)}
-    r = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=False)
-    assert r.returncode != 0
-    assert "microgrid_api.worker" in r.stderr and "story 1.10" in r.stderr
+def test_worker_entrypoint_is_real_not_the_old_placeholder():
+    """The placeholder guard (story 1.10) is gone; behaviour is tested in test_deploy_wave1.py."""
+    script = (DEPLOY / "worker-entrypoint.sh").read_text()
+    assert "exec celery -A microgrid_api.worker worker" in script
+    assert "does not exist yet" not in script
 
 
 def test_ci_override_only_tightens_healthchecks_and_uses_fixtures():
