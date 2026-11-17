@@ -552,13 +552,6 @@ def test_no_secret_is_baked_into_an_image():
     assert "VITE_API_MODE" not in re.sub(r"#.*", "", web_df), "the image must not select the mock client"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="CROSS-BRANCH (integration tripwire): on this branch alone web/src/main.tsx hard-codes createMockClient, "
-    "so the 'real' web image serves the mock UI and the runbook/web.Dockerfile claim ('talks to the real API, not the "
-    "mock') is false. The W1-WEB branch adds src/api/select.ts (VITE_API_MODE). This XPASSes after the merge: then "
-    "drop the xfail marker.",
-)
 def test_web_image_entry_point_selects_the_real_client():
     main = (ROOT / "web" / "src" / "main.tsx").read_text()
     assert "createMockClient(" not in main
