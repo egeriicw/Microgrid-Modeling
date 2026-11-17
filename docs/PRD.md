@@ -183,6 +183,9 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   metering), and an aggregate meter at the distribution point of interconnection.
 - **FR-DATA-4 (MUST) Storage.** PostgreSQL with PostGIS and TimescaleDB (Docker). Interval load results and uploaded
   calibration series in hypertables; geometry in PostGIS; configs, runs, users in plain tables. Alembic migrations.
+  *Owner decision 2026-11-17 (ADR-004):* for the MVP, interval load results are stored as files (one results document
+  per run) with summary values in the database; the hypertable for results is deferred. Geometry, configs, runs and
+  users are unchanged.
 - **FR-DATA-5 (LATER, placeholder) SEED coupling.** A defined adapter interface for DOE's **SEED** platform
   **[verify]** API, for storing or importing the final neighborhood and building records. MVP delivers only the interface
   and a decision record.

@@ -4,6 +4,8 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 
 | Date | Decision | Alternatives | Reason | Reversible? | Status |
 |---|---|---|---|---|---|
+| 2026-11-17 | Interval results stay file-backed for the MVP (ADR-004); FR-DATA-4 hypertable part deferred. Downloads and calibration read the results document, not SQL | Timescale hypertable now | Works today; less risk on a small disk | Yes | Owner-approved ("files for results") |
+| 2026-11-17 | PR 11 merged: `main` now holds the PRD v2 line | Keep working off a side branch | One trunk; one PR per wave from here | No (history) | Owner-approved |
 | 2026-11-17 | Operating plan adopted (`agent-deployment-plan.md`): wave loop, fixed write scopes, one PR per wave | Continue ad hoc | Owner: "Let's go" | Yes | Owner-approved |
 | 2026-11-17 | Models: only lead and `architect` on the top model; other roles Opus/Sonnet/Haiku per agent file; lead rates each story critical/standard/routine and reads critical diffs itself; reviewers may move up one story at a time only to clear a review queue | Top model for all reviewers | Owner direction (2026-11-16) | Yes | Owner-stated |
 | 2026-11-17 | v1 specs (api-spec, architecture, data-model, frontend-spec, implementation-plan, infrastructure, requirements, test-plan) archived with banners, not deleted | Leave in place; delete | Superseded by PRD v2; newcomers were reading stale stack choices | Yes (git mv back) | Agent default |

@@ -8,10 +8,10 @@
 ## 0. Current state (2026-11-17)
 - Wave 0 work is done and pushed; record in `docs/sprints/wave-0-progress.md`. GitHub CI is green with lint, engine,
   api (real Postgres 16), web and compose-config (blocking API image build). `compose-smoke` is still off until Wave 1.
-- A pull request from this branch into `main` is open; **do not merge without the owner's yes**.
+- PR 11 was merged on 2026-11-17; `main` holds everything. Wave 1 runs on this branch and lands as a new pull request.
 - Next: Wave 1 (deployment plan section 6). Before delegating, rate every story and post the wave plan.
 - Waiting on the owner: merge decision; PRs 2 to 8; the Mac checks (data inspector, lite Docker); the decision batch in
-  deployment plan section 9. The storage question (DATA-4: files or Timescale) blocks downloads and calibration design.
+  deployment plan section 9. Results storage is decided: files for the MVP (ADR-004).
 - Traceability matrix was rebuilt from evidence on 2026-11-17; MUST items with no test evidence: ENG-10, DATA-3, DATA-7,
   WEB-4, WEB-6, CAL-1/2/3.
 - Sub-agents were run in the shared working tree with disjoint write scopes and no commits (lead committed). That
