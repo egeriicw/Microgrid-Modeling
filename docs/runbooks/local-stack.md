@@ -1,14 +1,30 @@
 # Runbook: local Docker stack
 
-The stack has six services: `db` (PostgreSQL with PostGIS and TimescaleDB), `redis` (job queue broker), `migrate` (a
-one-shot job that applies database migrations, then exits), `api` (FastAPI, waits for `migrate` to finish), `worker`
-(Celery; a placeholder that exits with a message until story 1.10) and `web` (placeholder page).
-Everything listens on `127.0.0.1` only, so nothing is reachable from other machines.
+The stack has six services:
 
-**Settings names.** The API reads environment variables with the `MICROGRID_` prefix (`MICROGRID_DATABASE_URL`,
-`MICROGRID_REDIS_URL`, `MICROGRID_JWT_SECRET`, `MICROGRID_DATA_DIR`, `MICROGRID_OUTPUT_DIR`, `MICROGRID_ENVIRONMENT`).
-Compose builds them from the values in `deploy/.env` and sets `MICROGRID_ENVIRONMENT=production`, so the API refuses to
-start without real settings. You normally never edit these names.
+| Service | What it is | Plain-language job |
+|---|---|---|
+| `db` | PostgreSQL with PostGIS and TimescaleDB | stores runs, settings and results summaries |
+| `redis` | Redis | the job queue ("broker"): the API drops a run in, the worker picks it up |
+| `migrate` | one-shot job | brings the database tables up to date, then exits (`exited (0)` is correct) |
+| `api` | FastAPI on port 8000 | the HTTP API (`/api/v1/...`) |
+| `worker` | Celery worker (image `microgrid-worker:dev`) | runs the engine in the background; also runs the stuck-run reaper every 5 minutes |
+| `web` | the React app built with Vite, served by nginx (image `microgrid-web:dev`) | the web page on port 3000; it also forwards ("proxies") every `/api/` request to the `api` service |
+
+Everything listens on `127.0.0.1` only, so nothing is reachable from other machines. Because `web` forwards `/api/`,
+your browser only ever talks to http://127.0.0.1:3000 (one "origin", so no cross-site settings are needed).
+
+**Settings names.** The API and the worker read environment variables with the `MICROGRID_` prefix
+(`MICROGRID_DATABASE_URL`, `MICROGRID_REDIS_URL`, `MICROGRID_JWT_SECRET`, `MICROGRID_API_KEYS`, `MICROGRID_DATA_DIR`,
+`MICROGRID_OUTPUT_DIR`, `MICROGRID_ENVIRONMENT`). Compose builds them from the values in `deploy/.env` and sets
+`MICROGRID_ENVIRONMENT=production`, so `migrate`, `api` and `worker` all refuse to start without real settings. You
+normally never edit these names; you edit the short names in `deploy/.env` (`POSTGRES_PASSWORD`, `JWT_SECRET`,
+`API_KEYS`, ...).
+
+**API keys (who may use the API).** `API_KEYS` in `deploy/.env` is a list of users, each with a name ("subject"), a role
+(`admin`, `client` or `demo`) and a secret key of at least 16 characters. The template has two development-only keys
+(`dev-admin` and `dev-client`). A program or the web app sends a key as the header `Authorization: Bearer <key>`. Keep
+the single quotes around the value in `deploy/.env`. Change the keys before anything is ever reachable beyond this laptop.
 
 **Floating database image tag.** `db` uses `timescale/timescaledb-ha:pg17`, a floating tag: it can change under you
 when you pull. Its arm64 build and size are not yet verified. Run `make image-check` (it only prints commands) and
@@ -24,27 +40,52 @@ run what it prints on your Mac. Once confirmed, pin the full tag in `deploy/dock
 ## First start
 ```bash
 cd Microgrid-Modeling
-make up        # creates deploy/.env from the template on first run, builds, starts, waits for health
-make ps        # db, redis, web, api say "healthy"; migrate says "exited (0)"; no worker is started
+make up        # creates deploy/.env from the template on first run, builds, starts all six services, waits for health
+make ps        # db, redis, api, worker, web say "healthy"; migrate says "exited (0)"
 ```
-`make up` starts `db redis web migrate api` only. The worker is a placeholder that exits until story 1.10, and
-`--wait` would report failure because of it, so it is left out of `make up` until then (the Makefile has a comment
-marking where to add it back). `migrate` runs `python -m microgrid_api.db.migrate` (alembic upgrade head) once per
-start; an `exited (0)` status is correct. If it fails, `api` does not start: see `make logs s=migrate`.
-URLs: web http://127.0.0.1:3000, API http://127.0.0.1:8000/api/v1/health and `/api/v1/ready`.
-To point at data elsewhere, edit `MICROGRID_DATA_DIR` in `deploy/.env` (default `./data`). It is mounted read-only.
-The database password and JWT secret in the template are development-only values. Never commit `deploy/.env`
+`make up` starts `db redis migrate api worker web` and waits (up to 10 minutes) until each is healthy. The first build
+takes several minutes: it builds three images (`microgrid-api:dev`, `microgrid-worker:dev`, `microgrid-web:dev`), and the
+web build downloads Node packages inside a temporary build stage. `migrate` runs `python -m microgrid_api.db.migrate`
+(alembic upgrade head) once per start; an `exited (0)` status is correct. If it fails, `api` and `worker` do not
+start: see `make logs s=migrate`.
+
+URLs: the web app http://127.0.0.1:3000 (the API through it: http://127.0.0.1:3000/api/v1/health), and the API
+directly at http://127.0.0.1:8000/api/v1/health and `/api/v1/ready`.
+To point at data elsewhere, edit `MICROGRID_DATA_DIR` in `deploy/.env` (default `./data`). It is mounted read-only
+into `api` and `worker`. Run results are written by the worker to the `outputs` volume, which the API reads back.
+The database password, JWT secret and API keys in the template are development-only values. Never commit `deploy/.env`
 (it is git-ignored).
 
+**Worker.** One worker runs `WORKER_CONCURRENCY` engine runs at a time (default 2, set in `deploy/.env`) and is capped
+at `WORKER_MEM_LIMIT` (default 8g). Its health check asks Celery whether the worker answers (`celery inspect ping`).
+Run only one worker: it also schedules the reaper that marks runs whose worker died as failed. Watch it with
+`make logs s=worker`.
+
+**Web.** The `web` image is built from `deploy/web.Dockerfile`: Node 22 runs `npm ci && npm run build` in `web/`, and only
+the finished files (`web/dist`) go into a small nginx image. nginx serves the app, sends every unknown path (for example
+`/runs/123`) to the app's `index.html` so browser links work, adds security headers, and forwards `/api/` to the API
+without buffering, so live progress (Server-Sent Events) arrives as it happens. The image is built without
+`VITE_API_MODE`, so it talks to the real API, not the mock.
+
 Automated check: `make smoke` (or `./deploy/tests/test_compose_smoke.sh`). It first runs the free-disk preflight (full
-mode) and stops if that refuses, before creating `deploy/.env` or calling Docker. Then it builds and starts db, redis and web,
-then `migrate` and `api`; waits for each to be healthy; fetches `/api/v1/health`; and FAILS unless `/api/v1/ready`
-reports `"ready":true` (database reachable and migrations applied). The worker is skipped unless
-`SMOKE_REQUIRE_WORKER=1`. It stops the stack at the end but keeps volumes.
+mode) and stops if that refuses, before creating `deploy/.env` or calling Docker. Then it builds and starts all six
+services; waits for each to be healthy; FAILS unless `/api/v1/ready` reports `"ready":true` with `db`, `schema` and
+`redis` all `ok`; and checks the web page, a browser link, a security header and the `/api/` forwarding. It stops the
+stack at the end but keeps volumes. `SMOKE_RUN=1 make smoke` also submits a tiny run (4 buildings, 6 repetitions)
+with the first key in `API_KEYS`, waits for it to finish and fetches its results; that needs your data folder in the
+layout the API expects (`background/DC_upgrade0.xlsx`, `background/DC_upgrade0_agg.xlsx`,
+`input/resstock/timeseries_individual_buildings/...`, `input/comstock/timeseries_individual_buildings/...`).
+
+**What GitHub CI checks.** The `compose-smoke` job generates a tiny made-up dataset
+(`python deploy/ci/make_fixture_data.py tests/fixtures/data`, git-ignored) and runs the same script with `SMOKE_CI=1`:
+it always submits the run through the web port, waits until it is `succeeded`, fetches the results document and the
+live progress stream, and prints the container logs if anything fails. It uses its own project name
+(`microgrid-smoke`), so if you ever run it on your Mac it does not touch your database volume.
 
 ## What only you can verify on your Mac
 Only you can verify these; the cloud environment has no Docker daemon or Apple silicon:
 - `make up` completes and `make ps` looks as described above on an M2 (first build takes several minutes).
+- The web page at http://127.0.0.1:3000 loads and shows live progress for a run.
 - `make image-check` output: arm64 manifest for every image, plus real image sizes (`make disk`).
 - `make smoke` ends with `SMOKE OK`.
 - Memory and disk use under load (Docker Desktop settings, `docker stats`).
@@ -123,7 +164,7 @@ make lite-nuke   # DESTRUCTIVE, asks you to type DELETE: removes ONLY the lite v
 ```
 What lite gives you: the same API image as the full stack, the data folder mounted read-only, loopback-only port,
 healthcheck, non-root user and dropped capabilities. What you lose: PostGIS (spatial SQL), TimescaleDB (time-series
-SQL), Redis, the web placeholder, the worker, and production mode. Lite sets `MICROGRID_ENVIRONMENT=development`
+SQL), Redis, the web app, the worker (so runs cannot execute), and production mode. Lite sets `MICROGRID_ENVIRONMENT=development`
 because the API only allows SQLite without a JWT secret in development; no secrets file is needed, and for that reason
 lite is for this laptop on 127.0.0.1 only. Nothing in the engine or API uses PostGIS or TimescaleDB yet (the
 migration runs on SQLite, checked in the cloud). Run the full stack when you have the space, or on a bigger disk, to
@@ -156,7 +197,10 @@ so allow for both [verify on your Mac with `docker system df`].
 |---|---|---|---|---|
 | timescale/timescaledb-ha:pg17 (full `db`) | 891.8 MB | about 2.1 to 3.0 GB ESTIMATE | 3f0b3f6bdf49 | PostgreSQL + PostGIS + TimescaleDB; floating tag |
 | redis:7.4-alpine (full `redis`) | 16.9 MB | 40.7 MB (m) | 7b1753b4c5ad | |
-| nginxinc/nginx-unprivileged:1.27-alpine (full `web`) | 21.8 MB | about 55 MB ESTIMATE | 65e3e85dbaed | |
+| nginxinc/nginx-unprivileged:1.27-alpine (full `web`) | 21.8 MB | about 55 MB ESTIMATE | 65e3e85dbaed | runtime base of `microgrid-web:dev` |
+| microgrid-web:dev (web; built locally) | not yet measured | not yet measured | n/a (built locally) | nginx base plus the built app files |
+| microgrid-worker:dev (worker; built locally) | not yet measured | not yet measured | n/a (built locally) | same layers as `microgrid-api:dev` plus one script, so little extra disk |
+| node:22-bookworm-slim (web build stage only) | not yet measured | not yet measured | not yet checked | kept in the build cache with the Node packages; `docker builder prune` reclaims it |
 | python:3.12-slim-bookworm (api base) | 44.9 MB | 154 MB (m, layer tar bytes) | 935c3c5b1235 | |
 | microgrid-api:dev (api, migrate, worker; shared layers) | about 170 MB ESTIMATE | about 0.6 to 0.7 GB ESTIMATE | n/a (built locally) | base + Python packages below |
 | python:3.12-alpine | 18.5 MB | n/a | e064671ca452 | NOT usable: pyarrow publishes no musl wheels [verify] |
@@ -174,17 +218,23 @@ ESTIMATE. The root package needs only numpy, pandas, pyarrow, pyyaml and openpyx
 
 | Scenario | Estimated disk | Basis |
 |---|---|---|
-| Full stack: images + build cache + empty volumes | about 5 to 8 GB of new use, ESTIMATE | db 2.1 to 3.0 GB + api 0.7 + small images 0.1 + build cache 0.5 to 1 + volumes 0.1 |
+| Full stack: images + build cache + empty volumes | about 5.5 to 9 GB of new use, ESTIMATE | db 2.1 to 3.0 GB + api and worker 0.7 (shared layers) + small images 0.1 + Python build cache 0.5 to 1 + web build stage and Node packages 0.5 to 1 (not yet measured) + volumes 0.1 |
 | Lite stack | about 1.5 to 3 GB of new use, ESTIMATE | api image 0.7 + build cache 0.5 to 1 + base image layers and build overhead (QA's more cautious range) |
 | Your `data/` folder | about 11 GB, already used | read-only mount, never copied |
 
-Lite saves roughly 3 GB, almost all of it the `db` image. A smaller real Postgres is possible (postgres:17-alpine, about
+Lite saves roughly 4 GB, most of it the `db` image and the web build. A smaller real Postgres is possible (postgres:17-alpine, about
 0.3 GB) but loses PostGIS and TimescaleDB, so it is not offered until the owner decides that trade.
 
 ## Troubleshooting
 - **Port already in use** (for example a local Postgres on 5432): change `DB_PORT` (or `API_PORT`, `REDIS_PORT`,
   `WEB_PORT`) in `deploy/.env`, then `make up`.
-- **`worker` exited** (only if you started it by hand): expected until story 1.10; `make logs s=worker` shows the explanatory message.
+- **`worker` unhealthy or exited**: `make logs s=worker`. A `ConfigurationError` names the missing setting (for
+  example `MICROGRID_API_KEYS`: add `API_KEYS` to `deploy/.env` from `deploy/.env.example`). A worker killed for memory
+  shows exit code 137: lower `WORKER_CONCURRENCY` or raise `WORKER_MEM_LIMIT` and Docker Desktop's memory.
+- **`migrate` exits with code 2**: a required setting is missing from `deploy/.env` (older copies lack `API_KEYS`).
+  Copy the missing lines from `deploy/.env.example`.
+- **Web page loads but API calls fail with 502**: the `api` service is down or restarting; `make logs s=api`.
+- **Run stays `queued`**: the worker is not running or cannot reach Redis; `make ps`, then `make logs s=worker`.
 - **`api` unhealthy or exited**: `make logs s=api`. If it never starts, check that `migrate` succeeded.
 - **`db` slow on first start**: it initialises the data volume and extensions once (up to a minute).
 - **Image arch warning** (`amd64` on `arm64`): the image lacks an arm64 build; report it, do not ignore it. Check with

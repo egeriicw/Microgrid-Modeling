@@ -18,6 +18,8 @@ htmlcov
 notebooks
 web/node_modules
 **/node_modules
+# the web image builds its own dist/ inside the build stage
+web/dist
 # secrets and local config
 .env
 **/.env

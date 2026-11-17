@@ -1,10 +1,22 @@
 #!/bin/sh
-# Worker entrypoint. PLACEHOLDER until Sprint 1 story 1.10 creates microgrid_api.worker.
-# Fails loudly (non-zero exit, clear message) rather than pretending to work.
-PY="${PYTHON:-python}"
-if ! "$PY" -c "import microgrid_api.worker" 2>/dev/null; then
-  echo "ERROR: module microgrid_api.worker does not exist yet (Celery worker arrives in story 1.10)." >&2
-  echo "The worker service is expected to exit until then; api, db, redis and web are unaffected." >&2
-  exit 1
-fi
-exec celery -A microgrid_api.worker worker --loglevel="${LOG_LEVEL:-INFO}" --concurrency="${WORKER_CONCURRENCY:-2}"
+# Worker entrypoint: one Celery worker that runs engine jobs (microgrid_api.worker, FR-PLAT-2) and, with --beat, also
+# schedules the stuck-run reaper (microgrid.reap_stale_runs). Run exactly ONE worker with --beat: a second beat would
+# schedule the reaper twice (harmless, the reaper's updates are guarded, but wasteful).
+# Settings come from the environment (MICROGRID_REDIS_URL, MICROGRID_DATABASE_URL, MICROGRID_API_KEYS, ...);
+# a missing one makes the module import fail loudly with a ConfigurationError naming the variable.
+# /app is owned by root, so the beat schedule file lives in /tmp.
+set -eu
+
+concurrency="${WORKER_CONCURRENCY:-2}"
+case "$concurrency" in
+  ''|*[!0-9]*|0*)
+    echo "worker-entrypoint: WORKER_CONCURRENCY must be a whole number from 1 upwards (got '${concurrency}')." >&2
+    exit 2
+    ;;
+esac
+
+exec celery -A microgrid_api.worker worker \
+  --loglevel="${LOG_LEVEL:-INFO}" \
+  --concurrency="${concurrency}" \
+  --beat \
+  --schedule=/tmp/celerybeat-schedule
