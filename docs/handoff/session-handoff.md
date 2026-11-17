@@ -1,7 +1,21 @@
 # Session Handoff
 
-**Written:** 2026-11-07, end of session 1 · **Branch:** `claude/loving-pascal-x8khbu` · **Next role:** you are the Project
-Manager and Project Lead (see `CLAUDE.md`), with the sub-agent team in `.claude/agents/`.
+**Written:** 2026-11-17, during Wave 0 · **Branch:** `claude/determined-mendel-t08ccp` (contains everything from
+`claude/loving-pascal-x8khbu` plus Wave 0) · **Next role:** Project Manager and Project Lead (see `CLAUDE.md`).
+**Operating plan:** `docs/agent-deployment-plan.md` (waves, roster, models, criticality rating). It supersedes the
+"what to do next" parts of sections 3b to 4 and 8 below, which are kept as history.
+
+## 0. Current state (2026-11-17)
+- Wave 0 work is done and pushed; record in `docs/sprints/wave-0-progress.md`. GitHub CI is green with lint, engine,
+  api (real Postgres 16), web and compose-config (blocking API image build). `compose-smoke` is still off until Wave 1.
+- A pull request from this branch into `main` is open; **do not merge without the owner's yes**.
+- Next: Wave 1 (deployment plan section 6). Before delegating, rate every story and post the wave plan.
+- Waiting on the owner: merge decision; PRs 2 to 8; the Mac checks (data inspector, lite Docker); the decision batch in
+  deployment plan section 9. The storage question (DATA-4: files or Timescale) blocks downloads and calibration design.
+- Traceability matrix was rebuilt from evidence on 2026-11-17; MUST items with no test evidence: ENG-10, DATA-3, DATA-7,
+  WEB-4, WEB-6, CAL-1/2/3.
+- Sub-agents were run in the shared working tree with disjoint write scopes and no commits (lead committed). That
+  worked for three agents; use worktrees when two stories must touch the same folder.
 
 ## 1. One-paragraph situation
 The owner (Bill Eger, non-expert builder) is turning a notebook-era prototype into a production web app for community

@@ -4,6 +4,12 @@ Newest first. Agents add an entry for every autonomous decision (see `agent-team
 
 | Date | Decision | Alternatives | Reason | Reversible? | Status |
 |---|---|---|---|---|---|
+| 2026-11-17 | Operating plan adopted (`agent-deployment-plan.md`): wave loop, fixed write scopes, one PR per wave | Continue ad hoc | Owner: "Let's go" | Yes | Owner-approved |
+| 2026-11-17 | Models: only lead and `architect` on the top model; other roles Opus/Sonnet/Haiku per agent file; lead rates each story critical/standard/routine and reads critical diffs itself; reviewers may move up one story at a time only to clear a review queue | Top model for all reviewers | Owner direction (2026-11-16) | Yes | Owner-stated |
+| 2026-11-17 | v1 specs (api-spec, architecture, data-model, frontend-spec, implementation-plan, infrastructure, requirements, test-plan) archived with banners, not deleted | Leave in place; delete | Superseded by PRD v2; newcomers were reading stale stack choices | Yes (git mv back) | Agent default |
+| 2026-11-17 | CI `api` job installs with `uv sync --locked`; migrate check targets the service's default `postgres` database so it cannot disturb the test database; no coverage threshold yet (API measured 88%) | pip install; fail-under 85 | Reproducible installs; 3-point margin too thin to gate on | Yes | Agent default; gate value for owner/lead at Wave 1 |
+| 2026-11-17 | CI Postgres stays `postgres:16` while compose uses a Timescale pg17 image | Match images now | Unchanged from before; mismatch to resolve with the DATA-4 storage ADR in Wave 1 | Yes | Open |
+| 2026-11-17 | Personal cloud environment `microgrid-modeling` created with a setup script (uv sync x2, npm ci); Default environment untouched | Edit Default | Repo-specific setup does not belong on Default | Yes | Owner-approved (prompt); script unproven until a fresh session |
 | 2026-11-03 | PRD v1 archived (not deleted) to `docs/archive/`; new PRD v2 written from owner interview | Overwrite | Owner asked to keep the old PRD as a historical artifact | Yes | Done |
 | 2026-11-03 | Map demoted to SHOULD; load forecasting core is the success-or-failure item | Map as MUST | Owner priority statement | Yes | Owner-stated |
 | 2026-11-03 | Start from scratch for web/DB layers (no recoverable `feat/*` scaffold); SQLAlchemy + Alembic kept | Reuse old scaffold | Not in any git ref; owner could not locate | Yes | Owner-stated |

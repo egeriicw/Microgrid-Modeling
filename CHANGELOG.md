@@ -5,6 +5,13 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Changed (Wave 0, 2026-11-17)
+- CI: `api` job (ruff, mypy, migrate an empty Postgres 16 to head, pytest with coverage against Postgres) and `web` job
+  (Node 22: typecheck, lint, test, build) are enabled and blocking; the API image build no longer uses continue-on-error.
+- Agent roles: model, write scope and first step set per role; `ux-reviewer` and `records-keeper` added.
+- Docs: v1 specs moved to `docs/archive/` (`v1-*`); README and docs index rewritten; traceability matrix corrected from evidence.
+- Added `docs/agent-deployment-plan.md` (operating plan) and `.claude/settings.json` (allowlist of read-only and test commands).
+
 ### Added (Sprint 2 batch A, 2026-11-11)
 - HTTP run API (`/api/v1/runs` create/list/detail/events SSE/cancel/results, demo compositions), bearer API-key roles, run ownership (migration 0003), stuck-run reaper, `api/openapi.json` export with staleness test, server-side output dir and size caps.
 - Engine: `convergence.rule: prd_default` (opt-in), results model schema 1.0 with 15-minute envelopes, load-duration and seasonal arrays; `ProgressEvent.convergence`.
