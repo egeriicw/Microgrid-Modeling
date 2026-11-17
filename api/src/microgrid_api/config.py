@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, StrictBool, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Only these environments may fall back to a local SQLite file and run without a JWT secret.
@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     reaper_interval_s: int = Field(default=300, gt=0)
     data_dir: Path | None = None  # MICROGRID_DATA_DIR, read-only data root
     output_dir: Path | None = None  # MICROGRID_OUTPUT_DIR, writable outputs
+    # MICROGRID_PERMISSION_OVERRIDES: JSON {role: {flag: bool}} passed to microgrid.community_load.permissions.can.
+    # Turning filters on for clients is {"client": {"filters.use": true}}. Unknown roles/flags, non-boolean values and
+    # flags a role can never have (demo + filters.use) fail at startup.
+    permission_overrides: dict[str, dict[str, StrictBool]] = Field(default_factory=dict)
+    # MICROGRID_MAX_REQUEST_BYTES: request bodies larger than this are refused with 413 before they are parsed.
+    max_request_bytes: int = Field(default=1_048_576, gt=0)
 
     @model_validator(mode="after")
     def _check(self) -> Settings:
@@ -106,9 +112,20 @@ class Settings(BaseSettings):
             raise ConfigurationError(
                 "MICROGRID_TASK_SOFT_TIME_LIMIT_S must be smaller than MICROGRID_TASK_TIME_LIMIT_S."
             )
+        self._check_permission_overrides()
         if "*" in self.cors_origins:
             raise ConfigurationError("cors_origins (MICROGRID_CORS_ORIGINS) must not contain '*'; list origins.")
         return self
+
+    def _check_permission_overrides(self) -> None:
+        from microgrid.community_load.permissions import FLAGS, ROLES, can
+
+        try:
+            for role in ROLES:
+                for flag in FLAGS:
+                    can(role, flag, self.permission_overrides)
+        except ValueError as exc:
+            raise ConfigurationError(f"MICROGRID_PERMISSION_OVERRIDES is invalid: {exc}") from None
 
     def require_database_url(self) -> str:
         assert self.database_url  # guaranteed by validation

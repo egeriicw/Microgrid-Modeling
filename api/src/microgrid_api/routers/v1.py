@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from microgrid_api.routers import health, runs
+from microgrid_api.routers import exposed_attributes, health, runs
 
 router = APIRouter()
 router.include_router(health.router)
 router.include_router(runs.router)
+router.include_router(exposed_attributes.router)

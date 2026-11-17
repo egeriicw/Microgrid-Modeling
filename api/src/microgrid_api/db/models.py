@@ -80,6 +80,9 @@ class Run(Base):
     # Added in 0003: the API key subject that created the run. NULL for rows created before ownership existed
     # (visible to admins only).
     owner: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Added in 0004 (FR-ENG-11 e): what the user picked, by exposed-attribute key, and the configuration version used
+    # to turn it into the effective (column-level) filters stored in composition_snapshot. NULL = no selections.
+    filter_selections: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class RunEvent(Base):
@@ -91,3 +94,35 @@ class RunEvent(Base):
     stage: Mapped[str] = mapped_column(String(64), nullable=False)
     message: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class ExposedAttributeVersion(Base):
+    """One immutable version of the exposed-attribute configuration (FR-ENG-11 b). Rows are only ever inserted.
+
+    ``version`` is assigned by the service as latest + 1; the primary key makes two writers that raced from the same
+    base version collide (one wins, the other gets a conflict). Version 0 is reserved for the packaged starter set and
+    is never stored.
+    """
+
+    __tablename__ = "exposed_attribute_versions"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    based_on: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now(), nullable=False)
+
+
+class ExposedAttributeActivation(Base):
+    """Append-only activation log. The active configuration is the newest row (highest id); ``version`` NULL means
+    the packaged starter set. No rows at all also means the packaged starter set."""
+
+    __tablename__ = "exposed_attribute_activations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int | None] = mapped_column(
+        ForeignKey("exposed_attribute_versions.version", ondelete="RESTRICT"), nullable=True
+    )
+    activated_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now(), nullable=False)

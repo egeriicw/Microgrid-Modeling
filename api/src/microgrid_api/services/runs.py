@@ -103,12 +103,14 @@ def create_run(
     trusted_data_paths: bool = False,
     owner: str | None = None,
     run_id: uuid.UUID | None = None,
+    filter_selections: dict[str, Any] | None = None,
 ) -> Run:
     """Store a queued run. Unset seeds are resolved HERE, before execution, so the exact seeds are on the row and
     the stored snapshot alone replays the run. ``validate`` (default) checks the config with the engine's strict
     parser so a bad config fails at creation, not later in the worker. The caller's dict is not mutated.
     Path fields in the snapshot are rejected (keys only in the message) unless ``trusted_data_paths`` is True,
-    which only server-side code that built them itself may pass."""
+    which only server-side code that built them itself may pass. ``filter_selections`` records what the user picked
+    (exposed-attribute keys and configuration version); the effective filters themselves are in the snapshot."""
     if not trusted_data_paths:
         bad = _path_keys_present(composition_snapshot)
         if bad:
@@ -126,6 +128,7 @@ def create_run(
         status=RunStatus.queued.value,
         progress={},
         owner=owner,
+        filter_selections=copy.deepcopy(filter_selections),
     )
     session.add(run)
     session.commit()

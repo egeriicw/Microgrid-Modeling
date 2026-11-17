@@ -21,7 +21,7 @@ from typing import Any, Literal
 import anyio.to_thread
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from microgrid.community_load.permissions import FilterPermissionError, validate_filters_allowed
+from microgrid.community_load.permissions import FilterPermissionError, can, validate_filter_edit
 from microgrid.community_load.synthetic.config import config_from_dict
 from pydantic import BaseModel, ConfigDict, StrictInt, model_validator
 from sqlalchemy import func, select
@@ -31,6 +31,8 @@ from sse_starlette.sse import EventSourceResponse
 from microgrid_api.auth import Principal, current_principal
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run, RunEvent, RunStatus
+from microgrid_api.filter_schemas import FilterSelections, selections_to_plain
+from microgrid_api.services import exposed_attributes as ea_svc
 from microgrid_api.services import runs as svc
 
 logger = logging.getLogger("microgrid_api.runs")
@@ -48,6 +50,10 @@ class RunCreate(BaseModel):
     config: dict[str, Any] | None = None
     composition_id: str | None = None
     seeds: dict[str, StrictInt] | None = None
+    # FR-ENG-11: attribute filters by exposed-attribute key, per composition category. Needs the filters.use flag.
+    # Raw column-level `attributes` inside `config.archetype_filters` are refused; these selections are turned into
+    # engine filters by the server with the ACTIVE exposed-attribute configuration.
+    filter_selections: FilterSelections | None = None
 
     @model_validator(mode="after")
     def _one_source(self) -> RunCreate:
@@ -76,6 +82,12 @@ class RunOut(BaseModel):
 class RunDetail(RunOut):
     composition_snapshot: dict[str, Any]
     result: dict[str, Any] | None
+    # FR-ENG-11 e: the column-level filters the engine applied ("<source>/<category>" -> filters), the user's
+    # selections with the exposed-attribute configuration version used, and the matched pool sizes (from the result;
+    # None until the worker has built the pool).
+    effective_filters: dict[str, list[dict[str, Any]]]
+    filter_selections: dict[str, Any] | None
+    pool_summary: dict[str, Any] | None
 
 
 class RunList(BaseModel):
@@ -98,12 +110,49 @@ def _out(run: Run) -> RunOut:
     return RunOut.model_validate(run, from_attributes=True)
 
 
+def _public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """A snapshot without server paths (`data`, `output.base_dir`)."""
+    out = {k: v for k, v in snapshot.items() if k != "data"}
+    if isinstance(out.get("output"), dict):
+        out["output"] = {k: v for k, v in out["output"].items() if k != "base_dir"}
+    return out
+
+
 def _detail(run: Run) -> RunDetail:
-    snapshot = {k: v for k, v in run.composition_snapshot.items() if k != "data"}  # never expose server paths
-    if isinstance(snapshot.get("output"), dict):
-        snapshot["output"] = {k: v for k, v in snapshot["output"].items() if k != "base_dir"}
+    snapshot = _public_snapshot(run.composition_snapshot)  # never expose server paths
+    result = copy.deepcopy(run.result) if run.result is not None else None
+    if result is not None and isinstance(result.get("config_snapshot"), dict):
+        result["config_snapshot"] = _public_snapshot(result["config_snapshot"])  # the engine's copy holds them too
+    pool = result.get("pool_summary") if result is not None else None
     base = _out(run).model_dump()
-    return RunDetail(**base, composition_snapshot=snapshot, result=run.result)
+    return RunDetail(
+        **base,
+        composition_snapshot=snapshot,
+        result=result,
+        effective_filters=ea_svc.effective_filters(run.composition_snapshot),
+        filter_selections=run.filter_selections,
+        pool_summary=pool if isinstance(pool, dict) else None,
+    )
+
+
+def check_client_config(config: dict[str, Any]) -> None:
+    """Refuse anything in a client config the server must own: paths, the data section, raw column filters."""
+    if "data" in config:
+        raise HTTPException(
+            422, "the 'data' section is built by the server and must not be sent; remove it from the config"
+        )
+    if isinstance(config.get("output"), dict) and "base_dir" in config["output"]:
+        raise HTTPException(422, "output.base_dir is set by the server and must not be sent; remove it")
+    bad = svc.path_keys_present(config)
+    if bad:
+        raise HTTPException(422, f"path fields are not allowed in a client config: {bad}")
+    raw = ea_svc.raw_attribute_filter_locations(config)
+    if raw:
+        raise HTTPException(
+            422,
+            f"raw attribute filters (column names) are not accepted: {raw}; send exposed-attribute selections in "
+            "'filter_selections' instead",
+        )
 
 
 def _visible_run(session: Session, principal: Principal, run_id: uuid.UUID) -> Run:
@@ -162,26 +211,35 @@ def create_run(
     session: Session = Depends(get_session),
 ) -> RunOut:
     settings: Settings = request.app.state.settings
+    overrides = settings.permission_overrides
     demo = principal.role == "demo"
     if demo and (body.config is not None or body.seeds is not None):
         raise HTTPException(403, "the demo role may only run a predefined composition with its fixed seed")
+    saved: dict[str, Any] | None = None  # the stored composition, when one is being run (validate_filter_edit)
     if body.composition_id is not None:
         library: dict[str, dict[str, Any]] = request.app.state.demo_compositions
         if body.composition_id not in library:
             raise HTTPException(404, "unknown composition_id")
-        config = copy.deepcopy(library[body.composition_id])
+        saved = library[body.composition_id]
+        config = copy.deepcopy(saved)
     else:
         assert body.config is not None
         config = copy.deepcopy(body.config)
-        if "data" in config:
-            raise HTTPException(
-                422, "the 'data' section is built by the server and must not be sent; remove it from the config"
-            )
-        if isinstance(config.get("output"), dict) and "base_dir" in config["output"]:
-            raise HTTPException(422, "output.base_dir is set by the server and must not be sent; remove it")
-        bad = svc.path_keys_present(config)
-        if bad:
-            raise HTTPException(422, f"path fields are not allowed in a client config: {bad}")
+        check_client_config(config)
+    provenance: dict[str, Any] | None = None
+    if body.filter_selections and any(body.filter_selections.values()):
+        if not can(principal.role, "filters.use", overrides):
+            raise HTTPException(403, f"role {principal.role!r} does not have the filters.use permission")
+        try:
+            active = ea_svc.active_configuration(session)
+        except ea_svc.InvalidStoredConfiguration as exc:
+            raise HTTPException(503, str(exc)) from None
+        plain = selections_to_plain(body.filter_selections)
+        try:
+            config = ea_svc.apply_selections(config, plain, active.exposed)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        provenance = {"exposed_attributes_version": active.version, "categories": plain}
     if demo:  # fixed stored seed unless the predefined composition pins its own
         pinned = dict(config.get("rng") or {})
         config["rng"] = {k: pinned.get(k, settings.demo_seed) for k in svc.SEED_KEYS}
@@ -189,9 +247,16 @@ def create_run(
     snapshot = _build_snapshot(settings, config, run_id)
     _check_caps(settings, snapshot)
     try:
-        validate_filters_allowed(principal.role, snapshot)  # permission flag filters.use
+        # permission flag filters.use: adding, changing or removing filters relative to the stored composition
+        validate_filter_edit(principal.role, new=snapshot, saved=saved, overrides=overrides)
         run = svc.create_run(
-            session, snapshot, body.seeds, trusted_data_paths=True, owner=principal.subject, run_id=run_id
+            session,
+            snapshot,
+            body.seeds,
+            trusted_data_paths=True,
+            owner=principal.subject,
+            run_id=run_id,
+            filter_selections=provenance,
         )
     except FilterPermissionError as exc:
         raise HTTPException(403, str(exc)) from None

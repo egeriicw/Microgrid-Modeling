@@ -7,8 +7,11 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from microgrid_api import __version__
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run
+from microgrid_api.limits import BodySizeLimit
 from microgrid_api.routers import v1
 from microgrid_api.services.demo import load_demo_compositions
 
@@ -32,6 +36,14 @@ def _cancel_run(session: Session, run_id: uuid.UUID) -> Run:
     from microgrid_api import worker
 
     return worker.cancel_run(session, run_id)
+
+
+async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
+    """422 like FastAPI's default, minus the submitted ``input``: errors never echo what was sent (it may be large or
+    sensitive, and a NaN/infinity in it made the default handler fail with a 500 while rendering JSON)."""
+    assert isinstance(exc, RequestValidationError)
+    errors = [{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -61,6 +73,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.enqueue = _enqueue
     app.state.cancel_run = _cancel_run
     logger.info("database backend: %s (environment=%s)", make_url(url).get_backend_name(), settings.environment)
+    # Body cap before parsing (added before CORS, so CORS stays outermost and a 413 still carries CORS headers).
+    app.add_middleware(BodySizeLimit, max_bytes=settings.max_request_bytes)
+    app.add_exception_handler(RequestValidationError, _validation_error)
     if settings.cors_origins:  # wildcard is rejected in Settings, so credentials are safe with explicit origins
         app.add_middleware(
             CORSMiddleware,
