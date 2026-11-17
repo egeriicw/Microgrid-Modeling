@@ -171,6 +171,14 @@ class DataConfig:
     dataset_comstock: str | None = None
     resstock_load_basis: str | None = None  # "gross" or "net"; set by the resolver, recorded with the run
     comstock_load_basis: str | None = None
+    # Outdoor temperature source (FR-ENG-10). DECLARED, never guessed: where the real NREL data keeps temperature
+    # (a timeseries column or a separate weather file) is not confirmed [verify]. "none" = results say explicitly
+    # that no temperature is available. See synthetic/temperature.py and docs/reference/results-schema.md.
+    temperature_source: str = "none"  # "none" | "timeseries_column" | "weather_file"
+    temperature_column: str | None = None  # column in each building parquet, or in the weather file
+    temperature_units: str | None = None  # "C" or "F" (results are always in deg C)
+    temperature_weather_file: str | None = None  # CSV or parquet path (weather_file only)
+    temperature_time_column: str | None = None  # timestamp column in the weather file (weather_file only)
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +701,44 @@ def split_dataset_id(text: str) -> list[str] | None:
     return parts
 
 
+TEMPERATURE_SOURCES = ("none", "timeseries_column", "weather_file")
+TEMPERATURE_UNITS = ("C", "F")
+_TEMPERATURE_FIELDS = {
+    # source -> (required fields, fields that must stay unset)
+    "none": ((), ("temperature_column", "temperature_units", "temperature_weather_file", "temperature_time_column")),
+    "timeseries_column": (
+        ("temperature_column", "temperature_units"),
+        ("temperature_weather_file", "temperature_time_column"),
+    ),
+    "weather_file": (
+        ("temperature_weather_file", "temperature_time_column", "temperature_column", "temperature_units"),
+        (),
+    ),
+}
+
+
+def _temperature_errors(data: DataConfig) -> list[str]:
+    """A temperature declaration must be complete for its source and carry nothing the source would ignore."""
+    src = data.temperature_source
+    if src not in TEMPERATURE_SOURCES:
+        return [f"data.temperature_source must be one of {', '.join(TEMPERATURE_SOURCES)}, got {src!r}"]
+    required, unused = _TEMPERATURE_FIELDS[src]
+    errors = [
+        f"data.{f} is required when data.temperature_source is {src!r}"
+        for f in required
+        if not (isinstance(getattr(data, f), str) and getattr(data, f))
+    ]
+    errors += [
+        f"data.{f} is set but data.temperature_source is {src!r}, which does not use it (it would be ignored)"
+        for f in unused
+        if getattr(data, f) is not None
+    ]
+    units = data.temperature_units
+    if units is not None and units not in TEMPERATURE_UNITS:
+        errors.append(f"data.temperature_units must be 'C' or 'F', got {units!r}")
+    return errors
+
+
 def validate_config(cfg: ScenarioConfig) -> None:
     """Raise ValueError if any config invariants are violated."""
     errors: list[str] = []
@@ -748,6 +794,7 @@ def validate_config(cfg: ScenarioConfig) -> None:
     for fld in ("resstock_load_basis", "comstock_load_basis"):
         if getattr(cfg.data, fld) not in (None, "gross", "net"):
             errors.append(f"data.{fld} must be 'gross' or 'net', got {getattr(cfg.data, fld)!r}")
+    errors.extend(_temperature_errors(cfg.data))
     for name, c in cfg.composition.categories.items():
         where = f"composition.categories.{name}"
         if c.source not in ("resstock", "comstock"):

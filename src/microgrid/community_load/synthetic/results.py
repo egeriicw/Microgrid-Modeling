@@ -23,8 +23,10 @@ import numpy as np
 import pandas as pd
 
 from microgrid.community_load.synthetic._types import EnsembleResult, NeighborhoodResult
+from microgrid.community_load.synthetic.temperature import UNITS as TEMPERATURE_UNITS
+from microgrid.community_load.synthetic.temperature import not_available
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"  # 1.1: adds ``temperature`` and ``units.temperature`` (FR-ENG-10)
 PERCENTILES = (10, 50, 90)
 #: 15-minute and hourly energy must agree to this relative tolerance (float32 source data summed in float64).
 ENERGY_RTOL = 1e-5
@@ -36,6 +38,8 @@ SEASONS: dict[str, list[str]] = {
 }
 _SEASON_MONTHS = {"winter": (12, 1, 2), "spring": (3, 4, 5), "summer": (6, 7, 8), "fall": (9, 10, 11)}
 _TINY = 1e-12
+_UNITS = {"power": "kW", "energy": "kWh", "temperature": TEMPERATURE_UNITS}
+_NOT_COMPUTED = "temperature was not computed for this result (build_results called without a temperature block)"
 
 
 def _clean(arr: np.ndarray) -> list[float | None]:
@@ -79,11 +83,11 @@ class ResultsModel:
         return self.data
 
 
-def _empty() -> ResultsModel:
+def _empty(temperature: dict[str, Any]) -> ResultsModel:
     return ResultsModel(
         {
             "schema_version": SCHEMA_VERSION,
-            "units": {"power": "kW", "energy": "kWh"},
+            "units": dict(_UNITS),
             "n_runs": 0,
             "percentiles": list(PERCENTILES),
             "time": None,
@@ -93,6 +97,7 @@ def _empty() -> ResultsModel:
             "seasonal_daily": None,
             "scalars": None,
             "energy_check": {"checked": False, "max_relative_difference": None, "tolerance": ENERGY_RTOL},
+            "temperature": temperature,
         }
     )
 
@@ -147,11 +152,28 @@ def _seasonal(matrix: np.ndarray, index: pd.DatetimeIndex) -> dict[str, dict[str
     return out
 
 
-def build_results(ensemble: EnsembleResult) -> ResultsModel:
-    """Compute the results document from the feasible runs of ``ensemble`` (see module docstring)."""
+def _check_temperature(temperature: dict[str, Any], time: dict[str, Any]) -> None:
+    """The temperature block must line up with the load time axes it is published next to."""
+    if not temperature.get("available"):
+        return
+    for res in ("hourly", "15min"):
+        axis, values = time.get(res), temperature.get(res)
+        n_axis = None if axis is None else axis["count"]
+        n_values = None if values is None else len(values)
+        if n_axis != n_values:
+            raise ValueError(f"temperature {res} series has {n_values} values but the load axis has {n_axis}")
+
+
+def build_results(ensemble: EnsembleResult, temperature: dict[str, Any] | None = None) -> ResultsModel:
+    """Compute the results document from the feasible runs of ``ensemble`` (see module docstring).
+
+    ``temperature`` is the ``results.temperature`` block (``synthetic.temperature.build_temperature``); without
+    it the block says explicitly that temperature was not computed. It never affects any load number.
+    """
+    temperature = not_available(_NOT_COMPUTED) if temperature is None else temperature
     runs: list[NeighborhoodResult] = list(ensemble.runs)
     if not runs:
-        return _empty()
+        return _empty(temperature)
 
     index = runs[0].total_profile.index
     time = {"hourly": _axis(index, "hourly"), "15min": None}
@@ -242,10 +264,11 @@ def build_results(ensemble: EnsembleResult) -> ResultsModel:
         "annual_energy_commercial_kwh": _stats(com_h.sum(axis=1)),
     }
 
+    _check_temperature(temperature, time)
     return ResultsModel(
         {
             "schema_version": SCHEMA_VERSION,
-            "units": {"power": "kW", "energy": "kWh"},
+            "units": dict(_UNITS),
             "n_runs": len(runs),
             "percentiles": list(PERCENTILES),
             "time": time,
@@ -255,5 +278,6 @@ def build_results(ensemble: EnsembleResult) -> ResultsModel:
             "seasonal_daily": seasonal,
             "scalars": scalars,
             "energy_check": energy_check,
+            "temperature": temperature,
         }
     )

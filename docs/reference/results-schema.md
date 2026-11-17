@@ -1,9 +1,14 @@
-# Results JSON schema (`schema_version` "1.0")
+# Results JSON schema (`schema_version` "1.1")
 
 Produced by `RunResult.to_dict()` (`src/microgrid/community_load/synthetic/run.py`); the `results` block is built by
 `synthetic/results.py::build_results`. All numbers are computed in the engine; the browser only draws them.
 Strict JSON: no NaN or Infinity (a value that cannot exist, such as a season with no data, is `null`).
 Any change to the shape of this document bumps `schema_version` (and this file).
+
+**Version history.** `1.1` adds `results.temperature` (FR-ENG-10) and `results.units.temperature = "degC"`;
+nothing else changed and no number changed. A `1.0` document is a `1.1` document without those two keys, so a
+reader can accept both by treating a missing `temperature` as `{"available": false, "reason": "schema 1.0"}`.
+(There is no reader in the code base today: the API stores and serves the document as written.)
 
 Conventions: power is **kW**, energy is **kWh**, and every key says which. A source value in kWh per 15-minute
 interval is multiplied by 4 to give kW; kWh per hour is already kW. "Envelope" = at each time step, across the
@@ -16,7 +21,7 @@ interpolation, `numpy.percentile`). Only feasible runs (the ensemble members) ar
 
 | key | type | meaning |
 |---|---|---|
-| `schema_version` | string | `"1.0"` |
+| `schema_version` | string | `"1.1"` |
 | `engine_version` | string | package version |
 | `seeds` | `{composition_seed, archetype_seed, perturbation_seed}` ints | seeds used; supply as `rng` to replay |
 | `config_snapshot` | object | `config_from_dict` shape; replayable |
@@ -49,7 +54,7 @@ Progress events (`ProgressEvent.convergence`) carry the latest check in this sam
 
 | key | type | content |
 |---|---|---|
-| `schema_version`, `units` | | `units = {"power": "kW", "energy": "kWh"}` |
+| `schema_version`, `units` | | `units = {"power": "kW", "energy": "kWh", "temperature": "degC"}` |
 | `n_runs` | int | feasible runs summarized. If 0, `time`, `envelopes`, `load_duration`, `seasonal_daily`, `scalars` are null and `by_building_type` is `{}` |
 | `percentiles` | `[10, 50, 90]` | |
 | `time` | `{hourly, 15min}` | each `{start (ISO local time), step_minutes, count}`; `15min` null if runs have no 15-minute data. Time stamps are `start + i * step_minutes` |
@@ -59,6 +64,52 @@ Progress events (`ProgressEvent.convergence`) carry the latest check in this sam
 | `seasonal_daily` | object | `seasons` (name -> months), `hours` (0..23), `profiles.{total,residential,commercial}.{winter,spring,summer,fall}` = envelope with 24 values: per run the mean kW at each hour of day over the season's days, then envelope across runs. Seasons: winter Dec-Feb, spring Mar-May, summer Jun-Aug, fall Sep-Nov |
 | `scalars` | object | `peak_kw`, `annual_energy_kwh`, `load_factor`, `annual_energy_residential_kwh`, `annual_energy_commercial_kwh`: each `{mean, std (sample, ddof=1; 0 for one run), p10, p50, p90, min, max, n}`. `peak_kw` is the maximum hourly kW; `load_factor` = annual kWh / (peak kW x hours) |
 | `energy_check` | `{checked, max_relative_difference, tolerance}` | engine self-check: per run, 15-minute annual kWh vs hourly annual kWh. A relative difference above `tolerance` (1e-5) raises an error instead of returning results |
+| `temperature` | object | outdoor temperature that goes with the load (schema 1.1), see below. Always present |
+
+## `temperature` (FR-ENG-10)
+
+Always present, with the same keys whether or not a series is available (never silently omitted).
+
+| key | meaning |
+|---|---|
+| `available` | true when the series below are filled |
+| `reason` | why not, when `available` is false (no source declared; no feasible runs; not computed); else null |
+| `units` | `"degC"` (degrees Celsius); a source declared in Fahrenheit is converted |
+| `source` | what the config declared: `{"kind": "none"}`, or `{kind ("timeseries_column" / "weather_file"), column, declared_units ("C"/"F"), file (file name only, never a path; null for a column), time_column (null for a column)}` |
+| `source_resolution` | `"15min"` or `"hourly"`: the step of the source time stamps; null when not available |
+| `hourly` | array of `time.hourly.count` values (deg C), aligned to `time.hourly`; null when not available |
+| `15min` | array of `time.15min.count` values aligned to `time.15min`; null when not available or the load has no 15-minute axis |
+| `derivation` | `{hourly, 15min}` plain-language rule used for each series (below); null when not available |
+| `consistency` | `{n_series_compared, max_abs_difference_c, tolerance_c, note}`: how many distinct sampled buildings' series were compared and how far apart they were (a weather file counts as one series); null when not available |
+
+**Where the series comes from is declared, not guessed.** The scenario config's `data` section names it:
+`temperature_source` = `none` (default) | `timeseries_column` (`temperature_column`, `temperature_units`) |
+`weather_file` (`temperature_weather_file` (.csv or .parquet), `temperature_time_column`, `temperature_column`,
+`temperature_units`). An incomplete declaration, or a field the chosen source would ignore, is a config error.
+Where the real ResStock/ComStock data keeps temperature (a column in each building file, or a separate weather
+file per county/location, and its column names and units) is **not confirmed [verify]**.
+
+**Alignment rules.** Time stamps must match the load's exactly (no shifting, no time zones). From a 15-minute
+source, `15min` = the source values and `hourly` = the mean of the four 15-minute values labelled within each hour
+(the same grouping that sums the hourly load). From an hourly source, `hourly` = the source values and `15min` =
+each hour's value held for its four intervals (no interpolation). Missing time stamps, duplicates, irregular steps
+and missing or non-finite values are errors. Whether NREL time stamps mark the start or end of an interval, and
+whether load and weather files use the same convention, is **[verify]**.
+
+**"The" temperature when buildings could differ.** With `timeseries_column`, every distinct sampled building (of
+the feasible runs) is read and compared with the first. They are expected to share one weather location within a
+DC dataset **[verify]**. If any two differ by more than `tolerance_c` (0.01 deg C, an engineer's placeholder) the
+run fails with a message naming the two buildings: the engine never picks or averages one silently, because that
+choice is a methodology decision for the owner. With `weather_file`, the one file is assumed to apply to every
+sampled building **[verify]**.
+
+Temperature is read after the ensemble, from the files only; it never changes any load number.
+
+## Per-building load (FR-ENG-13 b)
+
+The document carries neighborhood totals only. Per sampled building hourly and 15-minute kWh are retrievable in the
+library with `synthetic.ensemble.building_profiles(run, pool, cfg, data_dirs)` (same loading, multifamily scaling and
+recorded perturbation as the run; the buildings sum to the run's totals). They are not part of this JSON document.
 
 ## Energy conservation (FR-ENG-5)
 
@@ -67,8 +118,7 @@ source (post multifamily scaling) energy. In the envelopes: `sum(hourly.mean_kw)
 
 ## Not (yet) included
 
-Coincidence and diversity factors, representative cases and the temperature series (FR-ENG-7 / FR-ENG-10) are not in
-this version; 15-minute resolution is provided for total/residential/commercial only (not per building type).
+Coincidence and diversity factors and representative cases (FR-ENG-7) are not in this version; 15-minute resolution is provided for total/residential/commercial only (not per building type).
 
 ## Convergence formulas (rule `prd_default`)
 

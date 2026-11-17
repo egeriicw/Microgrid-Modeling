@@ -99,7 +99,7 @@ def test_mean_and_p50_differ_for_skewed_data():
 
 def test_units_are_labeled():
     res = build_results(_ens(_const_runs())).to_dict()
-    assert res["units"] == {"power": "kW", "energy": "kWh"}
+    assert res["units"] == {"power": "kW", "energy": "kWh", "temperature": "degC"}  # temperature: schema 1.1
     assert set(res["envelopes"]["hourly"]["total"]) == {"mean_kw", "p10_kw", "p50_kw", "p90_kw"}
 
 
@@ -230,6 +230,7 @@ def test_result_is_strictly_json_serializable_with_stable_top_level_keys():
         "seasonal_daily",
         "scalars",
         "energy_check",
+        "temperature",  # schema 1.1 (FR-ENG-10)
     }
     assert d["percentiles"] == [10, 50, 90]
 
@@ -348,3 +349,31 @@ def test_temporal_shift_keeps_hourly_and_fifteen_minute_series_consistent():
         assert out.kwh_15min.sum() == pytest.approx(q.sum())
         shifted_any |= "shift_hours" in out.perturbation_log
     assert shifted_any
+
+
+# ---- temperature block (schema 1.1) ------------------------------------------------------------------------------
+
+
+def test_without_a_temperature_block_the_result_says_it_was_not_computed():
+    for runs in (_const_runs(), []):
+        t = build_results(_ens(runs)).to_dict()["temperature"]
+        assert t["available"] is False and "not computed" in t["reason"]
+        assert t["hourly"] is None and t["15min"] is None
+
+
+def test_temperature_block_must_match_the_load_axes():
+    block = {"available": True, "hourly": [0.0] * 8759, "15min": [0.0] * 35040}
+    with pytest.raises(ValueError, match="temperature hourly series has 8759 values"):
+        build_results(_ens(_const_runs()), block)
+    block = {"available": True, "hourly": [0.0] * 8760, "15min": None}
+    with pytest.raises(ValueError, match="temperature 15min series"):
+        build_results(_ens(_const_runs()), block)
+
+
+def test_temperature_block_does_not_change_load_numbers():
+    plain = build_results(_ens(_random_runs())).to_dict()
+    block = {"available": True, "hourly": [1.0] * 8760, "15min": [1.0] * 35040}
+    with_t = build_results(_ens(_random_runs()), block).to_dict()
+    assert with_t.pop("temperature") == block
+    plain.pop("temperature")
+    assert plain == with_t

@@ -3,6 +3,7 @@
     study
     economics -> dispatch -> der          (each also uses geo + core)
     community_load  (categorize, sources -> synthetic; uses geo + core)
+    community_load.weather  (weather normalization interface, FR-ENG-13: pure numerics, imports only core)
     geo -> core                           (geography is the shared reference layer)
     datasets  (dataset identity, catalog, manifest; stdlib + pandas + PyYAML only, imports no other microgrid package)
 
@@ -41,6 +42,8 @@ FORBIDDEN = {
         "microgrid.community_load.permissions",
         "microgrid.community_load.exposed_attributes",
     ],
+    # Pure numerics so the engine, measured-data sources and calibration can all use it later without cycles.
+    "microgrid.community_load.weather": _ban("core"),
     "microgrid.der": _ban("core", "geo", "der"),
     "microgrid.dispatch": _ban("core", "geo", "der", "dispatch"),
     "microgrid.economics": _ban("core", "geo", "der", "dispatch", "economics"),
