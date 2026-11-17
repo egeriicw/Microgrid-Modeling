@@ -76,7 +76,9 @@ default = {{
     "web /": (200, html), "web /runs/smoke-deep-link": (200, html),
     "web /api/v1/health": (200, '{{"status":"ok"}}'), "api /api/v1/health": (200, '{{"status":"ok"}}'),
     "api /api/v1/ready": (200, '{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok"}}}}'),
-    "results": (200, '{{"schema_version":"1.1","engine_version":"0.1","results":{{"time":[1,2],"mean":[3,4]}}}}'),
+    "results": (200, '{{"schema_version":"1.1","engine_version":"0.1","results":{{"n_runs":2,'
+                     '"time":{{"hourly":{{"start":"2018-01-01T00:00:00","step_minutes":60,"count":2}}}},'
+                     '"envelopes":{{"hourly":{{"total":{{"mean_kw":[3,4]}}}}}}}}}}'),
     "events": (200, 'event: progress\r\nid: 1\r\ndata: {{"stage":"run"}}\r\n\r\nevent: status\r\ndata: {{"status": "succeeded"}}\r\n\r\n'),
     "unauth": (401, '{{"detail":"not authenticated"}}'),
     "post": (202, '{{"id":"%s","status":"queued","owner":"dev-admin"}}' % RID),
@@ -115,7 +117,9 @@ if "f" in short and code >= 400:
     sys.stderr.write("curl: (22) The requested URL returned error: %d\n" % code); sys.exit(22)
 out = ""
 if "-D" in opts:
-    out += "HTTP/1.1 %d X\r\n" % code + scen.get("headers", "X-Content-Type-Options: nosniff\r\n") + "\r\n"
+    out += "HTTP/1.1 %d X\r\n" % code + scen.get(
+        "headers", "X-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'\r\n"
+    ) + "\r\n"
 if opts.get("-o") != "/dev/null":
     out += body
 if "-w" in opts:
@@ -216,6 +220,19 @@ BROKEN = {
     "web root is the nginx default page": {"routes": {"web /": {"body": "<h1>Welcome to nginx!</h1>"}}},
     "SPA fallback 404": {"routes": {"web /runs/smoke-deep-link": {"code": 404, "body": "not found"}}},
     "security header missing": {"headers": "Server: nginx\r\n"},
+    "Content-Security-Policy missing": {"headers": "X-Content-Type-Options: nosniff\r\n"},
+    "SSE has no progress event (only the final status)": {
+        "routes": {"events": {"body": 'event: status\r\ndata: {"status": "succeeded"}\r\n\r\n'}}
+    },
+    "progress reaches the stream only after the run ended (buffering proxy)": {"statuses": ["succeeded"]},
+    "results with an empty time axis": {
+        "routes": {
+            "results": {
+                "body": '{"schema_version":"1.1","results":{"n_runs":1,"time":{"hourly":{"count":0}},'
+                '"envelopes":{"hourly":{"total":{"mean_kw":[]}}}}}'
+            }
+        }
+    },
     "proxy returns html instead of api json": {"routes": {"web /api/v1/health": {"body": "<html>app</html>"}}},
     "proxy 502": {"routes": {"web /api/v1/health": {"code": 502, "body": "Bad Gateway"}}},
     "auth disabled (unauthenticated list is 200)": {"routes": {"unauth": {"code": 200, "body": '{"items":[]}'}}},
@@ -246,21 +263,20 @@ def test_smoke_fails_on_a_broken_stack(tmp_path, name):
     assert docker_calls and docker_calls[-1].endswith(" stop"), "the stack is stopped even on failure"
 
 
-def test_smoke_fails_closed_on_reordered_or_pretty_printed_json(tmp_path):
-    """The script reads id/status with sed and relies on compact JSON in model field order (FastAPI renders RunOut
-    compactly with `id` first; pinned by api/tests/test_qa_w1_deploy.py). Reordering must fail, never pass."""
-    r, _, _, _ = _smoke(tmp_path, {"routes": {"post": {"body": '{"status":"queued","id":"%s"}' % RID}}})
-    _assert_failed(r)
-    r2, _, _, _ = _smoke(tmp_path / "b", {"routes": {"post": {"body": '{"id": "%s", "status": "queued"}' % RID}}})
-    _assert_failed(r2)
+def test_smoke_parses_json_so_field_order_and_spacing_do_not_matter_but_garbage_fails(tmp_path):
+    """Superseded by the fix pass: the script used to read id/status with sed and fail closed on reordered or
+    pretty-printed JSON (a false alarm, never a false pass). It now parses the JSON, so those replies are read
+    correctly, and anything that is not a JSON object with the field still fails."""
+    for i, body in enumerate(
+        ('{"status":"queued","id":"%s"}' % RID, '{\n  "id": "%s",\n  "status": "queued"\n}' % RID)
+    ):
+        r, _, _, _ = _smoke(tmp_path / f"ok{i}", {"routes": {"post": {"body": body}}})
+        assert r.returncode == 0 and "SMOKE OK" in r.stdout, r.stdout + r.stderr
+    for i, body in enumerate(('{"id":"%s"' % RID, '["%s"]' % RID, '{"id":""}', '{"id":12}')):
+        r, _, _, _ = _smoke(tmp_path / f"bad{i}", {"routes": {"post": {"body": body}}})
+        _assert_failed(r)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW): the results check only looks for the substrings '\"schema_version\"' and '\"results\"', so "
-    "a document whose results block is empty or null passes the smoke test. Fix: parse the JSON and require a "
-    "non-empty results block (for example a non-empty time axis).",
-)
 @pytest.mark.parametrize("body", ['{"schema_version":"1.1","results":{}}', '{"schema_version":"1.1","results":null}'])
 def test_smoke_fails_when_the_results_block_is_empty(tmp_path, body):
     r, _, _, _ = _smoke(tmp_path, {"routes": {"results": {"body": body}}})
@@ -351,19 +367,26 @@ def test_fixture_generator_refuses_a_case_variant_that_looks_like_data(fake_repo
     assert (fake_repo / "DATA" / "background" / "DC_upgrade0.xlsx").read_text() == "OWNER DATA"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW): a folder carrying the generator's marker is trusted wholesale; if its background/ is a "
-    "symlink into the owner's data/, the generator overwrites the owner's DC_upgrade0.xlsx. Fix: refuse when any "
-    "existing entry (background, input) is a symlink or resolves outside the target.",
-)
 def test_fixture_generator_never_writes_through_a_planted_symlink(fake_repo):
     target = fake_repo / "tests" / "fixtures" / "data"
     target.mkdir()
     (target / ".synthetic-fixture").write_text("marker")
     (target / "background").symlink_to(fake_repo / "data" / "background", target_is_directory=True)
-    _gen(fake_repo, target)
+    r = _gen(fake_repo, target)
+    assert r.returncode != 0 and "symlink" in r.stderr
     _owner_untouched(fake_repo)
+
+
+def test_fixture_generator_refuses_a_nested_symlink_even_with_the_marker(fake_repo, tmp_path):
+    target = fake_repo / "tests" / "fixtures" / "data"
+    (target / "input" / "resstock").mkdir(parents=True)
+    (target / ".synthetic-fixture").write_text("marker")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (target / "input" / "resstock" / "timeseries_individual_buildings").symlink_to(elsewhere, target_is_directory=True)
+    r = _gen(fake_repo, target)
+    assert r.returncode != 0 and "symlink" in r.stderr
+    assert list(elsewhere.iterdir()) == []
 
 
 # --- worker entrypoint -------------------------------------------------------------------------------------------
@@ -480,13 +503,9 @@ def test_dockerignore_matcher_sanity():
     assert not _dockerignored("web/src/main.tsx")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW): .dockerignore excludes only `.env`, not `.env.local` / `.env.production[.local]`. Vite's "
-    "production build reads those from web/ and bakes every VITE_* value into the public bundle (for example "
-    "VITE_API_MODE=mock left from development, or a key). Fix: add `**/.env.*` (and keep the template rule).",
+@pytest.mark.parametrize(
+    "name", ["web/.env.local", "web/.env.production", "web/.env.production.local", ".env.local", "api/.env.prod"]
 )
-@pytest.mark.parametrize("name", ["web/.env.local", "web/.env.production", "web/.env.production.local"])
 def test_vite_env_files_never_enter_the_build_context(name):
     assert _dockerignored(name)
 
@@ -576,15 +595,14 @@ def test_runbook_make_targets_exist():
     assert used - defined == set(), used - defined
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW, docs): the runbook says an old deploy/.env without API_KEYS makes `migrate` exit with code 2. "
-    "It cannot: compose's `${API_KEYS:?set in deploy/.env}` makes every `docker compose` command (up, ps, logs) fail "
-    "before any container starts. Fix: describe the real message ('required variable API_KEYS is missing a value').",
-)
 def test_runbook_describes_the_real_missing_api_keys_failure():
     runbook = (ROOT / "docs" / "runbooks" / "local-stack.md").read_text()
     assert "exits with code 2" not in runbook or "missing a value" in runbook
+    # Prominent (before the first section) and actionable: the real compose message and the exact line to add.
+    top = runbook.split("\n## ", 1)[0]
+    assert "required variable API_KEYS is missing a value" in top
+    template_line = next(ln for ln in (DEPLOY / ".env.example").read_text().splitlines() if ln.startswith("API_KEYS="))
+    assert template_line in top, "the runbook must give the exact line from the template"
 
 
 def test_compose_refuses_an_env_file_without_api_keys(tmp_path):

@@ -1,5 +1,23 @@
 # Runbook: local Docker stack
 
+> **Read this first if you ran the stack in Sprint 1.** Your `deploy/.env` was copied from the template back then
+> and has no `API_KEYS` line. `make up` (and every other `make` target that calls Docker Compose: `ps`, `logs`, `down`,
+> `smoke`) now stops immediately, before any container starts, with messages like:
+>
+> ```
+> error while interpolating services.api.environment.MICROGRID_API_KEYS: required variable API_KEYS is missing a value: set in deploy/.env
+> ```
+>
+> Nothing is broken and nothing was deleted. Fix it by adding this one line to `deploy/.env` (copy it exactly,
+> including the single quotes; it is the same line as in `deploy/.env.example`):
+>
+> ```
+> API_KEYS='[{"subject":"dev-admin","role":"admin","key":"dev-only-admin-key-change-me"},{"subject":"dev-client","role":"client","key":"dev-only-client-key-change-me"}]'
+> ```
+>
+> Then run `make up` again. Check with `grep -c '^API_KEYS=' deploy/.env` (it should print 1). Do not delete
+> `deploy/.env` to start over: it also holds your database password, which must match the existing database volume.
+
 The stack has six services:
 
 | Service | What it is | Plain-language job |
@@ -64,22 +82,29 @@ Run only one worker: it also schedules the reaper that marks runs whose worker d
 **Web.** The `web` image is built from `deploy/web.Dockerfile`: Node 22 runs `npm ci && npm run build` in `web/`, and only
 the finished files (`web/dist`) go into a small nginx image. nginx serves the app, sends every unknown path (for example
 `/runs/123`) to the app's `index.html` so browser links work, adds security headers, and forwards `/api/` to the API
-without buffering, so live progress (Server-Sent Events) arrives as it happens. The image is built without
-`VITE_API_MODE`, so it talks to the real API, not the mock.
+without buffering, so live progress (Server-Sent Events) arrives as it happens. The image sets no `VITE_API_MODE`, so
+the app uses whatever its production default is. From the web story that adds the client switch (W1-WEB) on, that
+default is the real API through `/api/v1`; an app build from before that story still shows the mock (demo) data even
+inside this image. If the page shows data while `make logs s=api` shows no requests, you have the older app build.
 
 Automated check: `make smoke` (or `./deploy/tests/test_compose_smoke.sh`). It first runs the free-disk preflight (full
 mode) and stops if that refuses, before creating `deploy/.env` or calling Docker. Then it builds and starts all six
 services; waits for each to be healthy; FAILS unless `/api/v1/ready` reports `"ready":true` with `db`, `schema` and
-`redis` all `ok`; and checks the web page, a browser link, a security header and the `/api/` forwarding. It stops the
-stack at the end but keeps volumes. `SMOKE_RUN=1 make smoke` also submits a tiny run (4 buildings, 6 repetitions)
-with the first key in `API_KEYS`, waits for it to finish and fetches its results; that needs your data folder in the
+`redis` all `ok`; and checks the web page, a browser link, the security headers (including the Content-Security-Policy)
+and the `/api/` forwarding. It reads every API reply as JSON with `python3` (installed with the Xcode command line
+tools). It stops the stack at the end but keeps volumes. `SMOKE_RUN=1 make smoke` also submits a small run
+(4 buildings, 300 repetitions, several seconds) with the first key in `API_KEYS`, watches its live progress through the
+web port while it runs, waits for it to finish and checks its results contain a filled-in hourly load curve; that
+needs your data folder in the
 layout the API expects (`background/DC_upgrade0.xlsx`, `background/DC_upgrade0_agg.xlsx`,
 `input/resstock/timeseries_individual_buildings/...`, `input/comstock/timeseries_individual_buildings/...`).
 
 **What GitHub CI checks.** The `compose-smoke` job generates a tiny made-up dataset
 (`python deploy/ci/make_fixture_data.py tests/fixtures/data`, git-ignored) and runs the same script with `SMOKE_CI=1`:
-it always submits the run through the web port, waits until it is `succeeded`, fetches the results document and the
-live progress stream, and prints the container logs if anything fails. It uses its own project name
+it always submits the run through the web port, requires a live progress event to arrive through the web port while
+the run is still running (a proxy that holds the stream back until the end fails this), waits until the run is
+`succeeded`, checks the results document has a non-empty hourly time axis and load envelope, and prints the container
+logs if anything fails. It uses its own project name
 (`microgrid-smoke`), so if you ever run it on your Mac it does not touch your database volume.
 
 ## What only you can verify on your Mac
@@ -228,11 +253,15 @@ Lite saves roughly 4 GB, most of it the `db` image and the web build. A smaller 
 ## Troubleshooting
 - **Port already in use** (for example a local Postgres on 5432): change `DB_PORT` (or `API_PORT`, `REDIS_PORT`,
   `WEB_PORT`) in `deploy/.env`, then `make up`.
-- **`worker` unhealthy or exited**: `make logs s=worker`. A `ConfigurationError` names the missing setting (for
-  example `MICROGRID_API_KEYS`: add `API_KEYS` to `deploy/.env` from `deploy/.env.example`). A worker killed for memory
-  shows exit code 137: lower `WORKER_CONCURRENCY` or raise `WORKER_MEM_LIMIT` and Docker Desktop's memory.
-- **`migrate` exits with code 2**: a required setting is missing from `deploy/.env` (older copies lack `API_KEYS`).
-  Copy the missing lines from `deploy/.env.example`.
+- **Every `make` command fails with `required variable API_KEYS is missing a value`**: your `deploy/.env` predates
+  Sprint 2. No container was started. Add the `API_KEYS` line shown at the top of this runbook, then `make up`.
+- **`worker` unhealthy or exited**: `make logs s=worker`. A `ConfigurationError` or a validation error names the
+  setting it cannot use (for example an `API_KEYS` value that is not valid JSON, a key shorter than 16 characters, or
+  missing single quotes around the value). A worker killed for memory shows exit code 137: lower
+  `WORKER_CONCURRENCY` or raise `WORKER_MEM_LIMIT` and Docker Desktop's memory.
+- **`migrate` exits with a non-zero code**: `make logs s=migrate` names the setting it rejected (a line starting
+  `migrate:`, or a validation error for a malformed `API_KEYS`). Compare that line in `deploy/.env` with
+  `deploy/.env.example`.
 - **Web page loads but API calls fail with 502**: the `api` service is down or restarting; `make logs s=api`.
 - **Run stays `queued`**: the worker is not running or cannot reach Redis; `make ps`, then `make logs s=worker`.
 - **`api` unhealthy or exited**: `make logs s=api`. If it never starts, check that `migrate` succeeded.

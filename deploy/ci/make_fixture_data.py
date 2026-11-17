@@ -9,13 +9,15 @@ characteristics file names, so the engine looks for its DataConfig defaults (``D
 ``chars_comstock.xlsx``; this script adds copies under the default names. Generated files are git-ignored
 (``*.xlsx``, ``*.parquet``).
 
-Safety: refuses the owner's ``data/`` folder and any non-empty folder it did not create (a marker file records that
-it did). It never deletes anything; a rerun overwrites only the files it writes.
+Safety: refuses the owner's ``data/`` folder, any non-empty folder it did not create (a marker file records that
+it did) and any folder containing a symlink or an entry that resolves outside it, marker or not.
+It never deletes anything; a rerun overwrites only the files it writes.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -46,6 +48,13 @@ def _check_target(target: Path) -> None:
     generated = entries & {"background", "input"}
     if not entries <= ALLOWED or (generated and MARKER not in entries):
         _fail(f"{target} is not empty and was not created by this script; refusing to write into it")
+    # The marker is not trusted wholesale: a planted symlink (for example background -> the owner's data) would make
+    # the generator write through it. Every existing entry must be a real file or folder inside the target.
+    for dirpath, dirnames, filenames in os.walk(resolved, followlinks=False):
+        for name in [*dirnames, *filenames]:
+            path = Path(dirpath) / name
+            if path.is_symlink() or not path.resolve().is_relative_to(resolved):
+                _fail(f"{target} contains a symlink or an entry outside the folder ({path.name}); refusing to write")
 
 
 def _load_generator():

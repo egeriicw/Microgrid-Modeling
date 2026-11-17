@@ -320,7 +320,10 @@ def test_smoke_request_is_what_a_client_may_send():
     flat = json.dumps(cfg)
     for word in ("_dir", "_file", "_path"):
         assert word not in flat, f"path-like key in the smoke config: {word}"
-    assert cfg["composition"]["total_buildings"] <= 50 and cfg["ensemble"]["max_runs"] <= 20
+    assert cfg["composition"]["total_buildings"] <= 50
+    # Long enough (several seconds) for the smoke to see a progress event while the run is still running, far below
+    # the server cap (MICROGRID_MAX_ENSEMBLE_RUNS, default 1000).
+    assert cfg["ensemble"]["mode"] == "fixed" and 100 <= cfg["ensemble"]["max_runs"] <= 1000
     assert all(isinstance(v, int) and 0 <= v < 2**32 for v in body.get("seeds", {}).values())
 
 
@@ -338,14 +341,55 @@ def test_smoke_request_runs_end_to_end_on_read_only_fixture_data(generated_data,
     for p in [generated_data, *generated_data.rglob("*")]:
         modes.append((p, p.stat().st_mode))
         p.chmod(p.stat().st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+    events: list[str] = []
     try:
-        result = run_scenario(cfg)
+        result = run_scenario(cfg, progress=lambda ev: events.append(ev.stage))
     finally:
         for p, mode in reversed(modes):
             p.chmod(mode)
     doc = result.to_dict()
     assert "results" in doc, "the worker writes results.json only when the document has a results block"
     assert doc["n_attempted"] >= 1
+    assert len(events) >= 100, "the worker writes one progress event per run; the smoke needs a stream of them"
+    # The smoke script's own results check accepts the real document.
+    r = _smoke_check("results", json.dumps(doc))
+    assert r.returncode == 0, r.stderr
+
+
+def _smoke_check(mode: str, stdin: str) -> subprocess.CompletedProcess[str]:
+    """Run the smoke script's embedded JSON/SSE checker exactly as the script does."""
+    code = re.search(r"^CHECK_PY='\n(.*?)^'$", SMOKE.read_text(), re.M | re.S)
+    assert code, "CHECK_PY block not found in the smoke script"
+    return subprocess.run(
+        [sys.executable, "-c", code.group(1), mode], input=stdin, capture_output=True, text=True, check=False
+    )
+
+
+_SSE_OK = 'event: progress\r\nid: 1\r\ndata: {}\r\n\r\nevent: status\r\ndata: {"status": "succeeded"}\r\n\r\n'
+
+
+@pytest.mark.parametrize(
+    ("mode", "stdin", "ok"),
+    [
+        ("ready", '{"ready": true, "checks": {"redis": "ok", "schema": "ok", "db": "ok"}}', True),
+        ("ready", '{"ready":true,"checks":{"db":"ok","schema":"ok"}}', False),
+        ("ready", '{"ready":"true","checks":{"db":"ok","schema":"ok","redis":"ok"}}', False),
+        ("health", '{\n  "status": "ok"\n}', True),
+        ("health", "<html>ok</html>", False),
+        ("results", '{"schema_version":"1.1","results":{}}', False),
+        ("results", '{"schema_version":"1.1","results":{"n_runs":1,"time":{"hourly":{"count":0}}}}', False),
+        ("sse-final", _SSE_OK, True),
+        ("sse-final", 'event: status\r\ndata: {"status": "succeeded"}\r\n\r\n', False),
+        ("sse-final", 'event: progress\ndata: {}\n\nevent: status\ndata: {"status": "failed"}\n\n', False),
+        ("sse-final", _SSE_OK + "event: progress\ndata: {}\n\n", False),
+        ("sse-progress", "event: progress\ndata: {}\n\n", True),
+        ("sse-progress", "event: progress\ndata: {", False),
+        ("sse-progress", ": ping\n\n", False),
+    ],
+)
+def test_smoke_checker_modes(mode, stdin, ok):
+    r = _smoke_check(mode, stdin)
+    assert (r.returncode == 0) is ok, r.stderr
 
 
 # --- make up, smoke script, CI ----------------------------------------------------------------------------------
@@ -369,7 +413,8 @@ def test_smoke_script_ci_mode_proves_the_full_round_trip():
     assert "--project-name" in code or " -p " in code, "CI mode must not share volumes with the owner's stack"
     for svc in ("db", "redis", "api", "worker", "web"):
         assert re.search(rf"\b{svc}\b", code)
-    assert '"redis":"ok"' in code and '"schema":"ok"' in code and '"db":"ok"' in code
+    assert 'for key in ("db", "schema", "redis")' in text and "check ready" in code
+    assert "sed -n" not in code, "JSON replies are parsed, not matched with sed"
     assert "$WEB/api/v1/runs" in code, "the run is created through the web proxy (proves Authorization passes)"
     assert "/results" in code and "/events" in code and "succeeded" in code
     assert re.search(r"logs\b", code), "failures must dump container logs"
@@ -455,15 +500,18 @@ if "-w" in args and "-X" not in args:
 if "-X" in args:
     sys.stdout.write('{{"id":"%s","status":"queued","owner":"dev-admin"}}\n202' % RID); sys.exit(0)
 if "-D" in args:
-    sys.stdout.write("HTTP/1.1 200 OK\r\nX-Content-Type-Options: nosniff\r\n\r\n"); sys.exit(0)
+    sys.stdout.write("HTTP/1.1 200 OK\r\nX-Content-Type-Options: nosniff\r\n"
+                     "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'\r\n\r\n"); sys.exit(0)
 if url.endswith("/api/v1/health"):
     sys.stdout.write('{{"status":"ok"}}'); sys.exit(0)
 if url.endswith("/api/v1/ready"):
     sys.stdout.write('{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok"}}}}'); sys.exit(0)
 if url.endswith("/results"):
-    sys.stdout.write('{{"schema_version":"1","results":{{}}}}'); sys.exit(0)
+    sys.stdout.write('{{"schema_version":"1.1","results":{{"n_runs":2,"time":{{"hourly":{{"count":2}}}},'
+                     '"envelopes":{{"hourly":{{"total":{{"mean_kw":[1.5,2.5]}}}}}}}}}}'); sys.exit(0)
 if url.endswith("/events"):
-    sys.stdout.write('event: status\r\ndata: {{"status": "succeeded"}}\r\n\r\n'); sys.exit(0)
+    sys.stdout.write('event: progress\r\nid: 1\r\ndata: {{}}\r\n\r\n'
+                     'event: status\r\ndata: {{"status": "succeeded"}}\r\n\r\n'); sys.exit(0)
 if "/api/v1/runs/" in url:
     n = int(state.read_text()) if state.exists() else 0
     state.write_text(str(n + 1))
