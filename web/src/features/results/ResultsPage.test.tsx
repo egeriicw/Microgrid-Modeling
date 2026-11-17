@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockClient } from "../../api/mockClient";
+import type { ApiClient } from "../../api/types";
 import { renderApp } from "../../test/utils";
 
 // ECharts needs a real canvas; jsdom has none. The fake records the options it was given and hands back a
@@ -109,6 +111,24 @@ describe("results screen", () => {
     region.focus();
     await user.keyboard("+");
     expect(dispatchAction).toHaveBeenLastCalledWith({ type: "dataZoom", start: 25, end: 75 });
+  });
+
+  it("says so when the API reports no weather year, calibration status or temperature (real API today)", async () => {
+    const base = createMockClient({ pointsPerYear: 96 * 20 });
+    const client: ApiClient = {
+      ...base,
+      getResults: async (id) => {
+        const r = await base.getResults(id);
+        return { ...r, weatherYear: null, calibrationStatus: null, series: { ...r.series, temperature: null } };
+      },
+    };
+    await renderApp({ route: "/results/demo-run", role: "client", client });
+    await screen.findByText(/methodology demonstration/i); // the caveat is still shown
+    expect(screen.getByText(/weather year: not reported/i)).toBeInTheDocument();
+    expect(screen.getByText(/calibration status: not reported/i)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /temperature overlay/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/these results do not include temperature/i)).toBeInTheDocument();
+    expect(screen.queryByText(/AMY2018/)).not.toBeInTheDocument();
   });
 
   it("offers a data-table alternative for each chart", async () => {

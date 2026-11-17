@@ -1,7 +1,8 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { AppBar, Box, Button, Container, LinearProgress, Link as MuiLink, Toolbar, Typography } from "@mui/material";
 import { Link as RouterLink, Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
-import { DEMO_RUN_ID } from "./api/types";
+import { useApiClient } from "./api/context";
+import { DEMO_RUN_ID } from "./api/mockClient";
 import { useAuth } from "./auth/AuthContext";
 import { CompositionPage } from "./features/composition/CompositionPage";
 import { RunPage } from "./features/run/RunPage";
@@ -16,7 +17,8 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 function Layout() {
-  const { session, signOut, can } = useAuth();
+  const { session, signOut } = useAuth();
+  const client = useApiClient();
   const navigate = useNavigate();
   return (
     <>
@@ -34,16 +36,18 @@ function Layout() {
           {session && (
             <>
               <Box component="nav" aria-label="Main" sx={{ display: "flex", gap: 1, flexGrow: 1 }}>
-                {can.startRuns && (
-                  <Button color="inherit" component={RouterLink} to="/composition">
-                    Compose
+                <Button color="inherit" component={RouterLink} to="/composition">
+                  Compose
+                </Button>
+                {client.kind === "mock" && (
+                  <Button color="inherit" component={RouterLink} to={`/results/${DEMO_RUN_ID}`}>
+                    Demo results
                   </Button>
                 )}
-                <Button color="inherit" component={RouterLink} to={`/results/${DEMO_RUN_ID}`}>
-                  Demo results
-                </Button>
               </Box>
-              <Typography variant="body2">Signed in as {session.role}</Typography>
+              <Typography variant="body2">
+                {session.role ? `Signed in as ${session.role}` : "Signed in with an API key (the server decides what it may do)"}
+              </Typography>
               <Button
                 color="inherit"
                 onClick={async () => {
@@ -64,7 +68,7 @@ function Layout() {
   );
 }
 
-/** `pollMs` is how often the run screen asks the API for progress (tests use a tiny value). */
+/** `pollMs`: how often the run screen polls when the live progress stream is unavailable (tests use a tiny value). */
 export function AppRoutes({ pollMs = 1000 }: { pollMs?: number }) {
   return (
     <Routes>

@@ -13,6 +13,13 @@ const WEATHER = (weatherYear: string) => `weather year ${weatherYear}`;
 const f1 = (v: number) => v.toFixed(1);
 
 export function dailyTable(s: LoadSeries, weatherYear: string): TableData {
+  if (!s.temperature) {
+    return {
+      caption: `Daily load, ${WEATHER(weatherYear)}`,
+      columns: ["Date (UTC)", "Mean load (kW)", "Peak load (kW)"],
+      rows: dailySummary(s.ts, s.total, null).map((r) => [r.date, f1(r.meanKw), f1(r.peakKw)]),
+    };
+  }
   return {
     caption: `Daily load and temperature, ${WEATHER(weatherYear)}`,
     columns: ["Date (UTC)", "Mean load (kW)", "Peak load (kW)", "Mean temperature (°C)"],

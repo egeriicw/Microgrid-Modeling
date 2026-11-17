@@ -26,7 +26,8 @@ export function ResultsPage() {
   const q = useQuery({ queryKey: ["results", runId], queryFn: () => client.getResults(runId), staleTime: Infinity });
   const compact = useMediaQuery("(max-width:600px)");
   const series = q.data?.series;
-  const wy = q.data?.weatherYear ?? "";
+  // Shown wherever the weather year appears; the API does not report it yet for real runs.
+  const wy = q.data ? (q.data.weatherYear ?? "not reported") : "";
 
   const ldc = useMemo(() => (series ? buildLoadDurationOption(series, compact) : null), [series, compact]);
   const seasonal = useMemo(() => (series ? buildSeasonalOption(series, compact) : null), [series, compact]);
@@ -41,9 +42,11 @@ export function ResultsPage() {
         <>
           <Alert role="note" severity="warning" sx={{ mb: 2 }}>{ACCURACY_CAVEAT}</Alert>
           <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", mb: 2 }}>
-            <Chip color="primary" label={`Weather year: ${q.data.weatherYear}`} />
-            <Typography variant="body2">{weatherYearNote(wy)}</Typography>
-            <Typography variant="body2">Calibration status: {q.data.calibrationStatus}</Typography>
+            <Chip color="primary" label={`Weather year: ${wy}`} />
+            <Typography variant="body2">
+              {q.data.weatherYear ? weatherYearNote(q.data.weatherYear) : "The results do not say which weather year was used."}
+            </Typography>
+            <Typography variant="body2">Calibration status: {q.data.calibrationStatus ?? "not reported by the API"}</Typography>
           </Box>
 
           <TimeSeriesChart series={series} weatherYear={wy} />

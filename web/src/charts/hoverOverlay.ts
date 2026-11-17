@@ -35,7 +35,7 @@ export function attachHoverOverlay(
     if (!chart.containPixel("grid", [e.offsetX, e.offsetY])) return hide();
     const t = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as unknown as number;
     const c = formatTooltip(t, getData(), keys);
-    const rows = [c.time, ...c.loads.map((l) => `${l.name}: ${l.kw.toFixed(1)} kW`), `Temperature: ${c.temperatureC.toFixed(1)} °C`];
+    const rows = [c.time, ...c.loads.map((l) => `${l.name}: ${l.kw.toFixed(1)} kW`), c.temperatureC === null ? "Temperature: not in these results" : `Temperature: ${c.temperatureC.toFixed(1)} °C`];
     tip.replaceChildren(
       ...rows.map((r) => {
         const div = document.createElement("div");
