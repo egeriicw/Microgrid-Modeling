@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by [`../PRD.md`](../PRD.md).
+
 # Requirements — SNLG Platform
 
 Companion to `PRD.md` / `architecture.md`. Each requirement has a stable ID,

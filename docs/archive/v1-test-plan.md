@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by the acceptance criteria in [`../PRD.md`](../PRD.md).
+
 # Test Plan — TDD Methodology & Suite Specification
 
 This plan is **binding** for the implementing agent. Follow it in order.

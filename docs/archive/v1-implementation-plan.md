@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by [`../sprint-plan.md`](../sprint-plan.md) (schedule) and [`../PRD.md`](../PRD.md) (requirements).
+
 # Implementation Plan — SNLG Platform
 
 Phased, test-first. Each phase ends green in CI. Within a phase, work in

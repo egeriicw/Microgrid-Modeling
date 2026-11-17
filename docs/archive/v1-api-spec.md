@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by [`../architecture-and-stack.md`](../architecture-and-stack.md) and [`../PRD.md`](../PRD.md).
+
 # API Specification — `api` (FastAPI)
 
 Base URL (Compose): `http://localhost:8000`. OpenAPI/Swagger at `/docs`,

@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by [`../architecture-and-stack.md`](../architecture-and-stack.md).
+
 # Architecture — SNLG Platform
 
 Companion to `PRD.md`. Describes the target system: containers, components,

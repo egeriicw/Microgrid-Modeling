@@ -1,40 +1,48 @@
-> **Note (2026-11-07):** the current plan lives in `PRD.md`, `architecture-and-stack.md`, `sprint-plan.md`, `agent-team.md`,
-> `decision-log.md`, `traceability-matrix.md` and `handoff/`. The specs listed below predate it; where they disagree, the PRD wins.
+# Documentation index
 
-# SNLG Platform — Documentation Set
+The current contract is [`PRD.md`](./PRD.md) (v2). Where any other document disagrees with it, the PRD wins.
+Superseded v1 documents are in [`archive/`](./archive/README.md) and are history only.
 
-Start here. Read in this order.
+## Read these first, in order
 
 | # | Doc | Read it for |
 |---|---|---|
-| 1 | [`archive/PRD-v1-snlg-platform.md` (archived, superseded)](./archive/PRD-v1-snlg-platform.md) | Why the project exists, goals/non-goals, the 4 locked design decisions, feature list, success criteria, risks. **Entry point for the implementing agent.** |
-| 2 | [`domain-glossary.md`](./domain-glossary.md) | The ubiquitous language. Use these exact terms in code/API/UI. |
-| 3 | [`engine-reference.md`](./engine-reference.md) | Faithful documentation of the **existing** `src/microgrid/community_load/synthetic/` engine + notebook, module by module, plus the 13 known gaps to fix. (PRD goal G2.) |
-| 4 | [`architecture.md`](./architecture.md) | Target system: containers, components, sequence diagrams, repo layout, tech stack, cross-cutting concerns. |
-| 5 | [`requirements.md`](./requirements.md) | Numbered FR/NFR with acceptance criteria and the test file that verifies each. Traceability table at the end. |
-| 6 | [`api-spec.md`](./api-spec.md) | REST contract: every endpoint, request/response schema, status codes, the `ScenarioConfigBody` shape. |
-| 7 | [`data-model.md`](./data-model.md) | Postgres DDL (Alembic-generated), MinIO object layout, retention, reproducibility invariant. |
-| 8 | [`frontend-spec.md`](./frontend-spec.md) | Next.js pages, components, flows, state, component test contracts, viz rules. |
-| 9 | [`infrastructure.md`](./infrastructure.md) | Docker Compose services, Dockerfiles, `.env` contract, Make targets, CI jobs, OEDI data pipeline. |
-| 10 | [`test-plan.md`](./test-plan.md) | **Binding.** TDD loop, test pyramid, fixtures, the full ordered test-file index, coverage gates, determinism protocol. |
-| 11 | [`implementation-plan.md`](./implementation-plan.md) | Phases 0–6, tiny-commit task lists, `feat/*` harvest allowlist, sequencing, per-phase DoD. |
+| 1 | [`PRD.md`](./PRD.md) | What we are building and why: requirements (FR IDs) with acceptance criteria, and a glossary. |
+| 2 | [`domain-glossary.md`](./domain-glossary.md) | The project vocabulary. Use these exact terms in code, API and UI. |
+| 3 | [`architecture-and-stack.md`](./architecture-and-stack.md) | Technology choices and system structure. |
+| 4 | [`sprint-plan.md`](./sprint-plan.md) | The 30-day MVP plan. |
+| 5 | [`engine-reference.md`](./engine-reference.md) | How the load engine (`src/microgrid/community_load/synthetic/`) works, module by module. Written early; check the code for current details. |
 
-## The 4 locked decisions (from `PRD.md` §4)
+## Running and checking things
 
-- **D1** — `snlg` becomes a standalone installable library (engine of
-  record); the platform (`api/`, `web/`) is a separate service layer that
-  depends on it. `feat/*` scaffolds are harvested, not merged.
-- **D2** — Runs execute asynchronously on **Redis + RQ** workers.
-- **D3** — **Postgres** for metadata/metrics/lineage; **MinIO (S3)** for
-  bulk artifacts.
-- **D4** — Full **Next.js** app; single **docker-compose** (web, api,
-  worker, db, redis, minio) for local/dev/CI. No k8s in v1.
+| Doc | Read it for |
+|---|---|
+| [`runbooks/local-stack.md`](./runbooks/local-stack.md) | Starting the Docker stack on your machine. |
+| [`runbooks/inspect-my-data.md`](./runbooks/inspect-my-data.md) | One read-only command to inspect your local ResStock/ComStock data. |
+| [`reference/results-schema.md`](./reference/results-schema.md) | The results JSON format. |
+| [`reference/data-licenses.md`](./reference/data-licenses.md) | Data licenses and attribution (draft, mostly unverified). |
+| [`reference/resstock-upgrade-measures.md`](./reference/resstock-upgrade-measures.md), [`reference/comstock-upgrade-measures.md`](./reference/comstock-upgrade-measures.md) | Owner-supplied lists of upgrade measures. |
 
-## For the implementing agent
+## Project records
 
-1. Do the `engine-reference.md` documentation pass and lock the engine
-   contract with tests **first** (Phase 1).
-2. Never write production code before a failing test (`test-plan.md` §1).
-3. Only copy from `feat/*` per the allowlist (`implementation-plan.md` §7);
-   never pull in the `microgrid_profiles` engine.
-4. Keep `requirements.md` traceability and `CHANGELOG.md` current as you go.
+| Doc | Read it for |
+|---|---|
+| [`decision-log.md`](./decision-log.md), [`adr/`](./adr/README.md) | Decisions made and why. |
+| [`traceability-matrix.md`](./traceability-matrix.md) | Requirement, tests, code. |
+| [`sprints/`](./sprints/) | Sprint backlogs and progress logs. |
+| [`handoff/session-handoff.md`](./handoff/session-handoff.md) | Where the project is right now and what comes next (source of truth for status). |
+| [`agent-team.md`](./agent-team.md), [`agent-deployment-plan.md`](./agent-deployment-plan.md) | How the agent team works and how it is deployed. |
+
+## Research and background
+
+| Doc | Read it for |
+|---|---|
+| [`codebase-review.md`](./codebase-review.md) | Review of the codebase as of 2026-11-02. |
+| [`research/footprint-sources-dc.md`](./research/footprint-sources-dc.md) | Building footprint sources for Washington, DC. |
+| [`research/hosting-options.md`](./research/hosting-options.md) | Hosting options for a public demo. |
+| [`research/echarts-spike.md`](./research/echarts-spike.md) | Whether ECharts can plot a year of 15-minute data. |
+| [`prd-suite-4d.md`](./prd-suite-4d.md), [`prd-gap-analysis.md`](./prd-gap-analysis.md) | Pre-v2 PRD drafts (2026-10-27), kept as background; see the note at the top of each. |
+
+## Archive
+
+[`archive/`](./archive/README.md): the v1 PRD and eight v1 specs, superseded on 2026-11-03, with a table of what replaced each.

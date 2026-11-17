@@ -1,3 +1,6 @@
+> **Historical v1 document, superseded on 2026-11-03. Kept for reference only; do not build from it.**
+> Replaced by [`../architecture-and-stack.md`](../architecture-and-stack.md).
+
 # Infrastructure & Orchestration
 
 Reflects D2 (Redis + RQ), D3 (Postgres + MinIO), D4 (full app, Compose for
