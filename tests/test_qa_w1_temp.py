@@ -277,11 +277,6 @@ def test_alignment_without_a_15min_load_axis_gives_hourly_only():
 # ---- timeseries_column: NaN in a non-reference building ----------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW): in timeseries_column mode a building whose temperature is NaN at some hours passes the "
-    "consistency check (np.nanmax skips the NaN comparisons), so a partly empty series is reported as 'compared'",
-)
 def test_nan_in_a_non_reference_building_is_not_silently_skipped(tmp_path):
     def holes(df, col):
         df.loc[100:110, col] = np.nan
@@ -355,11 +350,6 @@ def test_building_profiles_with_mismatched_logs_fail_loudly(synthetic_dataset):
         ensemble.building_profiles(r, pool, cfg, synthetic_dataset.data_dirs)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM): building_profiles with data_dirs other than the run's silently returns different "
-    "per-building loads that no longer sum to the run's totals; it should check against the run and fail loudly",
-)
 def test_building_profiles_with_other_data_dirs_fail_loudly(synthetic_dataset, other_dataset):
     cfg, pool, result = _run_with_pool(synthetic_dataset, {"enabled": False})
     r = result.ensemble.runs[0]
@@ -367,12 +357,6 @@ def test_building_profiles_with_other_data_dirs_fail_loudly(synthetic_dataset, o
         ensemble.building_profiles(r, pool, cfg, other_dataset.data_dirs)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM): building_profiles with a pool other than the run's (here one whose characteristics "
-    "table lacks the sampled ids, so multifamily scaling is silently skipped) returns loads that do not sum to the "
-    "run's totals instead of failing",
-)
 def test_building_profiles_with_other_pool_fail_loudly(synthetic_dataset):
     import dataclasses
 
@@ -433,11 +417,6 @@ def test_weather_rule_uses_the_architecture_scanner():
         p.unlink()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW, pre-existing, now also covers weather): tests/test_architecture._imports skips relative "
-    "imports (node.level > 0), so `from .synthetic import run` inside community_load/weather.py passes the rule",
-)
 def test_architecture_scanner_catches_relative_imports():
     p = Path(__file__).parent / "_qa_arch_probe_rel.py"
     try:
@@ -522,11 +501,6 @@ def test_schema_doc_lists_exactly_the_temperature_block_keys():
     assert '"temperature": "degC"' in text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW, docs): results-schema.md version history says 1.1 changed 'nothing else', but every "
-    "document's config_snapshot.data now also carries the five data.temperature_* fields",
-)
 def test_schema_doc_version_history_mentions_the_new_config_fields():
     history = SCHEMA_DOC.read_text().split("**Version history.**", 1)[1].split("\n\n", 1)[0]
     assert "config_snapshot" in history

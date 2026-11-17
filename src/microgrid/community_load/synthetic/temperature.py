@@ -194,12 +194,18 @@ def _from_buildings(
                 f"real NREL column names are not confirmed [verify]); columns that look like temperature: {hints}"
             )
         s = _series(df["timestamp"], df[col].to_numpy(), units, where)
+        bad = ~np.isfinite(s.to_numpy())
+        if bad.any():  # checked per building, so a gap can never hide inside the comparison below
+            raise ValueError(
+                f"{where}: missing or non-finite temperature values at {int(bad.sum())} time stamps "
+                f"(first: {s.index[bad][0]}) in column {col!r}"
+            )
         if ref is None:
             ref, ref_key = s, where
             continue
         if not s.index.equals(ref.index):
             raise ValueError(f"{where} and {ref_key} have different temperature time stamps")
-        diff = float(np.nanmax(np.abs(s.to_numpy() - ref.to_numpy()))) if len(s) else 0.0
+        diff = float(np.max(np.abs(s.to_numpy() - ref.to_numpy()))) if len(s) else 0.0
         if not math.isfinite(diff) or diff > CONSISTENCY_TOLERANCE_C:
             raise ValueError(
                 f"sampled buildings carry different temperature series: {where} differs from {ref_key} by up to "
@@ -217,11 +223,23 @@ def _from_buildings(
     }
 
 
+def check_declared_source(cfg: ScenarioConfig) -> None:
+    """Fail before any run if a declared weather file does not exist (so zero feasible runs cannot hide it).
+
+    Nothing to check for ``none``. For ``timeseries_column`` the column can only be checked once buildings are
+    sampled; that happens in ``build_temperature``.
+    """
+    if cfg.data.temperature_source != "weather_file":
+        return
+    path = Path(str(cfg.data.temperature_weather_file))
+    if not path.is_file():
+        raise FileNotFoundError(f"weather file {path} (data.temperature_weather_file) does not exist")
+
+
 def _from_file(cfg: ScenarioConfig) -> tuple[pd.Series, dict[str, Any]]:
     path = Path(str(cfg.data.temperature_weather_file))
     where = f"weather file {path.name}"
-    if not path.is_file():
-        raise FileNotFoundError(f"weather file {path} (data.temperature_weather_file) does not exist")
+    check_declared_source(cfg)
     suffix = path.suffix.lower()
     if suffix == ".csv":
         df = pd.read_csv(path)

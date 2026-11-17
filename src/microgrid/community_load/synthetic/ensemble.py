@@ -19,6 +19,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from microgrid.community_load.synthetic import aggregation, feasibility, perturbation
@@ -33,6 +34,7 @@ from microgrid.community_load.synthetic.composition import sample_buildings, sam
 from microgrid.community_load.synthetic.config import ConvergenceConfig, ScenarioConfig
 from microgrid.community_load.synthetic.convergence import ConvergenceCheck, ConvergenceTracker
 from microgrid.community_load.synthetic.loader import load_and_scale_profile
+from microgrid.community_load.synthetic.results import ENERGY_RTOL
 from microgrid.community_load.synthetic.rng import (
     RNGBundle,
     derive_run_rng,
@@ -104,7 +106,39 @@ def building_profiles(
             p.perturbed_annual_kwh = float(p.hourly_kwh.sum())
         p.perturbation_log = dict(log)
         out.append(p)
+    _check_buildings_match_run(run, out)
     return out
+
+
+def _check_buildings_match_run(run: NeighborhoodResult, profiles: list[PerturbedProfile]) -> None:
+    """Rebuilt buildings must sum to the run's own totals; otherwise the inputs were not the run's (fail loudly)."""
+    if not profiles:
+        return
+    hint = "; pass the same pool, cfg and data_dirs the run used"
+    total_h = aggregation.aggregate_profiles(profiles)
+    if not _close(total_h, run.total_profile):
+        raise ValueError(
+            f"run {run.run_index}: rebuilt building profiles do not sum to the run's hourly total "
+            f"(relative tolerance {ENERGY_RTOL:g}){hint}"
+        )
+    for label, source, expected in (
+        ("residential", "resstock", run.residential_profile_15min),
+        ("commercial", "comstock", run.commercial_profile_15min),
+    ):
+        if expected is None:
+            continue
+        got = aggregation.aggregate_profiles_15min([p for p in profiles if p.source == source])
+        if got is None or not _close(got, expected):
+            raise ValueError(
+                f"run {run.run_index}: rebuilt building profiles do not sum to the run's 15-minute {label} total "
+                f"(relative tolerance {ENERGY_RTOL:g}){hint}"
+            )
+
+
+def _close(got: pd.Series, expected: pd.Series) -> bool:
+    if len(got) != len(expected) or (len(got) and not got.index.equals(expected.index)):
+        return False
+    return bool(np.allclose(got.to_numpy(dtype=float), expected.to_numpy(dtype=float), rtol=ENERGY_RTOL, atol=0.0))
 
 
 def _run_single(

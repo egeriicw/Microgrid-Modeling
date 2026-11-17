@@ -176,6 +176,24 @@ def test_weather_file_missing_fails_loudly(ds_weather_f, tmp_path):
         run.run_scenario(cfg)
 
 
+def test_missing_weather_file_fails_before_any_run_even_with_zero_feasible_runs(ds_weather_f, tmp_path):
+    cfg = _weather_cfg(ds_weather_f)
+    cfg["data"]["temperature_weather_file"] = str(tmp_path / "nope.csv")
+    cfg["feasibility"] = {"hard": {"annual_energy_kwh": {"max": 1.0}}}  # every run rejected
+    events: list[run.ProgressEvent] = []
+    with pytest.raises(FileNotFoundError, match="weather file"):
+        run.run_scenario(cfg, progress=events.append)
+    assert events == []  # failed up front: no pool built, no run attempted
+
+
+def test_without_a_declared_source_no_file_check_happens(synthetic_dataset):
+    cfg = cfg_mod.config_from_dict(build_tiny_config(synthetic_dataset))
+    assert cfg.data.temperature_source == "none"
+    from microgrid.community_load.synthetic.temperature import check_declared_source
+
+    check_declared_source(cfg)  # nothing declared: nothing to check, no error
+
+
 def test_weather_file_missing_column_fails_loudly(ds_weather_f):
     cfg = _weather_cfg(ds_weather_f, column=WEATHER_TEMP_COL_C)  # the file is in F, so this column is absent
     with pytest.raises(ValueError, match=r"temperature column .* not found"):

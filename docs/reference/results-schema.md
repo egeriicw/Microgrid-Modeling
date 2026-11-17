@@ -9,6 +9,9 @@ Any change to the shape of this document bumps `schema_version` (and this file).
 nothing else changed and no number changed. A `1.0` document is a `1.1` document without those two keys, so a
 reader can accept both by treating a missing `temperature` as `{"available": false, "reason": "schema 1.0"}`.
 (There is no reader in the code base today: the API stores and serves the document as written.)
+Because the config gained the temperature declaration, every 1.1 document's `config_snapshot.data` also carries the
+five `temperature_*` fields (`temperature_source`, `temperature_column`, `temperature_units`,
+`temperature_weather_file`, `temperature_time_column`; `"none"` and nulls when nothing is declared).
 
 Conventions: power is **kW**, energy is **kWh**, and every key says which. A source value in kWh per 15-minute
 interval is multiplied by 4 to give kW; kWh per hour is already kW. "Envelope" = at each time step, across the
