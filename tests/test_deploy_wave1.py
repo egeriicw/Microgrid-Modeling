@@ -91,7 +91,15 @@ def test_web_dockerfile_copies_only_web_sources_and_the_nginx_config():
     sources = set()
     for m in re.finditer(r"^COPY\s+(?:--\S+\s+)*(.+?)\s+\S+\s*$", text, re.M):
         sources.update(m.group(1).split())
-    assert sources <= {"web/package.json", "web/package-lock.json", "web/", "deploy/web/nginx.conf", "/web/dist"}
+    assert "web/.npmrc" in sources, "npm ci rejects the lockfile without the legacy-peer-deps setting"
+    assert sources <= {
+        "web/package.json",
+        "web/package-lock.json",
+        "web/.npmrc",
+        "web/",
+        "deploy/web/nginx.conf",
+        "/web/dist",
+    }
 
 
 def _nginx_locations(conf: str) -> dict[str, str]:

@@ -9,7 +9,8 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /web
 ENV CI=true NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false
 # Dependencies first (cached until the lockfile changes). glibc base: the lockfile carries the linux-*-gnu bindings.
-COPY web/package.json web/package-lock.json ./
+# .npmrc carries legacy-peer-deps, which the lockfile was resolved with; without it `npm ci` rejects the lockfile.
+COPY web/package.json web/package-lock.json web/.npmrc ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
