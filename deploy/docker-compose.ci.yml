@@ -1,13 +1,16 @@
-# CI overlay (layered on docker-compose.yml): faster health polling, committed fixtures instead of real data.
+# CI overlay (layered on docker-compose.yml): faster health polling, GENERATED synthetic fixture data instead of real
+# data. Generate the data first (it is git-ignored, never committed), then start:
+#   python deploy/ci/make_fixture_data.py tests/fixtures/data
 #   docker compose --project-directory . --env-file deploy/.env.example \
-#     -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml up -d --build --wait
+#     -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml up -d --build
+# The smoke script does both steps' checks: SMOKE_CI=1 ./deploy/tests/test_compose_smoke.sh
 services:
   api:
     volumes:
-      - ./tests/fixtures:/data:ro
+      - ./tests/fixtures/data:/data:ro
   worker:
     volumes:
-      - ./tests/fixtures:/data:ro
+      - ./tests/fixtures/data:/data:ro
   db:
     healthcheck:
       interval: 2s

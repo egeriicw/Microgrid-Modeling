@@ -1,21 +1,22 @@
 /**
- * End-to-end happy path against the mock API client (the Vite app wires the mock; no backend needed).
+ * End-to-end happy path against the mock API client (playwright.config.ts starts Vite with VITE_API_MODE=mock; no
+ * backend needed). In mock mode the API key is the role name.
  * Sign in as client -> composition -> run with progress -> results with caveat and charts -> data table.
- * Skeleton: not yet run in CI (needs `npx playwright install chromium`; see web/README.md).
  */
 import { expect, test } from "@playwright/test";
 
 test("client: compose, run, inspect results", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
-  await page.getByRole("radio", { name: /client/i }).check();
+  await page.getByLabel(/api key/i).fill("client");
   await page.getByRole("button", { name: /sign in/i }).click();
 
-  await expect(page.getByRole("heading", { name: /composition/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /define a community composition/i })).toBeVisible();
   await page.getByLabel(/total buildings/i).fill("50");
   await page.getByRole("button", { name: /start run/i }).click();
 
   await expect(page.getByRole("progressbar", { name: /run progress/i })).toBeVisible();
+  await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
   await page.getByRole("link", { name: /view results/i }).click({ timeout: 30_000 });
 
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
@@ -33,10 +34,15 @@ test("client: compose, run, inspect results", async ({ page }) => {
   await expect(section.getByRole("table")).toContainText("Residential");
 });
 
-test("demo: sees results but not the composition form", async ({ page }) => {
+test("demo: runs a predefined composition only", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("radio", { name: /demo/i }).check();
+  await page.getByLabel(/api key/i).fill("demo");
   await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByText(/demo accounts can run the predefined compositions only/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /start run/i })).toHaveCount(0);
+  await page.getByRole("button", { name: /^run /i }).first().click();
+  await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /replay/i })).toHaveCount(0);
+  await page.getByRole("link", { name: /view results/i }).click();
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
-  await expect(page.getByRole("link", { name: /compose/i })).toHaveCount(0);
 });

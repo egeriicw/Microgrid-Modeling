@@ -34,6 +34,17 @@ describe("attachHoverOverlay (DOM tooltip, no chart repaint)", () => {
     expect(host.querySelector("[role=status]")).toBeNull();
   });
 
+  it("says temperature is not available when the results have none", () => {
+    const host = document.createElement("div");
+    const { chart, handlers } = fakeChart(true, series.ts[50]);
+    attachHoverOverlay(chart as never, host, () => ({ ...series, temperature: null }), ["total"]);
+    handlers.mousemove({ offsetX: 120, offsetY: 40 });
+    const tip = host.querySelector("[role=status]") as HTMLElement;
+    expect(tip.textContent).toContain(series.total[50].toFixed(1));
+    expect(tip.textContent).toMatch(/temperature: not in these results/i);
+    expect(tip.textContent).not.toContain("NaN");
+  });
+
   it("hides outside the plot area and on mouse out", () => {
     const host = document.createElement("div");
     const { chart, handlers } = fakeChart(false, series.ts[0]);

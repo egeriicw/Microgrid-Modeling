@@ -22,7 +22,7 @@ describe("viewAtResolution", () => {
     expect(h.ts.length).toBe(series.ts.length / 4);
     expect(h.stepMs).toBe(3_600_000);
     expect(h.total[0]).toBeCloseTo((series.total[0] + series.total[1] + series.total[2] + series.total[3]) / 4, 9);
-    expect(h.temperature[1]).toBeCloseTo((series.temperature[4] + series.temperature[5] + series.temperature[6] + series.temperature[7]) / 4, 9);
+    expect(h.temperature![1]).toBeCloseTo((series.temperature[4] + series.temperature[5] + series.temperature[6] + series.temperature[7]) / 4, 9);
   });
   it("caches the hourly view", () => {
     expect(viewAtResolution(series, "1h")).toBe(viewAtResolution(series, "1h"));
@@ -41,6 +41,22 @@ describe("formatTooltip: load and temperature at the SAME timestamp", () => {
   it("clamps outside the range and rejects non-finite timestamps", () => {
     expect(formatTooltip(-1e15, series, ["total"]).loads[0].kw).toBeCloseTo(series.total[0], 9);
     expect(() => formatTooltip(Number.NaN, series, ["total"])).toThrow(/timestamp/);
+  });
+});
+
+describe("results without temperature (the real API does not send it yet)", () => {
+  const noTemp = { ...series, temperature: null };
+  it("keeps the hourly view and the tooltip working, with temperature reported as missing", () => {
+    expect(viewAtResolution(noTemp, "1h").temperature).toBeNull();
+    expect(formatTooltip(noTemp.ts[3], noTemp, ["total"]).temperatureC).toBeNull();
+  });
+  it("draws no temperature series even when the overlay is switched on", () => {
+    const o: Opt = buildTimeSeriesOption({ series: noTemp, resolution: "15min", showBand: false, showTemperature: true });
+    expect(o.series.filter((s: Opt) => s.yAxisIndex === 1)).toHaveLength(0);
+    expect(o.dataset.source.temperature).toBeUndefined();
+    expect(o.legend.data).not.toContain("Temperature (°C)");
+    expect(o.yAxis).toHaveLength(1); // no empty °C axis
+    expect((buildTimeSeriesOption({ series, resolution: "15min", showBand: false, showTemperature: false }) as Opt).yAxis).toHaveLength(2);
   });
 });
 

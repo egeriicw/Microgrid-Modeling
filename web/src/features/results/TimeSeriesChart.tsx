@@ -19,6 +19,7 @@ export function TimeSeriesChart({ series, weatherYear }: { series: LoadSeries; w
   const [showTemperature, setShowTemperature] = useState(true);
   const [chart, setChart] = useState<ChartLike | null>(null);
   const host = useRef<HTMLDivElement>(null);
+  const hasTemp = series.temperature !== null;
 
   const option = useMemo(
     () => buildTimeSeriesOption({ series, resolution, showBand, showTemperature, compact }),
@@ -57,7 +58,11 @@ export function TimeSeriesChart({ series, weatherYear }: { series: LoadSeries; w
         <ToggleButton value="15min">15-minute</ToggleButton>
       </ToggleButtonGroup>
       <FormControlLabel control={<Checkbox checked={showBand} onChange={(e) => setShowBand(e.target.checked)} />} label="P10-P90 band" />
-      <FormControlLabel control={<Checkbox checked={showTemperature} onChange={(e) => setShowTemperature(e.target.checked)} />} label="Temperature overlay" />
+      {hasTemp ? (
+        <FormControlLabel control={<Checkbox checked={showTemperature} onChange={(e) => setShowTemperature(e.target.checked)} />} label="Temperature overlay" />
+      ) : (
+        <Typography variant="body2">These results do not include temperature.</Typography>
+      )}
       <ButtonGroup size="small" aria-label="Zoom and pan" sx={{ flexWrap: "wrap" }}>
         <Button onClick={() => zoom("in")}>Zoom in</Button>
         <Button onClick={() => zoom("out")}>Zoom out</Button>
@@ -79,10 +84,10 @@ export function TimeSeriesChart({ series, weatherYear }: { series: LoadSeries; w
         onKeyDown={onKeyDown}
         style={{ position: "relative" }}
       >
-        <EChart option={option} ariaLabel={`Load over the year, total, residential and commercial, with temperature, weather year ${weatherYear}`} height={440} onReady={setChart} />
+        <EChart option={option} ariaLabel={`Load over the year, total, residential and commercial${hasTemp ? ", with temperature" : ""}, weather year ${weatherYear}`} height={440} onReady={setChart} />
       </div>
       <Typography id="ts-keys" variant="caption" color="text.secondary" component="p" sx={{ mt: 1, mb: 1 }}>
-        Keyboard: focus the chart, then + and - to zoom, left and right arrows to pan, 0 to reset. Hover (mouse) or tap (touch) shows load and temperature together; the data table below gives the same numbers.
+        Keyboard: focus the chart, then + and - to zoom, left and right arrows to pan, 0 to reset. Hover (mouse) or tap (touch) shows load{hasTemp ? " and temperature" : ""} together; the data table below gives the same numbers.
       </Typography>
     </ChartCard>
   );

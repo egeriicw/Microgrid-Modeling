@@ -10,6 +10,17 @@ Layout written under ``root``::
     input/resstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet
     input/comstock/timeseries_individual_buildings/upgrade=0/state=DC/<bldg_id>-0.parquet
 
+Optional outdoor temperature sources (FR-ENG-10), both OFF by default so the default dataset is unchanged:
+
+* ``temperature_column="<name>"`` adds that column (deg C) to every building parquet. ComStock buildings can be
+  given a constant offset (``comstock_temperature_offset_c``) to simulate buildings that disagree.
+* ``weather_file=True`` writes one hourly weather file ``weather/weather_2018.csv`` (deg F by default) with columns
+  ``WEATHER_TIME_COL`` and ``WEATHER_TEMP_COL``. These names only imitate what NREL weather files are believed to
+  look like **[verify]**; the engine never assumes them, a config declares them.
+
+Temperatures come from ``temperature_c`` (deterministic, no random numbers), so adding them never shifts the random
+stream used for loads and characteristics.
+
 Deliberately bad ResStock rows (completed_status != "Success", applicability False) are included so that
 ``require_data_complete`` can be tested; their ids are in ``SyntheticDataset.bad_resstock_ids``.
 """
@@ -47,6 +58,9 @@ _STORIES = {
     "Multi-Family with 5+ Units, 4-7 Stories": (4, 7),
     "Multi-Family with 5+ Units, 8+ Stories": (8, 12),
 }
+WEATHER_TIME_COL = "date_time"  # [verify] real NREL weather file column names
+WEATHER_TEMP_COL_F = "Dry Bulb Temperature [F]"
+WEATHER_TEMP_COL_C = "Dry Bulb Temperature [C]"
 _END_USES = ("cooling", "heating", "lighting", "plug_loads")
 _RESSTOCK_ID0 = 1000
 _COMSTOCK_ID0 = 500000
@@ -65,6 +79,9 @@ class SyntheticDataset:
     bad_resstock_ids: list[int] = field(default_factory=list)
     seed: int = 0
     year: int = 2018
+    temperature_column: str | None = None  # building-parquet temperature column (deg C), when written
+    weather_file: Path | None = None  # hourly weather CSV, when written
+    weather_units: str = "F"
 
     @property
     def data_dirs(self) -> dict[str, Path]:
@@ -83,6 +100,13 @@ class SyntheticDataset:
             "comstock_timeseries_dir": str(self.comstock_dir),
             "background_dir": str(self.background_dir),
         }
+
+
+def temperature_c(index: pd.DatetimeIndex) -> np.ndarray:
+    """Known-answer outdoor temperature in deg C: a seasonal plus a daily cycle (no randomness)."""
+    hour = np.asarray(index.hour + index.minute / 60.0, dtype=float)
+    doy = np.asarray(index.day_of_year, dtype=float)
+    return 13.0 - 12.0 * np.cos(2 * np.pi * (doy - 20) / 365.0) + 4.0 * np.sin(2 * np.pi * (hour - 9) / 24.0)
 
 
 def _profile(
@@ -107,7 +131,14 @@ def _profile(
     return {"total": total, "cooling": cooling, "heating": heating, "lighting": lighting, "plug_loads": plug}
 
 
-def _write_building(path: Path, rng: np.random.Generator, index: pd.DatetimeIndex, scale: float, product: str) -> None:
+def _write_building(
+    path: Path,
+    rng: np.random.Generator,
+    index: pd.DatetimeIndex,
+    scale: float,
+    product: str,
+    temperature: tuple[str, np.ndarray] | None = None,
+) -> None:
     p = _profile(rng, index, scale, commercial=product == "comstock")
     total_col = RESSTOCK_KWH_COL if product == "resstock" else COMSTOCK_KWH_COL
     # Rounded to 4 decimals so the files compress well (fixture stays tiny); values stay positive.
@@ -115,6 +146,8 @@ def _write_building(path: Path, rng: np.random.Generator, index: pd.DatetimeInde
     for eu in _END_USES:
         name = f"out.electricity.{eu}.energy_consumption" + ("..kwh" if product == "resstock" else "")
         df[name] = np.round(p[eu] + 1e-4, 4).astype("float32")
+    if temperature is not None:
+        df[temperature[0]] = temperature[1].astype("float32")
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False, compression="zstd")
 
@@ -126,8 +159,18 @@ def build_synthetic_dataset(
     comstock_by_type: dict[str, int] | None = None,
     seed: int = 0,
     year: int = 2018,
+    temperature_column: str | None = None,
+    comstock_temperature_offset_c: float = 0.0,
+    weather_file: bool = False,
+    weather_units: str = "F",
 ) -> SyntheticDataset:
-    """Write the synthetic dataset under ``root`` and return its paths. Deterministic for a given ``seed``."""
+    """Write the synthetic dataset under ``root`` and return its paths. Deterministic for a given ``seed``.
+
+    ``temperature_column`` / ``weather_file`` add the optional temperature sources described in the module
+    docstring; they never change the load values.
+    """
+    if weather_units not in ("C", "F"):
+        raise ValueError(f"weather_units must be 'C' or 'F', got {weather_units!r}")
     resstock_by_height = DEFAULT_RESSTOCK_BY_HEIGHT if resstock_by_height is None else resstock_by_height
     comstock_by_type = DEFAULT_COMSTOCK_BY_TYPE if comstock_by_type is None else comstock_by_type
     rng = np.random.default_rng(seed)
@@ -217,11 +260,30 @@ def build_synthetic_dataset(
     for _, r in res_df.iterrows():
         scale = float(r["in.sqft..ft2"]) / 1500.0 * 5.0
         path = res_dir / "upgrade=0" / "state=DC" / f"{int(r['bldg_id'])}-0.parquet"
-        _write_building(path, rng, index, scale, "resstock")
+        temp = None if temperature_column is None else (temperature_column, temperature_c(index))
+        _write_building(path, rng, index, scale, "resstock", temp)
     for _, r in com_df.iterrows():
         scale = float(r["in.sqft..ft2"]) / 5000.0 * 10.0
         path = com_dir / "upgrade=0" / "state=DC" / f"{int(r['bldg_id'])}-0.parquet"
-        _write_building(path, rng, index, scale, "comstock")
+        temp = (
+            None
+            if temperature_column is None
+            else (temperature_column, temperature_c(index) + comstock_temperature_offset_c)
+        )
+        _write_building(path, rng, index, scale, "comstock", temp)
+
+    weather_path: Path | None = None
+    if weather_file:
+        hours = pd.date_range(f"{year}-01-01", f"{year + 1}-01-01", freq="h", inclusive="left")
+        t_c = temperature_c(hours)
+        values, col = (
+            (t_c * 9.0 / 5.0 + 32.0, WEATHER_TEMP_COL_F) if weather_units == "F" else (t_c, WEATHER_TEMP_COL_C)
+        )
+        weather_path = root / "weather" / f"weather_{year}.csv"
+        weather_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({WEATHER_TIME_COL: hours.strftime("%Y-%m-%d %H:%M:%S"), col: values}).to_csv(
+            weather_path, index=False
+        )
 
     good = ~res_df["bldg_id"].isin(bad_ids) if len(res_df) else []
     return SyntheticDataset(
@@ -236,4 +298,7 @@ def build_synthetic_dataset(
         bad_resstock_ids=bad_ids,
         seed=seed,
         year=year,
+        temperature_column=temperature_column,
+        weather_file=weather_path,
+        weather_units=weather_units,
     )

@@ -8,7 +8,7 @@ const fixed = (typeId: string, count: number): CompositionEntry => ({ typeId, mo
 const ok: Composition = {
   name: "demo",
   totalBuildings: 100,
-  seed: 1,
+  seeds: {},
   maxRuns: 200,
   entries: [range("sf", 0.2, 0.8), range("office", 0, 1)],
 };
@@ -63,11 +63,14 @@ describe("validateComposition (input-shape checks; the API is the authority)", (
   it("when fixed counts use up the total, fraction ranges are ignored (those types get 0), not rejected", () => {
     expect(validateComposition(withEntries([fixed("a", 100), range("b", 0.9, 1), range("c", 0.9, 1)]))).toEqual({});
   });
-  it("validates seed and max runs, with upper bounds", () => {
-    expect(validateComposition({ ...ok, seed: -1 }).seed).toMatch(/0 or more/i);
+  it("validates seeds (optional, each 0..2^32-1) and max runs, with upper bounds", () => {
+    expect(validateComposition({ ...ok, seeds: { composition_seed: -1 } }).composition_seed).toMatch(/0 or more/i);
+    expect(validateComposition({ ...ok, seeds: { archetype_seed: 1.5 } }).archetype_seed).toMatch(/whole/i);
+    expect(validateComposition({ ...ok, seeds: { perturbation_seed: Number.NaN } }).perturbation_seed).toMatch(/whole/i);
     expect(validateComposition({ ...ok, maxRuns: 0 }).maxRuns).toMatch(/at least 1/i);
-    expect(validateComposition({ ...ok, seed: MAX_SEED + 1 }).seed).toMatch(/at most/i);
-    expect(validateComposition({ ...ok, seed: MAX_SEED })).toEqual({});
+    expect(validateComposition({ ...ok, seeds: { composition_seed: MAX_SEED + 1 } }).composition_seed).toMatch(/at most/i);
+    expect(validateComposition({ ...ok, seeds: { composition_seed: MAX_SEED, archetype_seed: 0, perturbation_seed: 7 } })).toEqual({});
+    expect(validateComposition({ ...ok, seeds: {} })).toEqual({});
     expect(validateComposition({ ...ok, maxRuns: MAX_RUNS_LIMIT + 1 }).maxRuns).toMatch(/at most/i);
     expect(validateComposition({ ...ok, maxRuns: MAX_RUNS_LIMIT })).toEqual({});
   });
