@@ -1,8 +1,9 @@
-import type { Composition } from "../../api/types";
+import { SEED_KEYS, type Composition, type SeedKey } from "../../api/types";
 
-export type CompositionErrors = Partial<Record<"name" | "totalBuildings" | "entries" | "seed" | "maxRuns", string>>;
+export type CompositionErrors = Partial<Record<"name" | "totalBuildings" | "entries" | "maxRuns" | SeedKey, string>>;
 
-/** UI limits (the API is authoritative and may differ): seed fits an unsigned 32-bit integer; max runs is capped. */
+/** UI limits (the API is authoritative and may differ): each seed fits an unsigned 32-bit integer (the API's
+ *  RunCreate rule, 0..2^32-1); max runs is capped (the server applies its own, possibly lower, cap). */
 export const MAX_SEED = 4_294_967_295;
 export const MAX_RUNS_LIMIT = 1000;
 
@@ -68,8 +69,12 @@ export function validateComposition(c: Composition): CompositionErrors {
     if (e.entries === undefined) delete e.entries;
   }
 
-  if (!Number.isFinite(c.seed) || !isWhole(c.seed) || c.seed < 0) e.seed = "Seed must be a whole number, 0 or more.";
-  else if (c.seed > MAX_SEED) e.seed = `Seed must be at most ${MAX_SEED}.`;
+  for (const k of SEED_KEYS) {
+    const v = c.seeds[k];
+    if (v === undefined) continue; // blank: the server draws a fresh random seed and records it
+    if (!Number.isFinite(v) || !isWhole(v) || v < 0) e[k] = "Seed must be a whole number, 0 or more.";
+    else if (v > MAX_SEED) e[k] = `Seed must be at most ${MAX_SEED}.`;
+  }
   if (!Number.isFinite(c.maxRuns) || !isWhole(c.maxRuns) || c.maxRuns < 1) e.maxRuns = "Maximum runs must be a whole number, at least 1.";
   else if (c.maxRuns > MAX_RUNS_LIMIT) e.maxRuns = `Maximum runs must be at most ${MAX_RUNS_LIMIT}.`;
   return e;

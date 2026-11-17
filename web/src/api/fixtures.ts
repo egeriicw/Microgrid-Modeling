@@ -37,7 +37,7 @@ function gaussian(rand: () => number): number {
 }
 
 /** `points` 15-minute samples starting 2018-01-01 UTC; must be a positive multiple of 4 (whole hours). */
-export function generateDataset(opts: { points: number; seed?: number }): LoadSeries {
+export function generateDataset(opts: { points: number; seed?: number }): LoadSeries & { temperature: Float64Array } {
   const { points } = opts;
   if (!Number.isInteger(points) || points <= 0 || points % 4 !== 0) {
     throw new Error(`points must be a positive multiple of 4, got ${points}`);

@@ -1,6 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createMockClient } from "../../api/mockClient";
+import { ApiError, type ApiClient } from "../../api/types";
 import { renderApp } from "../../test/utils";
 
 async function fillValid(user: ReturnType<typeof userEvent.setup>) {
@@ -16,7 +18,9 @@ describe("composition form (FR-WEB-1)", () => {
     expect(await screen.findByLabelText(/single-family detached min fraction/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/single-family detached max fraction/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/office min fraction/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/random seed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/composition seed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/archetype seed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/perturbation seed/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/maximum runs/i)).toBeInTheDocument();
   });
 
@@ -74,9 +78,61 @@ describe("composition form (FR-WEB-1)", () => {
     await waitFor(() => expect(screen.getByLabelText(/vintage/i)).toBeInTheDocument());
   });
 
-  it("is read-only for the demo role", async () => {
+  it("lets the demo role run only the predefined compositions", async () => {
+    const user = userEvent.setup();
     await renderApp({ route: "/composition", role: "demo" });
-    expect(await screen.findByText(/demo accounts cannot start runs/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demo accounts can run the predefined compositions only/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start run/i })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /run dc_small_mixed/i }));
+    expect(await screen.findByRole("progressbar", { name: /run progress/i })).toBeInTheDocument();
+  });
+
+  it("sends optional seeds; blank seeds are left to the server", async () => {
+    const user = userEvent.setup();
+    const base = createMockClient();
+    const startRun = vi.fn(base.startRun);
+    await renderApp({ route: "/composition", role: "client", client: { ...base, startRun } });
+    await screen.findByLabelText(/total buildings/i);
+    await user.type(screen.getByLabelText(/composition seed/i), "42");
+    await user.click(screen.getByRole("button", { name: /start run/i }));
+    await screen.findByRole("progressbar", { name: /run progress/i });
+    const req = startRun.mock.calls[0][0];
+    expect(req.kind === "custom" && req.composition.seeds).toEqual({ composition_seed: 42 });
+  });
+
+  it("rejects a seed outside 0..2^32-1 before sending", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    await user.type(await screen.findByLabelText(/archetype seed/i), "4294967296");
+    expect(await screen.findByText(/at most 4294967295/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start run/i })).toBeDisabled();
+  });
+
+  it("shows the server's 422 field messages", async () => {
+    const user = userEvent.setup();
+    const base = createMockClient();
+    const startRun = vi.fn(async () => {
+      throw new ApiError(422, "composition.total_buildings: too many", [{ field: "composition.total_buildings", message: "exceeds the server cap of 500" }]);
+    });
+    await renderApp({ route: "/composition", role: "client", client: { ...base, startRun } });
+    await screen.findByLabelText(/total buildings/i);
+    await user.click(screen.getByRole("button", { name: /start run/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("composition.total_buildings");
+    expect(alert).toHaveTextContent("exceeds the server cap of 500");
+  });
+
+  it("explains when the API cannot list building types, and keeps predefined runs available", async () => {
+    const base = createMockClient();
+    const client: ApiClient = {
+      ...base,
+      listBuildingTypes: async () => {
+        throw new ApiError(501, "The API does not offer the building-type list yet");
+      },
+    };
+    await renderApp({ route: "/composition", role: "client", client });
+    expect(await screen.findByText(/does not offer the building-type list/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /start run/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /run dc_small_mixed/i })).toBeInTheDocument();
   });
 });

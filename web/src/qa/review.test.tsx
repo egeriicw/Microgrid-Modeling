@@ -18,7 +18,7 @@ afterEach(cleanup);
 const ok: Composition = {
   name: "demo",
   totalBuildings: 100,
-  seed: 1,
+  seeds: {},
   maxRuns: 200,
   entries: [
     { typeId: "a", mode: "fraction", minFraction: 0.2, maxFraction: 0.8 },
@@ -29,7 +29,7 @@ const ok: Composition = {
 describe("QA: composition validation holes", () => {
   it("rejects NaN, negative and non-finite numbers", () => {
     expect(validateComposition({ ...ok, totalBuildings: NaN }).totalBuildings).toBeTruthy();
-    expect(validateComposition({ ...ok, seed: -1 }).seed).toBeTruthy();
+    expect(validateComposition({ ...ok, seeds: { composition_seed: -1 } }).composition_seed).toBeTruthy();
     expect(validateComposition({ ...ok, maxRuns: Infinity }).maxRuns).toBeTruthy();
     expect(validateComposition({ ...ok, entries: [{ typeId: "a", mode: "fraction", minFraction: -0.1, maxFraction: 1 }] }).entries).toBeTruthy();
   });
@@ -58,7 +58,7 @@ describe("QA: composition validation holes", () => {
 
   // DEFECT D2: no upper bounds. A seed above the 32/64-bit range or a billion max runs passes client validation.
   it("rejects an overflowing seed", () => {
-    expect(validateComposition({ ...ok, seed: 1e300 }).seed).toBeTruthy();
+    expect(validateComposition({ ...ok, seeds: { archetype_seed: 1e300 } }).archetype_seed).toBeTruthy();
   });
   it("rejects an absurd maxRuns", () => {
     expect(validateComposition({ ...ok, maxRuns: 1e12 }).maxRuns).toBeTruthy();
@@ -77,9 +77,9 @@ describe("QA: results labels come from the API", () => {
 });
 
 describe("QA: role gating and run lifecycle", () => {
-  it("demo reaching /composition by URL sees no form and no Start run", async () => {
+  it("demo reaching /composition by URL sees no custom form and no Start run", async () => {
     await renderApp({ route: "/composition", role: "demo" });
-    await screen.findByText(/demo accounts cannot start runs/i);
+    await screen.findByText(/demo accounts can run the predefined compositions only/i);
     expect(screen.queryByRole("button", { name: /start run/i })).toBeNull();
     expect(screen.queryByText(/building filters/i)).toBeNull();
   });
@@ -95,27 +95,27 @@ describe("QA: role gating and run lifecycle", () => {
     expect(await screen.findByRole("heading", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("stops polling after the run page unmounts", async () => {
-    const base = createMockClient({ runsPerPoll: 1 });
-    const getRun = vi.fn(base.getRun);
-    const client: ApiClient = { ...base, getRun };
+  it("stops the progress stream after the run page unmounts", async () => {
+    const base = createMockClient({ runsPerTick: 1, tickMs: 5 });
+    let signal: AbortSignal | undefined;
+    const watchRun = vi.fn((id: string, on: Parameters<ApiClient["watchRun"]>[1], s: AbortSignal) => ((signal = s), base.watchRun(id, on, s)));
+    const client: ApiClient = { ...base, watchRun };
     await base.login("client");
-    const { runId } = await base.startRun({ ...ok, maxRuns: 100000 });
+    const { runId } = await base.startRun({ kind: "custom", composition: { ...ok, maxRuns: 100000 } });
     const { unmount } = await renderApp({ route: `/runs/${runId}`, client, role: "client" });
-    await waitFor(() => expect(getRun.mock.calls.length).toBeGreaterThan(2));
+    await waitFor(() => expect(watchRun).toHaveBeenCalled());
+    expect(signal?.aborted).toBe(false);
     unmount();
-    const n = getRun.mock.calls.length;
-    await new Promise((r) => setTimeout(r, 60));
-    expect(getRun.mock.calls.length).toBe(n);
+    expect(signal?.aborted).toBe(true);
   });
 
   it("cancel button is disabled while the cancel request is in flight (no double cancel)", async () => {
-    const base = createMockClient({ runsPerPoll: 1 });
+    const base = createMockClient({ runsPerTick: 1, tickMs: 5 });
     let release = () => {};
     const cancelRun = vi.fn(() => new Promise<void>((r) => (release = r)));
     const client: ApiClient = { ...base, cancelRun };
     await base.login("client");
-    const { runId } = await base.startRun({ ...ok, maxRuns: 100000 });
+    const { runId } = await base.startRun({ kind: "custom", composition: { ...ok, maxRuns: 100000 } });
     await renderApp({ route: `/runs/${runId}`, client, role: "client" });
     const user = userEvent.setup();
     const btn = await screen.findByRole("button", { name: /cancel/i });

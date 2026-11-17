@@ -3,15 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Community Energy Profiler web app (Sprint 2 shell, mock API client).",
+  "description": "Community Energy Profiler web app (typed client for the real API; mock client for tests).",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
-    "e2e": "playwright test"
+    "test": "npm run check:api && vitest run",
+    "e2e": "playwright test",
+    "gen:api": "node scripts/gen-api.mjs",
+    "check:api": "node scripts/gen-api.mjs --check"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -37,6 +39,7 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",
     "jsdom": "30.1.3",
+    "openapi-typescript": "7.13.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
     "vite": "8.3.4",

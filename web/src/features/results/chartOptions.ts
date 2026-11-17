@@ -46,7 +46,7 @@ export function viewAtResolution(data: LoadSeries, resolution: Resolution): Load
     p10: hourlyMean(data.p10),
     p50: hourlyMean(data.p50),
     p90: hourlyMean(data.p90),
-    temperature: hourlyMean(data.temperature),
+    temperature: data.temperature ? hourlyMean(data.temperature) : null,
   };
   hourlyCache.set(data, h);
   return h;
@@ -61,7 +61,8 @@ export function stamp(ms: number): string {
 export interface TooltipContent {
   time: string;
   loads: { name: string; kw: number }[];
-  temperatureC: number;
+  /** Null when the results carry no temperature. */
+  temperatureC: number | null;
 }
 
 /**
@@ -74,7 +75,7 @@ export function formatTooltip(tsMs: number, data: LoadSeries, keys: LoadKey[]): 
   return {
     time: stamp(data.ts[i]),
     loads: keys.map((k) => ({ name: LOAD_DEFS.find((d) => d.key === k)!.name, kw: data[k][i] })),
-    temperatureC: data.temperature[i],
+    temperatureC: data.temperature ? data.temperature[i] : null,
   };
 }
 
@@ -91,7 +92,7 @@ function columns(d: LoadSeries): Record<string, number[]> {
       p50: Array.from(d.p50),
       p90: Array.from(d.p90),
       span: Array.from(d.p90, (v, i) => v - d.p10[i]),
-      temperature: Array.from(d.temperature),
+      ...(d.temperature ? { temperature: Array.from(d.temperature) } : {}),
     };
     colCache.set(d, c);
   }
@@ -146,7 +147,8 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
         { type: "line" as const, name: "P50", color: OKABE_ITO.bluishGreen, encode: { x: "ts", y: "p50" }, lineStyle: { width: 1, type: "solid" as const }, ...fast },
       ]
     : [];
-  const temp = p.showTemperature
+  const showTemp = p.showTemperature && d.temperature !== null;
+  const temp = showTemp
     ? [
         {
           type: "line" as const,
@@ -162,11 +164,14 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
   return {
     ...base,
     grid: { ...base.grid, left: p.compact ? 44 : 64, right: p.compact ? 44 : 64, top: p.compact ? GRID_TOP.compact : GRID_TOP.wide },
-    legend: { top: 4, icon: "rect", itemGap: p.compact ? 8 : 10, data: [...loads.map((l) => l.name), ...(p.showBand ? ["P10-P90 band", "P50"] : []), ...(p.showTemperature ? ["Temperature (°C)"] : [])] },
+    legend: { top: 4, icon: "rect", itemGap: p.compact ? 8 : 10, data: [...loads.map((l) => l.name), ...(p.showBand ? ["P10-P90 band", "P50"] : []), ...(showTemp ? ["Temperature (°C)"] : [])] },
     dataset: { source: columns(d) },
     tooltip: { show: false }, // replaced by the DOM overlay
     xAxis: { type: "time" },
-    yAxis: [{ ...yKw, nameGap: 14 }, { type: "value", name: "°C", position: "right", splitLine: { show: false }, scale: true, nameGap: 14 }],
+    yAxis: [
+      { ...yKw, nameGap: 14 },
+      ...(d.temperature ? [{ type: "value", name: "°C", position: "right", splitLine: { show: false }, scale: true, nameGap: 14 }] : []),
+    ],
     dataZoom: [
       { type: "inside", xAxisIndex: 0, filterMode: "filter" },
       { type: "slider", xAxisIndex: 0, filterMode: "filter", height: 24, bottom: 24 },
