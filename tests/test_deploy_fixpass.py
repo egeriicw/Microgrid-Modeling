@@ -128,7 +128,7 @@ def test_runbook_covers_new_behaviour():
     assert "ready" in low and "story 1.10" in low
 
 
-def test_ci_has_compose_static_job_and_keeps_others_disabled():
+def test_ci_has_blocking_compose_static_job_and_only_smoke_disabled():
     job = CI["jobs"]["compose-config"]
     assert "if" not in job
     runs = " ".join(s.get("run", "") for s in job["steps"])
@@ -136,8 +136,7 @@ def test_ci_has_compose_static_job_and_keeps_others_disabled():
     assert f"{base} config -q" in runs
     assert f"{base} -f deploy/docker-compose.ci.yml config -q" in runs
     builds = [s for s in job["steps"] if "build" in s.get("run", "")]
-    assert builds and all(s.get("continue-on-error") is True for s in builds)
-    for off in ("api", "web", "compose-smoke"):
-        assert CI["jobs"][off]["if"] is False
-    for on in ("lint", "engine"):
+    assert builds and all("continue-on-error" not in s for s in builds), "a failed image build must fail CI"
+    assert CI["jobs"]["compose-smoke"]["if"] is False
+    for on in ("lint", "engine", "api", "web"):
         assert "if" not in CI["jobs"][on]
