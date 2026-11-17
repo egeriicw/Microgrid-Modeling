@@ -1,54 +1,65 @@
 # Requirements Traceability Matrix
 
+Last verified against the repository: 2026-11-17
+
 Maintained by the Business Analyst role (see `agent-team.md`). A requirement is **Done** only when it has a green
-test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06; update statuses each sprint.
+test, merged code, and updated docs. Generated from `docs/PRD.md` on 2026-11-06; statuses re-established from the
+repository (tests that exist and exercise the acceptance criteria, plus code that exists) on 2026-11-17.
+
+Status words: **Done**, **Partial** (the note says which acceptance criteria are met and which are not), **Not started**.
+A skipped, xfail or placeholder test is not evidence. Paths in Tests and Code are relative to the repo root unless
+stated: engine code is under `src/microgrid/`, API code under `api/src/microgrid_api/`, API tests under `api/tests/`,
+web code and tests under `web/src/`.
+
+Cross-cutting notes: story 1.12 (chart spike) supports the FR-WEB chart requirements; evidence is
+`docs/research/echarts-spike.md` (cloud-VM measurements only, QA pending). The web app (FR-WEB-1/2/3/8) runs only
+against a mock API client (`web/src/api/mockClient.ts`, wired in `web/src/main.tsx`); no generated or real HTTP client
+exists yet, and `web/e2e/run-lifecycle.spec.ts` is a skeleton that has not run in CI. Placeholder tests that do not
+count as evidence: `api/tests/test_runs_api.py`, `test_configs_api.py`, `test_scenario_validation_api.py`,
+`test_storage.py` (all xfail or import-skipped) and `scripts/tests/test_download_oedi.py` (xfail, import-skipped).
 
 | ID | Priority | Title | Sprint | Tests | Code | Docs | Status |
 |---|---|---|---|---|---|---|---|
-| FR-ENG-1 | MUST | Building-type registry | 1 | tests/test_registry.py, test_community_load_categorize.py, test_geo.py | community_load/registry.py, building_types.yaml, categorize.py | CHANGELOG | Done (ComStock names to verify on real data) |
-| FR-ENG-2 | MUST | Composition modes | TBD |  |  |  | Not started |
-| FR-ENG-3 | MUST | Config honesty | 1 | tests/test_config_strict.py | synthetic/config.py | CHANGELOG | Done |
-| FR-ENG-4 | MUST | Seeding: random by default, replayable | 1 | tests/test_rng.py, test_determinism.py, test_seed_robustness.py | synthetic/rng.py, ensemble.py, run.py | CHANGELOG | Done (golden generated on Linux; watch first Mac run) |
-| FR-ENG-5 | MUST | Resolutions | 2 |  |  |  | Not started |
-| FR-ENG-6 | MUST | Adaptive convergence | 2 |  |  |  | Not started |
-| FR-ENG-7 | MUST | Outputs | 2 |  |  |  | Not started |
-| FR-ENG-8 | MUST | Typed progress events | 1 | tests/test_run_facade*.py, test_run_hooks_qa.py | synthetic/run.py, ensemble.py hooks | CHANGELOG | Done (notebook example open) |
-| FR-ENG-9 | SHOULD | Perturbations | TBD (owner) |  |  |  | Not started |
-| FR-ENG-10 | MUST | Temperature | 2 |  |  |  | Not started |
-| FR-ENG-11 | MUST | Attribute filters (Admin-only, admin-configured) | 1-2 | tests/test_attribute_filters*.py, test_permissions.py, test_exposed_attributes.py, test_qa_filters_review.py, test_filters_fix_pass.py | synthetic/attribute_filters.py, community_load/exposed_attributes.py, permissions.py | CHANGELOG | Library done; API storage/endpoints/UI open; real column names [verify] |
-| FR-ENG-12 | LATER | Scenario switching and mixing | later |  |  |  | Not started |
-| FR-ENG-13 | LATER | Weather normalization before weather-driven use | later |  |  |  | Not started |
-| FR-DATA-1 | MUST | Scripted data provisioning | 1 | tests/test_datasets_manifest.py, test_manifest_hardening.py, test_datasets_inspect*.py, test_qa_inspect.py | datasets/manifest.py, inspect.py, pathsafety.py, scripts/ | docs/runbooks/inspect-my-data.md | Manifest + inspector done; no download step; awaiting owner's real-data run |
-| FR-DATA-2 | MUST | Test fixtures (synthetic) | 1 | tests/test_synthetic_fixture.py, test_qa_1_6_review.py | tests/fixtures/synthetic_data.py | fixtures README | Done |
-| FR-DATA-3 | MUST | Meter hierarchy | 2 |  |  |  | Not started |
-| FR-DATA-4 | MUST | Storage | 1 |  |  |  | Not started |
-| FR-DATA-5 | LATER | SEED coupling | later |  |  |  | Not started |
-| FR-DATA-6 | SHOULD | Building footprints, DC | 1-4 |  |  |  | Not started |
-| FR-DATA-7 | MUST | Building characteristics store | 1 |  |  |  | Not started |
-| FR-DATA-8 | MUST | Dataset identity and catalog | 1 | tests/test_datasets_catalog.py, test_dataset_resolution.py | datasets/catalog.py, community_load/dataset_resolution.py | data-licenses.md | Engine side done; real partitions/hash unfilled (owner machine) |
+| FR-ENG-1 | MUST | Building-type registry | 1 | tests/test_registry.py, tests/test_community_load_categorize.py, tests/test_geo.py | src/microgrid/community_load/registry.py, building_types.yaml, categorize.py | CHANGELOG | Done (ComStock names to verify on real data; civic type listed but inactive pending owner decision) |
+| FR-ENG-2 | MUST | Composition modes | 1-2 | tests/test_composition.py (fixed count plus ranged categories, counts sum exactly), tests/test_study_and_sources.py; UI: web/src/features/composition/validate.test.ts | src/microgrid/community_load/synthetic/composition.py, config.py (`fixed_count`) | CHANGELOG | Partial (hybrid tested with one fixed category plus ranged ones; the literal "3 fixed + 2 ranged" case is not asserted) |
+| FR-ENG-3 | MUST | Config honesty | 1 | tests/test_config_strict.py | src/microgrid/community_load/synthetic/config.py | CHANGELOG | Done |
+| FR-ENG-4 | MUST | Seeding: random by default, replayable | 1 | tests/test_rng.py, tests/test_determinism.py, tests/test_seed_robustness.py, tests/test_run_facade_core.py | src/microgrid/community_load/synthetic/rng.py, ensemble.py, run.py | CHANGELOG | Partial (AC a, b, c met on fixtures; golden generated on Linux, watch first Mac run; AC d, UI shows seeds and "replay with same seeds", not built: the UI has a seed input only) |
+| FR-ENG-5 | MUST | Resolutions | 2 | tests/test_results_model.py (15-minute energy equals hourly, hourly equals sum of four quarters, units labeled), tests/test_qa_sprint2_engine.py | src/microgrid/community_load/synthetic/results.py, loader.py | docs/reference/results-schema.md | Done |
+| FR-ENG-6 | MUST | Adaptive convergence | 2 | tests/test_convergence_prd.py, tests/test_convergence_config.py, tests/test_qa_sprint2_engine.py | src/microgrid/community_load/synthetic/convergence.py, ensemble.py, config.py | docs/decision-log.md (rule owner-approved 2026-11-06, provisional) | Done (provisional rule; revisit after first real runs) |
+| FR-ENG-7 | MUST | Outputs | 2 | tests/test_results_model.py, tests/test_qa_sprint2_engine.py, tests/test_aggregation.py | src/microgrid/community_load/synthetic/results.py, aggregation.py, ensemble.py | docs/reference/results-schema.md | Partial (mean/P10/P50/P90, residential vs commercial, per building type, peak, annual energy, load factor, load-duration curves, seasonal profiles done and tested; coincidence and diversity factors and representative cases exist in aggregation.py/ensemble.py but are not in the results document; no composition summary in the results document) |
+| FR-ENG-8 | MUST | Typed progress events | 1 | tests/test_run_facade.py, tests/test_run_facade_core.py, tests/test_run_hooks_qa.py | src/microgrid/community_load/synthetic/run.py, ensemble.py hooks | CHANGELOG | Done (example notebook for the facade still open, tracked under FR-PLAT-3) |
+| FR-ENG-9 | SHOULD | Perturbations | TBD (owner) | tests/test_perturbation.py (temporal shift only; end-use scaling is not exercised by the engine path) | src/microgrid/community_load/synthetic/perturbation.py, ensemble.py | docs/handoff/session-handoff.md (open question) | Partial (temporal shift implemented and tested, off by default; end-use scaling is dormant in the engine; keep-fix-or-remove is a pending owner methodology decision) |
+| FR-ENG-10 | MUST | Temperature | 2 |  |  |  | Not started (engine results carry no temperature series; the web mock supplies temperature, which tests only the chart overlay: web/src/features/results/ResultsPage.test.tsx) |
+| FR-ENG-11 | MUST | Attribute filters (Admin-only, admin-configured) | 1-2 | tests/test_attribute_filters.py, tests/test_attribute_filters_engine.py, tests/test_permissions.py, tests/test_exposed_attributes.py, tests/test_qa_filters_review.py, tests/test_filters_fix_pass.py, api/tests/test_http_runs.py (`test_client_with_filters_forbidden_admin_allowed`) | src/microgrid/community_load/synthetic/attribute_filters.py, pool_preview.py, community_load/exposed_attributes.py, exposed_attributes.yaml, permissions.py, api/src/microgrid_api/routers/runs.py | CHANGELOG | Partial (library done: filter language, pool preview, errors, pool stored with run, `filters.use` permission flag enforced on run creation; AC b open: no DB-stored versioned exposed-attribute configuration and no admin edit endpoints; no filter UI; real column names [verify]) |
+| FR-ENG-12 | LATER | Scenario switching and mixing | later |  |  |  | Not started (only the FR-DATA-8 dataset-id plumbing exists; no `scenario` composition field and no two-dataset pool test) |
+| FR-ENG-13 | LATER | Weather normalization before weather-driven use | later |  |  |  | Not started (no `weather` module) |
+| FR-DATA-1 | MUST | Scripted data provisioning | 1 | tests/test_datasets_manifest.py, tests/test_manifest_hardening.py, tests/test_datasets_pathsafety.py, tests/test_datasets_inspect.py, tests/test_datasets_inspect_fixes.py, tests/test_qa_inspect.py | src/microgrid/datasets/manifest.py, inspect.py, pathsafety.py, scripts/data_manifest.py, scripts/inspect_dataset.py | docs/runbooks/inspect-my-data.md | Partial (resumable manifest of files, sizes, checksums, disk report and read-only inspector done; no download/provisioning step: scripts/download_oedi.py does not exist and its test is an xfail placeholder; not run on the owner's real data) |
+| FR-DATA-2 | MUST | Test fixtures (synthetic) | 1 | tests/test_synthetic_fixture.py, tests/test_qa_1_6_review.py | tests/fixtures/synthetic_data.py | tests/fixtures/data/README.md | Done |
+| FR-DATA-3 | MUST | Meter hierarchy | 2 |  |  |  | Not started (no `Meter` entity in the engine or API models) |
+| FR-DATA-4 | MUST | Storage | 1 | api/tests/test_migrations.py (SQLite round trip runs; the PostgreSQL case is skipped unless `MICROGRID_TEST_DATABASE_URL` is set), api/tests/test_models.py | api/src/microgrid_api/db/models.py, migrations/, deploy/docker-compose.yml, deploy/db/init/01-extensions.sql | docs/runbooks/local-stack.md | Partial (Alembic migrations and plain tables for users, compositions, runs and events done; PostGIS and TimescaleDB extensions installed by compose init script; no hypertables, no geometry tables, no interval-result or calibration storage; Postgres path never run in tests here) |
+| FR-DATA-5 | LATER | SEED coupling | later |  |  |  | Not started (no adapter interface, no decision record) |
+| FR-DATA-6 | SHOULD | Building footprints, DC | 1-4 | tests/test_geo.py (reads GeoJSON structures only) | src/microgrid/geo/ | docs/research/footprint-sources-dc.md | Partial (evaluation note with recommended direction written, sources unverified [verify]; owner approval pending; no footprint ingestion or attribute join) |
+| FR-DATA-7 | MUST | Building characteristics store | 1-2 | tests/test_datasets_dictionary.py (data-dictionary generator only) | src/microgrid/datasets/dictionary.py | docs/reference/data-licenses.md | Not started (no PostgreSQL characteristics tables, no indexed pool preview via API, no UI data dictionary; only the dictionary generator exists) |
+| FR-DATA-8 | MUST | Dataset identity and catalog | 1 | tests/test_datasets_catalog.py, tests/test_dataset_resolution.py, tests/test_datasets_catalog_fill.py | src/microgrid/datasets/catalog.py, identity.py, catalog_fill.py, community_load/dataset_resolution.py, scripts/catalog_fill.py | docs/reference/data-licenses.md | Partial (YAML catalog with multi-upgrade support, engine takes dataset ids, gross/net mixing refused, run records dataset ids; no database catalog table; shipped entries unverified and manifest hash/size unfilled until the owner's real-data run; no ingestion progress) |
 | FR-DATA-9 | SHOULD | Compact building-profile library | 2 |  |  |  | Not started |
-| FR-WEB-1 | MUST | Composition form | 2 |  |  |  | Not started |
-| FR-WEB-2 | MUST | Run with progress | 2 |  |  |  | Not started |
-| FR-WEB-3 | MUST | Charts (interactive) | 3 |  |  |  | Not started |
-| FR-WEB-4 | MUST | Downloads | 3 |  |  |  | Not started |
-| FR-WEB-5 | MUST | Roles | 2 |  |  |  | Not started |
+| FR-WEB-1 | MUST | Composition form | 2 | web/src/features/composition/CompositionPage.test.tsx, validate.test.ts, web/src/qa/review.test.tsx | web/src/features/composition/CompositionPage.tsx, validate.ts | web/README.md | Partial (UI on mock API only: total, per-type range or fixed count, seed, max runs, live validation done; no convergence settings, no save/clone/named compositions, no YAML import/export) |
+| FR-WEB-2 | MUST | Run with progress | 2 | web/src/features/run/RunPage.test.tsx, web/src/qa/review.test.tsx; API side: api/tests/test_http_runs.py, test_reaper.py, test_qa_sprint2_http.py | web/src/features/run/RunPage.tsx; api/src/microgrid_api/routers/runs.py, reaper.py | docs/runbooks/local-stack.md | Partial (API endpoints for create, list, detail, SSE events and cancel done and tested; UI shows stage, progress, counts, convergence and cancel on the mock API only, not wired to the real API; no progress for data ingestion) |
+| FR-WEB-3 | MUST | Charts (interactive) | 3 | web/src/features/results/ResultsPage.test.tsx, chartOptions.test.ts, zoom.test.ts, tables.test.ts, web/src/charts/hoverOverlay.test.ts | web/src/features/results/, web/src/charts/ | docs/research/echarts-spike.md | Partial (on mock API only: time series, P10-P90 band, load-duration, seasonal profile, residential/commercial split, hover with temperature, zoom, hourly and 15-minute toggle; no composition chart and table; real results carry no temperature, see FR-ENG-10) |
+| FR-WEB-4 | MUST | Downloads | 3 |  | src/microgrid/community_load/synthetic/outputs.py (legacy CSV writer: no metadata header, no percentiles, untested) |  | Not started (no download endpoint or UI) |
+| FR-WEB-5 | MUST | Roles | 2 | api/tests/test_auth_roles.py, api/tests/test_http_runs.py, api/tests/test_qa_sprint2_http.py, tests/test_permissions.py; UI: web/src/pages/LoginPage.test.tsx, web/src/qa/review.test.tsx | api/src/microgrid_api/auth.py, services/demo.py, routers/runs.py, src/microgrid/community_load/permissions.py; web/src/auth/ | CHANGELOG | Done (enforced in the API with per-subject bearer keys, demo limited to predefined compositions and caps, ownership checks; UI role gating and login run on the mock client only) |
 | FR-WEB-6 | MUST | Calibration screen | 3 |  |  |  | Not started |
 | FR-WEB-7 | SHOULD | Minimal map viewer | 4 |  |  |  | Not started |
-| FR-WEB-8 | MUST | Accuracy caveat | 3 |  |  |  | Not started |
-| FR-WEB-9 | SHOULD | Admin console | 4 |  |  |  | Not started |
-| FR-CAL-1 | MUST | Upload | 3 |  |  |  | Not started |
-| FR-CAL-2 | MUST | Compare | 3 |  |  |  | Not started |
+| FR-WEB-8 | MUST | Accuracy caveat | 3 | web/src/features/results/ResultsPage.test.tsx, web/src/qa/review.test.tsx | web/src/features/results/ResultsPage.tsx | web/README.md | Partial (caveat text, calibration-status line and weather-year label shown and tested on the mock API; not wired to real results; calibration status has no real source until FR-CAL exists) |
+| FR-WEB-9 | SHOULD | Admin console | 4 |  |  |  | Not started (underlying exposed-attribute configuration is a file in the library, see FR-ENG-11; no screen, no API) |
+| FR-CAL-1 | MUST | Upload | 3 |  | src/microgrid/community_load/sources/measured.py (a measured-load source class only; no upload validation) |  | Not started (no upload validation of timezone, gaps, duplicates, units) |
+| FR-CAL-2 | MUST | Compare | 3 |  |  |  | Not started (no NMBE or CV(RMSE) code) |
 | FR-CAL-3 | MUST | Benchmarks | 3 |  |  |  | Not started |
 | FR-CAL-4 | LATER | Tuning | later |  |  |  | Not started |
 | FR-CAL-5 | LATER | PJM node data | later |  |  |  | Not started |
-| FR-PLAT-1 | MUST | Versioned API skeleton | 1 | api/tests/test_health.py, test_models.py, test_migrations.py, test_qa_1_8.py, test_settings_*.py | api/src/microgrid_api/ | CHANGELOG | Done |
-| FR-PLAT-2 | MUST | Background runs, progress, cancel | 1 | api/tests/test_worker.py, test_qa_1_10.py, test_ready_redis.py | api/src/microgrid_api/worker.py, services/runs.py | CHANGELOG | Worker done (no real Redis tested); HTTP endpoints and reaper Sprint 2 |
-| FR-PLAT-3 | MUST | Notebook-first installable library | 1 | tests/test_packaging.py | pyproject.toml, src/microgrid/__init__.py | codebase-review, README | In progress (example notebook pending story 1.9) |
-| FR-PLAT-4 | MUST | One-command local stack | 1 | tests/test_deploy*.py, test_qa_lite.py | deploy/, Makefile | docs/runbooks/local-stack.md | Code-complete incl. lite + preflight; statically verified only; Mac check pending |
-| FR-PLAT-5 | MUST | CI gates merges | 1 | tests/test_ci_config.py | .github/workflows/ci.yml, pyproject tool config | sprint-1-backlog | Done (coverage gate pending) |
-| FR-PLAT-6 | SHOULD | Public demo with live capped computation | 4 (stretch) |  |  |  | Not started |
-| FR-PLAT-7 | SHOULD |  | 4 |  |  |  | Not started |
-
-<!-- 2026-11-11: story 1.12 (chart spike) supports FR-WEB chart requirements; evidence docs/research/echarts-spike.md; QA pending -->
-
-<!-- Sprint 2 batch A: FR-ENG-5/6/7 -> tests/test_convergence_prd.py, test_convergence_config.py, test_results_model.py, test_qa_sprint2_engine.py; FR-WEB-2/5 (API side) -> api/tests/test_http_runs.py, test_auth_roles.py, test_reaper.py, test_qa_sprint2_http.py, test_fix_pass_results.py; FR-WEB-1/2/3/8 (UI, mock API) -> web/src tests + web/e2e. -->
+| FR-PLAT-1 | MUST | Versioned API skeleton | 1 | api/tests/test_health.py, test_models.py, test_migrations.py, test_qa_1_8.py, test_settings_and_ops_1_8.py, test_settings_secrecy.py, test_openapi_export.py | api/src/microgrid_api/main.py, routers/v1.py, routers/health.py | CHANGELOG | Done |
+| FR-PLAT-2 | MUST | Background runs, progress, cancel | 1-2 | api/tests/test_worker.py, test_qa_1_10.py, test_ready_redis.py, test_reaper.py, test_http_runs.py | api/src/microgrid_api/worker.py, services/runs.py, reaper.py, routers/runs.py | CHANGELOG | Partial (queued/running/succeeded/failed/cancelled transitions, progress events, cancel, reaper and HTTP endpoints done and tested with eager Celery and stubs; never exercised against a real Redis broker and live worker process, so "survive API restarts" is unverified; sprint 2 story A3) |
+| FR-PLAT-3 | MUST | Notebook-first installable library | 1 | tests/test_packaging.py | pyproject.toml, src/microgrid/__init__.py | docs/codebase-review.md, README.md | Partial (installable package and public surface tested; notebooks/ holds legacy notebooks that no test or CI job executes; example notebook on the synthetic fixture is open, sprint 2 story A6) |
+| FR-PLAT-4 | MUST | One-command local stack | 1 | tests/test_deploy_compose.py, test_deploy_compose_hardening.py, test_deploy_failclosed.py, test_deploy_fixpass.py, test_deploy_lite.py, test_deploy_preflight.py, test_qa_lite.py | deploy/, Makefile | docs/runbooks/local-stack.md | Partial (compose files, lite variant, preflight and `make up`/`make test` written; verified by static tests only, stack never started here; Docker-dependent tests skip without Docker; owner Mac check pending; worker service not yet in compose) |
+| FR-PLAT-5 | MUST | CI gates merges | 1 | tests/test_ci_config.py, tests/test_deploy_fixpass.py | .github/workflows/ci.yml, pyproject.toml tool config | docs/sprints/sprint-1-backlog.md | Done (lint, format, types, tests with coverage on every push; API job has an 85% coverage floor, root job reports coverage without a threshold; workflow shows uncommitted edits at verification time) |
+| FR-PLAT-6 | SHOULD | Public demo with live capped computation | 4 (stretch) | api/tests/test_auth_roles.py, api/tests/test_fix_pass_results.py (server caps only) | api/src/microgrid_api/services/demo.py, config.py | docs/research/hosting-options.md | Partial (hosting research note with unverified prices; demo role with hard size caps and fixed seed in the API; no costed recommendation approved, no rate limiting, kill switch, HTTPS or deployment; nothing published) |
+| FR-PLAT-7 | SHOULD | Public repo readiness (license, README, CONTRIBUTING, no secrets or large data, data attribution) | 4 |  |  | README.md, docs/reference/data-licenses.md | Partial (README and data-licenses note exist; no LICENSE file (owner decision pending), no CONTRIBUTING, no history scan for secrets or large data; README status section is out of date) |
