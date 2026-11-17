@@ -1,10 +1,14 @@
-"""RED placeholder — FR-E4 / NFR-1 (docs/test-plan.md §4 Phase 1.6 + §8).
+"""Determinism contract (FR-ENG-4 / NFR-1): same config + same 3 seeds + same engine_version
+=> identical scalar metrics, checked against a committed golden file.
 
-The determinism contract: same config + same 3 seeds + same engine_version
-=> byte-identical scalar metrics, checked against a committed golden file.
-Regenerate the golden ONLY via `--update-golden` alongside an intentional
-methodology change + a version bump (see test-plan.md §8).
+The golden file is a regression tripwire for the numbers themselves, computed on the generated synthetic dataset
+(tests/fixtures/synthetic_data.py, default seed), so it runs in normal CI and needs no real data. If it fails, the
+engine's numbers changed. That is only acceptable as an intentional methodology change (owner-approved) together
+with an engine_version bump; then regenerate with `pytest tests/test_determinism.py --update-golden` and commit
+the diff. Never regenerate it to make a failing test pass. Floats are compared with a tight relative tolerance
+(1e-9) so that last-bit platform differences do not cause false alarms.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,65 +16,37 @@ from pathlib import Path
 
 import pytest
 
-run = pytest.importorskip("microgrid.community_load.synthetic.run", reason="FR-E3: microgrid.community_load.synthetic.run not implemented")
-
-pytestmark = pytest.mark.xfail(reason="FR-E4 not implemented", strict=False)
+from microgrid.community_load.synthetic import run
+from tests.test_run_facade import build_tiny_config
 
 GOLDEN = Path(__file__).parent / "golden" / "dc_multifamily_tiny.json"
 SCALAR_KEYS = ("peak_kw", "annual_energy_kwh", "load_factor", "soft_score", "feasible")
 
 
 @pytest.fixture
-def tiny_config() -> dict:
-    return {
-        "name": "dc_multifamily_tiny",
-        "rng": {"composition_seed": 1001, "archetype_seed": 2002, "perturbation_seed": 3003},
-        "data": {"upgrade": "0", "state": "DC"},
-        "composition": {
-            "total_buildings": 4,
-            "method": "dirichlet",
-            "categories": {
-                "mf_small": {"min_fraction": 0.5, "max_fraction": 1.0, "source": "resstock"},
-                "mf_mid": {"min_fraction": 0.0, "max_fraction": 0.5, "source": "resstock"},
-            },
-        },
-        "ensemble": {"mode": "fixed", "max_runs": 6},
-        "perturbation": {"enabled": False},
-    }
-
-
-@pytest.fixture
-def data_dirs():
-    base = Path(__file__).parent / "fixtures" / "data"
-    return {
-        "resstock": base / "input/resstock/timeseries_individual_buildings",
-        "comstock": base / "input/comstock/timeseries_individual_buildings",
-    }
+def tiny_config(synthetic_dataset) -> dict:  # the facade's tiny config, with the golden's seeds
+    cfg = build_tiny_config(synthetic_dataset)
+    cfg["scenario"]["name"] = "dc_multifamily_tiny"
+    cfg["rng"] = {"composition_seed": 1001, "archetype_seed": 2002, "perturbation_seed": 3003}
+    return cfg
 
 
 def _scalars(result):
-    return [
-        {k: (bool(m[k]) if k == "feasible" else float(m[k])) for k in SCALAR_KEYS}
-        for m in result.metrics
-    ]
+    return [{k: (bool(m[k]) if k == "feasible" else float(m[k])) for k in SCALAR_KEYS} for m in result.metrics]
 
 
-def test_two_runs_are_identical(tiny_config, data_dirs):
-    a = run.run_scenario(tiny_config, data_dirs=data_dirs)
-    b = run.run_scenario(tiny_config, data_dirs=data_dirs)
-    assert _scalars(a) == _scalars(b)
+def test_two_runs_are_identical(tiny_config):
+    assert _scalars(run.run_scenario(tiny_config)) == _scalars(run.run_scenario(tiny_config))
 
 
-def test_changing_a_seed_changes_a_metric(tiny_config, data_dirs):
-    base = _scalars(run.run_scenario(tiny_config, data_dirs=data_dirs))
+def test_changing_a_seed_changes_a_metric(tiny_config):
+    base = _scalars(run.run_scenario(tiny_config))
     tiny_config["rng"]["composition_seed"] = 9999
-    other = _scalars(run.run_scenario(tiny_config, data_dirs=data_dirs))
-    assert base != other
+    assert base != _scalars(run.run_scenario(tiny_config))
 
 
-@pytest.mark.integration
-def test_matches_golden(tiny_config, data_dirs, request):
-    result = run.run_scenario(tiny_config, data_dirs=data_dirs)
+def test_matches_golden(tiny_config, request):
+    result = run.run_scenario(tiny_config)
     actual = {"engine_version": result.engine_version, "runs": _scalars(result)}
 
     if request.config.getoption("--update-golden", default=False):
@@ -78,9 +54,14 @@ def test_matches_golden(tiny_config, data_dirs, request):
         GOLDEN.write_text(json.dumps(actual, indent=2))
         pytest.skip("golden regenerated")
 
-    assert GOLDEN.exists(), "golden file missing — run with --update-golden"
+    assert GOLDEN.exists(), "golden file missing: run with --update-golden"
     expected = json.loads(GOLDEN.read_text())
     assert expected["engine_version"] == actual["engine_version"], (
-        "engine_version changed; regenerate golden intentionally (test-plan §8)"
+        "engine_version changed; regenerate golden intentionally"
     )
-    assert expected["runs"] == actual["runs"]
+    assert len(expected["runs"]) == len(actual["runs"])
+    for exp, act in zip(expected["runs"], actual["runs"], strict=True):
+        assert exp["feasible"] == act["feasible"]
+        for k in SCALAR_KEYS:
+            if k != "feasible":
+                assert act[k] == pytest.approx(exp[k], rel=1e-9), k

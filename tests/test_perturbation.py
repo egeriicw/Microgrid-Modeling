@@ -1,11 +1,15 @@
 """Tests for instance-level perturbations."""
+
 import numpy as np
 import pandas as pd
-import pytest
 
 from microgrid.community_load.synthetic._types import PerturbedProfile
-from microgrid.community_load.synthetic.config import EndUseFactorConfig, PerturbationConfig
-from microgrid.community_load.synthetic.perturbation import apply_end_use_factors, apply_temporal_shift, perturb_building
+from microgrid.community_load.synthetic.config import PerturbationConfig
+from microgrid.community_load.synthetic.perturbation import (
+    apply_end_use_factors,
+    apply_temporal_shift,
+    perturb_building,
+)
 
 
 def _make_profile(values: np.ndarray, seed: int = 0) -> PerturbedProfile:
@@ -26,6 +30,7 @@ def _make_profile(values: np.ndarray, seed: int = 0) -> PerturbedProfile:
 # Temporal shift
 # ---------------------------------------------------------------------------
 
+
 def test_temporal_shift_zero_is_identity(synthetic_8760):
     result = apply_temporal_shift(synthetic_8760, 0)
     pd.testing.assert_series_equal(result, synthetic_8760)
@@ -45,22 +50,17 @@ def test_temporal_shift_full_year_is_identity(synthetic_8760):
 def test_temporal_shift_moves_values(synthetic_8760):
     result = apply_temporal_shift(synthetic_8760, 3)
     # First 3 values of shifted should be last 3 of original
-    np.testing.assert_array_almost_equal(
-        result.values[:3], synthetic_8760.values[-3:]
-    )
+    np.testing.assert_array_almost_equal(result.values[:3], synthetic_8760.values[-3:])
 
 
 # ---------------------------------------------------------------------------
 # End-use factors
 # ---------------------------------------------------------------------------
 
+
 def test_end_use_factors_all_ones_is_identity(synthetic_15min_df):
-    original_total = synthetic_15min_df["out.electricity.total.energy_consumption..kwh"].sum()
     factors = {"lighting": 1.0, "plug_loads": 1.0, "hvac": 1.0}
-    result = apply_end_use_factors(
-        synthetic_15min_df, factors,
-        "out.electricity.total.energy_consumption..kwh"
-    )
+    result = apply_end_use_factors(synthetic_15min_df, factors, "out.electricity.total.energy_consumption..kwh")
     # Total should be close (recomputed from end-uses)
     new_total = result["out.electricity.total.energy_consumption..kwh"].sum()
     # Allow small difference since total is recomputed from end-use sum, not original total
@@ -69,10 +69,7 @@ def test_end_use_factors_all_ones_is_identity(synthetic_15min_df):
 
 def test_end_use_factors_no_negative_values(synthetic_15min_df):
     factors = {"lighting": 0.5, "plug_loads": 2.0}
-    result = apply_end_use_factors(
-        synthetic_15min_df, factors,
-        "out.electricity.total.energy_consumption..kwh"
-    )
+    result = apply_end_use_factors(synthetic_15min_df, factors, "out.electricity.total.energy_consumption..kwh")
     assert (result["out.electricity.lighting.energy_consumption..kwh"] >= 0).all()
     assert (result["out.electricity.plug_loads.energy_consumption..kwh"] >= 0).all()
 
@@ -80,6 +77,7 @@ def test_end_use_factors_no_negative_values(synthetic_15min_df):
 # ---------------------------------------------------------------------------
 # perturb_building (disabled mode)
 # ---------------------------------------------------------------------------
+
 
 def test_perturb_building_disabled_returns_identity(synthetic_8760):
     profile = _make_profile(synthetic_8760.values)
@@ -93,6 +91,7 @@ def test_perturb_building_disabled_returns_identity(synthetic_8760):
 # ---------------------------------------------------------------------------
 # perturb_building (enabled: temporal shift only)
 # ---------------------------------------------------------------------------
+
 
 def test_perturb_building_temporal_shift_preserves_energy(synthetic_8760):
     profile = _make_profile(synthetic_8760.values)

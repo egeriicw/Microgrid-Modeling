@@ -1,6 +1,7 @@
 """FR-A6 / A7 / A8 / A9 — run lifecycle: create+enqueue, list, detail,
 SSE progress, cancel. RED placeholder (docs/test-plan.md §4 Phase 3).
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,8 @@ def _cfg_body() -> dict:
     return {
         "name": "run-cfg",
         "composition": {
-            "total_buildings": 4, "method": "dirichlet",
+            "total_buildings": 4,
+            "method": "dirichlet",
             "categories": {
                 "mf_small": {"min_fraction": 0.5, "max_fraction": 1.0, "source": "resstock"},
                 "mf_mid": {"min_fraction": 0.0, "max_fraction": 0.5, "source": "resstock"},
@@ -35,8 +37,12 @@ async def config_id(client, auth_headers) -> int:
 
 async def test_create_run_enqueues_and_freezes_snapshot(client, auth_headers, config_id, fake_queue):
     r = await client.post(
-        "/runs", headers=auth_headers,
-        json={"config_id": config_id, "overrides": {"seeds": {"composition_seed": 7, "archetype_seed": 8, "perturbation_seed": 9}}},
+        "/runs",
+        headers=auth_headers,
+        json={
+            "config_id": config_id,
+            "overrides": {"seeds": {"composition_seed": 7, "archetype_seed": 8, "perturbation_seed": 9}},
+        },
     )
     assert r.status_code == 202
     run_id = r.json()["run_id"]
@@ -56,7 +62,8 @@ async def test_create_run_unknown_config_404(client, auth_headers):
 
 async def test_max_runs_over_ceiling_422(client, auth_headers, config_id):
     r = await client.post(
-        "/runs", headers=auth_headers,
+        "/runs",
+        headers=auth_headers,
         json={"config_id": config_id, "overrides": {"ensemble": {"max_runs": 10_000}}},
     )
     assert r.status_code == 422

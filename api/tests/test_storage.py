@@ -1,6 +1,7 @@
 """FR-A14 — Storage protocol. One parametrized class over LocalStorage and
 S3Storage (moto). RED placeholder (docs/test-plan.md §4 Phase 2).
 """
+
 from __future__ import annotations
 
 import hashlib

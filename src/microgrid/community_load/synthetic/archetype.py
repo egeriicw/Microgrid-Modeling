@@ -3,6 +3,7 @@
 Produces ArchetypePool (A_filtered) from raw building characteristics
 DataFrames. Does not touch parquet files; all I/O lives in loader.py.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from microgrid.community_load.synthetic._types import ArchetypePool, BuildingId
+from microgrid.community_load.synthetic.attribute_filters import apply_attribute_filters
 from microgrid.community_load.synthetic.config import (
     ArchetypeFilterConfig,
     CommercialFilterConfig,
@@ -36,9 +38,25 @@ def load_comstock_characteristics(path: Path) -> pd.DataFrame:
     return pd.read_excel(path, sheet_name="building_characteristics")
 
 
-def _filter_resstock_category(
-    df: pd.DataFrame, cat_cfg: ResidentialFilterConfig
-) -> list[BuildingId]:
+def _completed_and_applicable(df: pd.DataFrame) -> pd.Series:
+    """Rows whose simulation completed successfully and that apply to the scenario.
+
+    Uses ResStock's ``completed_status`` (must equal "Success") and ``applicability`` (must be true).
+    Both columns must exist; a missing column is an error rather than a silent no-op.
+    The exact meaning of these columns should be confirmed against the release's data dictionary.
+    """
+    missing = [c for c in ("completed_status", "applicability") if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"require_data_complete needs column(s) {', '.join(missing)} in the characteristics file; "
+            "add them or set require_data_complete: false"
+        )
+    status_ok = df["completed_status"].astype(str).str.strip().str.lower() == "success"
+    applicable = df["applicability"].astype(str).str.strip().str.lower() == "true"
+    return status_ok & applicable
+
+
+def _filter_resstock_category(df: pd.DataFrame, cat_cfg: ResidentialFilterConfig) -> list[BuildingId]:
     """Apply one residential category's hard-gate filters, return bldg_id list."""
     mask = pd.Series(True, index=df.index)
 
@@ -54,15 +72,19 @@ def _filter_resstock_category(
     if cat_cfg.max_sqft is not None:
         mask &= df["in.sqft..ft2"] <= cat_cfg.max_sqft
 
+    if cat_cfg.require_data_complete:
+        mask &= _completed_and_applicable(df)
+
     if cat_cfg.require_no_garage:
         mask &= df["in.geometry_garage"].isnull()
+
+    if cat_cfg.attributes:
+        mask &= apply_attribute_filters(df, cat_cfg.attributes)
 
     return df.loc[mask, "bldg_id"].tolist()
 
 
-def _filter_comstock_category(
-    df: pd.DataFrame, cat_cfg: CommercialFilterConfig
-) -> list[BuildingId]:
+def _filter_comstock_category(df: pd.DataFrame, cat_cfg: CommercialFilterConfig) -> list[BuildingId]:
     """Apply one commercial category's hard-gate filters, return bldg_id list."""
     mask = pd.Series(True, index=df.index)
 
@@ -72,6 +94,9 @@ def _filter_comstock_category(
     if not cat_cfg.include_public:
         public_types = ["PrimarySchool", "SecondarySchool"]
         mask &= ~df["in.comstock_building_type"].isin(public_types)
+
+    if cat_cfg.attributes:
+        mask &= apply_attribute_filters(df, cat_cfg.attributes)
 
     return df.loc[mask, "bldg_id"].tolist()
 
@@ -92,14 +117,12 @@ def build_archetype_pool(
     filters: ArchetypeFilterConfig = cfg.archetype_filters
 
     residential: dict[str, list[BuildingId]] = {}
-    for cat_name, cat_cfg in filters.resstock.items():
-        pool = _filter_resstock_category(res_df, cat_cfg)
-        residential[cat_name] = pool
+    for cat_name, res_cfg in filters.resstock.items():
+        residential[cat_name] = _filter_resstock_category(res_df, res_cfg)
 
     commercial: dict[str, list[BuildingId]] = {}
-    for cat_name, cat_cfg in filters.comstock.items():
-        pool = _filter_comstock_category(com_df, cat_cfg)
-        commercial[cat_name] = pool
+    for cat_name, com_cfg in filters.comstock.items():
+        commercial[cat_name] = _filter_comstock_category(com_df, com_cfg)
 
     return ArchetypePool(
         residential=residential,

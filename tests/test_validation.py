@@ -1,9 +1,13 @@
 """Tests for distributional validation."""
+
 import numpy as np
 import pandas as pd
-import pytest
 
-from microgrid.community_load.synthetic._types import EnsembleResult, NeighborhoodResult, NeighborhoodComposition
+from microgrid.community_load.synthetic._types import (
+    EnsembleResult,
+    NeighborhoodComposition,
+    NeighborhoodResult,
+)
 from microgrid.community_load.synthetic.config import ValidationConfig
 from microgrid.community_load.synthetic.validation import validate_ensemble, validate_per_sample
 
@@ -49,6 +53,7 @@ def _make_ensemble(n: int = 10, vary_peak: bool = True) -> EnsembleResult:
 # Per-sample validation
 # ---------------------------------------------------------------------------
 
+
 def test_valid_result_produces_no_warnings():
     result = _make_result(0, peak_kw=300.0, annual_kwh=1_000_000.0, load_factor=0.38)
     warnings = validate_per_sample(result)
@@ -70,6 +75,7 @@ def test_load_factor_above_one_produces_warning():
 # ---------------------------------------------------------------------------
 # Distributional validation
 # ---------------------------------------------------------------------------
+
 
 def test_valid_ensemble_passes():
     ensemble = _make_ensemble(n=20)

@@ -1,23 +1,43 @@
 """Shared fixtures for the API test suite.
 
-RED-phase scaffolding: fixtures raise/skip until `microgrid_api` exists.
-See docs/test-plan.md §3 (Fixtures) and §4 Phase 2/3.
-
-Design targets:
-  * `client`      — httpx client bound to the ASGI app (no network)
-  * `db`          — schema via `alembic upgrade head` on a throwaway Postgres,
-                    each test wrapped in a transaction that is rolled back
-  * `fake_queue`  — fakeredis + RQ SimpleWorker (is_async=False)
-  * `storage`     — LocalStorage(tmp_path) implementing the Storage protocol
-  * `auth_headers`— {"Authorization": "Bearer test-token"}
+Real fixtures: `settings`, `app`, `client` (sync TestClient, SQLite file per test).
+Placeholder fixtures (`db`, `storage`, `fake_queue`, `async_client`) stay skipped until their stories land
+(storage/runs/configs: later).
 """
+
 from __future__ import annotations
 
-import pytest
+import importlib.util
+import sys
+from collections.abc import Iterator
+from pathlib import Path
 
-microgrid_api = pytest.importorskip(
-    "microgrid_api", reason="Phase 2: api package not implemented yet"
-)
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from microgrid_api.config import Settings
+from microgrid_api.db.migrate import upgrade_to_head
+from microgrid_api.main import create_app
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    s = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", environment="test")
+    upgrade_to_head(s.require_database_url())  # /ready also checks the schema, so the test DB is migrated
+    return s
+
+
+@pytest.fixture
+def app(settings: Settings):
+    return create_app(settings)
+
+
+@pytest.fixture
+def client(app) -> Iterator[TestClient]:
+    with TestClient(app) as c:
+        yield c
 
 
 @pytest.fixture
@@ -26,44 +46,75 @@ def auth_headers() -> dict[str, str]:
 
 
 @pytest.fixture
-def settings_env(monkeypatch, tmp_path):
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://microgrid:microgrid@localhost:5432/microgrid_test")
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/15")
-    monkeypatch.setenv("S3_ENDPOINT", "memory://")
-    monkeypatch.setenv("S3_BUCKET", "test-artifacts")
-    monkeypatch.setenv("API_TOKEN", "test-token")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("MAX_RUNS_CEILING", "50")
+def db():
+    pytest.skip("db fixture for placeholder tests lands with the runs/configs stories")
 
 
 @pytest.fixture
-def db(settings_env):
-    """Throwaway schema + per-test rollback. Implemented in Phase 2."""
-    pytest.skip("db fixture depends on Phase 2 models + alembic")
+def storage():
+    pytest.skip("storage not implemented")
 
 
 @pytest.fixture
-def storage(tmp_path):
-    from microgrid_api.storage import LocalStorage  # noqa
+def async_client():
+    pytest.skip("async client fixture lands with the runs/configs stories")
 
-    return LocalStorage(root=tmp_path / "artifacts")
+
+# --- worker fixtures (story 1.10) ----------------------------------------------------------------------------------
+# api/tests is itself a package called `tests`, so the root `tests.fixtures` package cannot be imported by name.
+# The synthetic-data builder is loaded by file path instead (no sys.path or pythonpath changes needed).
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(scope="session")
+def synthetic_dataset(tmp_path_factory: pytest.TempPathFactory):
+    path = REPO_ROOT / "tests" / "fixtures" / "synthetic_data.py"
+    spec = importlib.util.spec_from_file_location("_root_synthetic_data", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve annotations through sys.modules
+    spec.loader.exec_module(module)
+    return module.build_synthetic_dataset(tmp_path_factory.mktemp("synthetic_data"))
 
 
 @pytest.fixture
-def fake_queue(settings_env):
-    import fakeredis
-    from rq import Queue
-
-    conn = fakeredis.FakeStrictRedis()
-    return Queue("runs", connection=conn, is_async=False)
+def tiny_config(synthetic_dataset) -> dict:
+    """Minimal scenario dict (6 runs, fixed mode) pointing at the synthetic dataset; seeds left unset."""
+    return {
+        "scenario": {"name": "tiny"},
+        "data": synthetic_dataset.data,
+        "composition": {
+            "total_buildings": 4,
+            "method": "dirichlet",
+            "categories": {
+                "mf_small": {"min_fraction": 0.5, "max_fraction": 1.0, "source": "resstock"},
+                "mf_mid": {"min_fraction": 0.0, "max_fraction": 0.5, "source": "resstock"},
+            },
+        },
+        "archetype_filters": {
+            "resstock": {
+                "mf_small": {
+                    "building_type_heights": [
+                        "Multi-Family with 2 - 4 Units",
+                        "Multi-Family with 5+ Units, 1-3 Stories",
+                    ]
+                },
+                "mf_mid": {"building_type_heights": ["Multi-Family with 5+ Units, 4-7 Stories"]},
+            }
+        },
+        "ensemble": {"mode": "fixed", "max_runs": 6},
+        "perturbation": {"enabled": False},
+    }
 
 
 @pytest.fixture
-def client(db, storage, fake_queue):
-    from httpx import ASGITransport, AsyncClient  # noqa
+def session_factory(settings: Settings):
+    engine = create_engine(settings.require_database_url())
+    yield sessionmaker(engine, expire_on_commit=False)
+    engine.dispose()
 
-    from microgrid_api.main import create_app
 
-    app = create_app()
-    transport = ASGITransport(app=app)
-    return AsyncClient(transport=transport, base_url="http://test")
+@pytest.fixture
+def session(session_factory):
+    with session_factory() as s:
+        yield s

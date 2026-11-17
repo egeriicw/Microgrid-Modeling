@@ -1,4 +1,5 @@
 """A Study chains Neighborhood -> load -> DER adjustments into one reproducible result."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,10 +7,10 @@ from typing import Sequence
 
 import pandas as pd
 
-from microgrid.geo.types import Neighborhood
+from microgrid.community_load.sources.base import LoadSource
 from microgrid.core.types import LoadResult
 from microgrid.der.base import DERModel, DERResult
-from microgrid.community_load.sources.base import LoadSource
+from microgrid.geo.types import Neighborhood
 
 
 @dataclass

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run --extra dev pytest:*)",
+      "Bash(uv run --extra dev ruff check:*)",
+      "Bash(uv run --extra dev ruff format --check:*)",
+      "Bash(uv run --extra dev mypy:*)",
+      "Bash(uv run --project api --extra dev pytest:*)",
+      "Bash(npm --prefix web run typecheck)",
+      "Bash(npm --prefix web run lint)",
+      "Bash(npm --prefix web test)",
+      "Bash(npm --prefix web run test)",
+      "Bash(npm --prefix web run build)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(npm test)",
+      "Bash(npm run test)",
+      "Bash(npm run build)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(docker compose --project-directory . --env-file deploy/.env.example -f deploy/docker-compose.yml config:*)",
+      "Bash(docker compose --project-directory . --env-file deploy/.env.example -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml config:*)"
+    ]
+  }
+}

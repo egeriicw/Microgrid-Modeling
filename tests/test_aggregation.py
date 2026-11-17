@@ -1,10 +1,15 @@
 """Tests for neighborhood aggregation."""
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from microgrid.community_load.synthetic._types import PerturbedProfile
-from microgrid.community_load.synthetic.aggregation import aggregate_profiles, compute_coincidence_factor, compute_metrics
+from microgrid.community_load.synthetic.aggregation import (
+    aggregate_profiles,
+    compute_coincidence_factor,
+    compute_metrics,
+)
 
 
 def _make_perturbed(values: np.ndarray, bldg_id: int, source: str = "resstock") -> PerturbedProfile:
@@ -71,8 +76,10 @@ def test_coincidence_factor_all_same_peak():
 
 def test_coincidence_factor_staggered_peaks():
     """Staggered peaks produce CF < 1."""
-    v1 = np.zeros(8760); v1[0] = 10.0
-    v2 = np.zeros(8760); v2[1] = 10.0
+    v1 = np.zeros(8760)
+    v1[0] = 10.0
+    v2 = np.zeros(8760)
+    v2[1] = 10.0
     profiles = [_make_perturbed(v1, 1), _make_perturbed(v2, 2)]
     total = aggregate_profiles(profiles)
     cf = compute_coincidence_factor(profiles, total)

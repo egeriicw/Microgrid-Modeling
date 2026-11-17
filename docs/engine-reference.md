@@ -1,5 +1,8 @@
 # Engine Reference — `snlg` (Synthetic Neighborhood Load Generation)
 
+> **Note (2026-11-17):** this document was written against an early version of the engine (50 tests then; the library now
+> has 944). Check the code and `traceability-matrix.md` for current behavior.
+
 Reference documentation for the **existing** engine in `src/microgrid/community_load/synthetic/`, as of
 branch `claude/software-methodology-plan-*` (commits `bb80bbd` "Add SNLG
 package" + `00f9408` "Refactor notebook to thin snlg-package orchestration
@@ -482,7 +485,9 @@ CSV shapes byte-compatible.
 
 **Not yet covered:** `archetype.py`, `loader.py`, `ensemble.run_ensemble`
 end-to-end, `outputs.py`, `config.load_config` with the real scenario files,
-determinism golden, packaging. FR-E* + `test-plan.md` add these.
+determinism golden, packaging. (This list is from the early v1 plan; the archived
+[`v1-test-plan.md`](./archive/v1-test-plan.md) was the v1 source for these tests. Current coverage: see
+`traceability-matrix.md`.)
 
 ---
 

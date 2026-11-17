@@ -3,9 +3,9 @@
 Hard constraints: binary accept/reject based on peak, energy, load factor.
 Soft constraints: penalty score S(x) = Σ w_i * f_i(x) for ranking.
 """
+
 from __future__ import annotations
 
-from microgrid.community_load.synthetic._types import NeighborhoodResult
 from microgrid.community_load.synthetic.config import FeasibilityConfig, SoftConstraintBound
 
 

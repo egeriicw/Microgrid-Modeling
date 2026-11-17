@@ -1,55 +1,42 @@
 /**
- * FR-F10 — end-to-end happy path (Playwright).
- * Runs against `docker compose -f deploy/docker-compose.yml -f
- * deploy/docker-compose.ci.yml up` with MICROGRID_RUNNER_MODE=mock and the
- * fixture dataset. RED placeholder — see docs/test-plan.md §4 Phase 5.
- *
- * UJ-1: template -> clone -> edit -> validate passes -> launch -> progress
- * completes -> results dashboard renders every panel -> download one artifact.
+ * End-to-end happy path against the mock API client (the Vite app wires the mock; no backend needed).
+ * Sign in as client -> composition -> run with progress -> results with caveat and charts -> data table.
+ * Skeleton: not yet run in CI (needs `npx playwright install chromium`; see web/README.md).
  */
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-test.skip("UJ-1: create from template, run, inspect results", async ({ page }) => {
-  await page.goto("/configs/new");
+test("client: compose, run, inspect results", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
+  await page.getByRole("radio", { name: /client/i }).check();
+  await page.getByRole("button", { name: /sign in/i }).click();
 
-  // pick the seeded template and clone
-  await page.getByRole("row", { name: /DC Multifamily Baseline/ }).getByRole("button", { name: /use/i }).click();
-  await page.getByLabel(/name/i).fill("e2e-run");
-  await page.getByRole("button", { name: /create/i }).click();
+  await expect(page.getByRole("heading", { name: /composition/i })).toBeVisible();
+  await page.getByLabel(/total buildings/i).fill("50");
+  await page.getByRole("button", { name: /start run/i }).click();
 
-  // editor: change total_buildings, expect validation to pass
-  await expect(page).toHaveURL(/\/configs\/\d+/);
-  await page.getByLabel(/total buildings/i).fill("4");
-  await expect(page.getByText(/no validation errors/i)).toBeVisible();
-  await page.getByRole("button", { name: /save/i }).click();
+  await expect(page.getByRole("progressbar", { name: /run progress/i })).toBeVisible();
+  await page.getByRole("link", { name: /view results/i }).click({ timeout: 30_000 });
 
-  // launch
-  await page.getByRole("button", { name: /launch/i }).click();
-  await page.getByRole("button", { name: /submit/i }).click();
-  await expect(page).toHaveURL(/\/runs\/[0-9a-f-]+/);
-
-  // progress completes (mock runner is fast)
-  await expect(page.getByText(/succeeded/i)).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("tab", { name: /results/i }).click();
-
-  // every dashboard panel present
-  for (const panel of [
-    /hourly load envelope/i,
-    /peak demand distribution/i,
-    /annual energy distribution/i,
-    /load[- ]duration/i,
-    /convergence history/i,
-    /representative cases/i,
-    /validation/i,
-    /artifacts/i,
-  ]) {
-    await expect(page.getByText(panel)).toBeVisible();
+  await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
+  await expect(page.getByText(/weather year: AMY2018/i)).toBeVisible();
+  for (const name of [/load over the year/i, /load-duration curve/i, /seasonal daily profile/i, /residential and commercial split/i]) {
+    await expect(page.getByRole("heading", { name })).toBeVisible();
   }
 
-  // download one artifact
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("link", { name: /compiled-runs\.csv/i }).click(),
-  ]);
-  expect(await download.suggestedFilename()).toMatch(/compiled-runs\.csv$/);
+  // keyboard zoom, then the data-table alternative
+  await page.getByRole("group", { name: /time series chart/i }).focus();
+  await page.keyboard.press("+");
+  await page.getByRole("button", { name: "Hourly" }).click();
+  const section = page.getByRole("region", { name: /residential and commercial split/i });
+  await section.getByRole("checkbox", { name: /show data table/i }).check();
+  await expect(section.getByRole("table")).toContainText("Residential");
+});
+
+test("demo: sees results but not the composition form", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("radio", { name: /demo/i }).check();
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: /compose/i })).toHaveCount(0);
 });

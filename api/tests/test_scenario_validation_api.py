@@ -2,6 +2,7 @@
 engine (microgrid.community_load.synthetic.config). Schema-parity across shipped scenario YAMLs.
 RED placeholder (docs/test-plan.md §4 Phase 2).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +20,8 @@ async def test_validate_always_200_valid(client):
     body = {
         "name": "ok",
         "composition": {
-            "total_buildings": 10, "method": "dirichlet",
+            "total_buildings": 10,
+            "method": "dirichlet",
             "categories": {
                 "mf_small": {"min_fraction": 0.5, "max_fraction": 1.0, "source": "resstock"},
                 "mf_mid": {"min_fraction": 0.0, "max_fraction": 0.5, "source": "resstock"},
@@ -36,7 +38,8 @@ async def test_validate_reports_simplex_infeasible(client):
     body = {
         "name": "bad",
         "composition": {
-            "total_buildings": 10, "method": "dirichlet",
+            "total_buildings": 10,
+            "method": "dirichlet",
             "categories": {
                 "a": {"min_fraction": 0.7, "max_fraction": 0.8, "source": "resstock"},
                 "b": {"min_fraction": 0.7, "max_fraction": 0.8, "source": "resstock"},

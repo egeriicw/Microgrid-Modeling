@@ -1,3 +1,5 @@
+> **Pre-v2 document (dated 2026-10-27), kept as background.** It analyzes the archived PRD v1; PRD v2 ([`PRD.md`](./PRD.md)) replaced it, and links to v1 specs below point to [`archive/`](./archive/README.md).
+
 # PRD Gap Analysis — `docs/PRD.md` vs. the Product Faculty AI PRD template
 
 **Date:** 2026-10-27 · **Template:** "Product Faculty — AI PRD" (4D: Discovery → Design → Develop, 34 prompts)
@@ -32,7 +34,7 @@ Status: ✅ covered · 🟡 partial · ❌ missing · ➖ not applicable
 | 5 | Current-state journey + pain points | ❌ | One target-state journey (UJ-1) | Add today's journey (notebook → CSV → hand-built GIS → spreadsheet) with measured effort per step. Rank pain points by frequency and severity. |
 | 6 | Solution hypothesis (diverge/converge) | ❌ | Decisions D1–D8 stated, alternatives absent | Record alternatives considered (extend URBANopt vs. build; PostGIS vs. file-based GIS; RQ vs. Celery) and the ranking that led to each choice. |
 | 7 | Future-state workflow | 🟡 | UJ-1 | UJ-1 stops at load results. Extend to map → neighborhood → load → DER → economics → report. |
-| 8 | Wireframes / prototype | 🟡 | `frontend-spec.md` page list | No map-centric screens. The GIS builder is the new primary surface and needs wireframes first. |
+| 8 | Wireframes / prototype | 🟡 | archived `v1-frontend-spec.md` page list | No map-centric screens. The GIS builder is the new primary surface and needs wireframes first. |
 | 9 | Evaluation criteria & example cases | 🟡 | Coverage gates; determinism golden test | Quality of *outputs* is undefined: validation benchmarks are placeholders. Define objective (peak within X% of metered feeder) and subjective (planner review) criteria. |
 | 10 | Model/method selection & justification | 🟡 | Methodology in `engine-reference.md` | Justify against alternatives (Dirichlet vs. uniform, ensemble size, convergence ε). Add selection records for each new method. |
 | 11 | Input specification table | 🟡 | YAML keys documented | No table for GIS inputs (CRS, required/optional attributes, licenses). Added in `prd-suite-4d.md`. |
@@ -63,4 +65,4 @@ Status: ✅ covered · 🟡 partial · ❌ missing · ➖ not applicable
 ## Recommended next edits to `PRD.md`
 
 Adopt `prd-suite-4d.md` as the v2 structure, keep `PRD.md` §4 (decisions) and §7 (acceptance) as
-appendices, and move the platform specs (`api-spec`, `data-model`, ...) under a "Develop" heading.
+appendices, and move the platform specs (the v1 api-spec, data-model, ..., now archived) under a "Develop" heading.

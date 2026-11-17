@@ -3,6 +3,7 @@
 All disk access is concentrated here. The lru_cache on load_building_profile
 prevents redundant reads when the same building appears in multiple runs.
 """
+
 from __future__ import annotations
 
 import functools
@@ -37,6 +38,7 @@ def _load_parquet_cached(path: str) -> pd.DataFrame:
     except Exception as e:
         if "type extension" in str(e) or "ExtensionType" in str(e):
             import pyarrow.parquet as pq
+
             table = pq.read_table(path, types_mapper=_no_extension_types_mapper)
             return table.to_pandas()
         raise
@@ -146,6 +148,9 @@ def load_and_scale_profile(
 
     hourly = resample_to_hourly(df, elec_col)
     annual_kwh = float(hourly.sum())
+    quarter_hourly = pd.Series(
+        df[elec_col].to_numpy(dtype="float64"), index=pd.to_datetime(df["timestamp"]), name=elec_col
+    )
 
     return PerturbedProfile(
         bldg_id=selection.bldg_id,
@@ -155,6 +160,7 @@ def load_and_scale_profile(
         original_annual_kwh=annual_kwh,
         perturbed_annual_kwh=annual_kwh,
         perturbation_log={},
+        kwh_15min=quarter_hourly,
     )
 
 

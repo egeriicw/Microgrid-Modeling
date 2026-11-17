@@ -3,9 +3,9 @@
 Deterministic within a realization: L_k,t = Σ L_i,t
 Also computes peak, annual energy, load factor, and diversity metrics.
 """
+
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from microgrid.community_load.synthetic._types import PerturbedProfile
@@ -36,6 +36,19 @@ def aggregate_profiles(
     for p in profiles[1:]:
         total = total.add(p.hourly_kwh, fill_value=0.0)
 
+    return total
+
+
+def aggregate_profiles_15min(profiles: list[PerturbedProfile]) -> pd.Series | None:
+    """Sum 15-minute kWh across profiles; an empty series if there are none, None if any lacks 15-minute data."""
+    if not profiles:
+        return pd.Series(dtype=float)
+    if any(p.kwh_15min is None for p in profiles):
+        return None
+    series = [p.kwh_15min for p in profiles if p.kwh_15min is not None]
+    total = series[0].copy()
+    for s in series[1:]:
+        total = total.add(s, fill_value=0.0)
     return total
 
 

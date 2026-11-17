@@ -4,11 +4,13 @@
     economics -> dispatch -> der          (each also uses geo + core)
     community_load  (categorize, sources -> synthetic; uses geo + core)
     geo -> core                           (geography is the shared reference layer)
+    datasets  (dataset identity, catalog, manifest; stdlib + pandas + PyYAML only, imports no other microgrid package)
 
 `geo` and `community_load` are parallel siblings: load profiling reads geography,
 never the reverse. The SNLG engine (`synthetic`) knows nothing about geography.
 Planner layers exchange load via core.LoadResult, so they never import community_load.
 """
+
 from __future__ import annotations
 
 import ast
@@ -18,7 +20,7 @@ import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "microgrid"
 
-_ALL = ["core", "geo", "community_load", "der", "dispatch", "economics", "study"]
+_ALL = ["core", "geo", "community_load", "der", "dispatch", "economics", "study", "datasets"]
 
 
 def _ban(*allowed: str) -> list[str]:
@@ -29,9 +31,16 @@ def _ban(*allowed: str) -> list[str]:
 FORBIDDEN = {
     "microgrid.core": _ban("core"),
     "microgrid.geo": _ban("core", "geo"),
-    "microgrid.community_load": _ban("core", "geo", "community_load"),
-    "microgrid.community_load.synthetic": _ban("community_load") + [
-        "microgrid.community_load.sources", "microgrid.community_load.categorize"],
+    "microgrid.datasets": _ban("datasets"),
+    "microgrid.community_load": _ban("core", "geo", "community_load", "datasets"),
+    "microgrid.community_load.synthetic": _ban("community_load")
+    + [
+        "microgrid.community_load.sources",
+        "microgrid.community_load.categorize",
+        "microgrid.community_load.dataset_resolution",
+        "microgrid.community_load.permissions",
+        "microgrid.community_load.exposed_attributes",
+    ],
     "microgrid.der": _ban("core", "geo", "der"),
     "microgrid.dispatch": _ban("core", "geo", "der", "dispatch"),
     "microgrid.economics": _ban("core", "geo", "der", "dispatch", "economics"),
@@ -53,6 +62,8 @@ def _imports(path: Path) -> set[str]:
             found.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             found.add(node.module)
+            # `from pkg import submodule` imports pkg.submodule too
+            found.update(f"{node.module}.{a.name}" for a in node.names)
     return found
 
 
@@ -63,7 +74,6 @@ def _under(name: str, prefix: str) -> bool:
 @pytest.mark.parametrize("path", sorted(SRC.rglob("*.py")), ids=lambda p: _module_name(p))
 def test_imports_respect_layers(path):
     mod = _module_name(path)
-    banned = next((b for pkg, b in sorted(FORBIDDEN.items(), key=lambda kv: -len(kv[0]))
-                   if _under(mod, pkg)), [])
+    banned = next((b for pkg, b in sorted(FORBIDDEN.items(), key=lambda kv: -len(kv[0])) if _under(mod, pkg)), [])
     bad = sorted(i for i in _imports(path) if any(_under(i, b) for b in banned))
     assert not bad, f"{mod} must not import {bad}"

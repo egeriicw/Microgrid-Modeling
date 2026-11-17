@@ -1,0 +1,38 @@
+# Dataset catalog (FR-DATA-8). One entry per (product, release, weather, scenario, state).
+#
+# scenario_key   internal, stable id used by scenarios and results (ResStock partitions are numeric, ComStock are
+#                strings such as hvac_0005, so the on-disk partition id is kept separately)
+# partition_id   the value in the on-disk folder name upgrade=<partition_id>
+# load_basis     gross (demand) or net (of on-site generation); gross and net must never be mixed silently
+# relative_path  partition directory relative to the data root (--data-root or MICROGRID_DATA_DIR); never absolute
+# verified       false until the release, folder names, DC coverage and partition meaning are confirmed
+#
+# Adding an upgrade = adding an entry. Only the MVP baselines are seeded.
+version: 1
+datasets:
+  - product: resstock
+    release: 2025_release_1        # [verify] exact OEDI release folder name
+    weather: amy2018
+    state: DC
+    scenario_key: baseline
+    partition_id: 0                # [verify] upgrade=0 is baseline in this release
+    name: Baseline
+    scenario_family: Baseline
+    load_basis: gross              # [verify]
+    license: "NREL ResStock on OEDI, CC BY 4.0, attribute NREL/DOE [verify]"
+    relative_path: input/resstock/timeseries_individual_buildings/upgrade=0/state=DC
+    verified: false
+    notes: "Owner's local files may come from an older release (unconfirmed)."
+  - product: comstock
+    release: 2025_release_3        # [verify] exact OEDI release folder name
+    weather: amy2018
+    state: DC
+    scenario_key: baseline
+    partition_id: 0                # [verify] upgrade=0 is baseline in this release
+    name: Baseline
+    scenario_family: Baseline
+    load_basis: gross              # [verify] baseline has no on-site generation; some other ComStock scenarios do
+    license: "NREL ComStock on OEDI, CC BY 4.0, attribute NREL/DOE [verify]"
+    relative_path: input/comstock/timeseries_individual_buildings/upgrade=0/state=DC
+    verified: false
+    notes: "Owner's local files may come from an older release (unconfirmed)."

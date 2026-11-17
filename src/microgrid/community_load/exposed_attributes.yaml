@@ -1,0 +1,98 @@
+# Admin-configured list of building attributes users may filter on (FR-ENG-11, layer 2).
+#
+# This is data, not code: the composition form is built from it. Each entry:
+#   key            short stable id used in saved compositions
+#   label, help    what the user sees
+#   kind           numeric | categorical | boolean
+#   columns        which characteristics column holds it, per source (resstock / comstock). A source that is
+#                  not listed does not offer the attribute.
+#   operators      which filter operators the user may pick (see synthetic/attribute_filters.py)
+#   choices        categorical only: the values offered (omit to take them from the data)
+#   min, max       numeric only: allowed bounds for the user's numbers
+#   building_types registry type keys (building_types.yaml) the attribute applies to; empty = all of the source
+#   order          display order (ascending)
+#   active         false hides it without deleting it
+#
+# Attached vs detached single-family is NOT listed here: it is already a building type in the registry
+# (sf_attached / sf_detached), so choosing the type is the filter. Duplicating it would create two ways to say
+# the same thing.
+#
+# Column names are from the generated test fixture and the ResStock/ComStock naming pattern; every one marked
+# [verify] must be checked against the real DC files (run discovery on the owner's machine) before relying on it.
+version: 1
+attributes:
+  - key: stories
+    label: Number of stories
+    help: Floors above ground. Use a range, for example 4 to 7 for mid-rise.
+    kind: numeric
+    columns:
+      resstock: in.geometry_stories      # [verify]
+      comstock: in.number_stories        # [verify]
+    operators: [equals, range]
+    min: 1
+    max: 200
+    order: 10
+
+  - key: dwelling_units
+    label: Total dwelling units
+    help: Number of apartments in the building (multifamily only).
+    kind: numeric
+    columns:
+      resstock: in.geometry_building_number_units_mf   # [verify]
+    operators: [equals, range]
+    min: 1
+    max: 1000
+    building_types: [mf_small, mf_mid, mf_large]
+    order: 20
+
+  - key: vintage
+    label: Year built (decade)
+    help: Construction decade of the building.
+    kind: categorical
+    columns:
+      resstock: in.vintage               # [verify]
+      comstock: in.vintage               # [verify]
+    operators: [equals, in]
+    choices: ["<1940", "1940s", "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s"]   # [verify]
+    order: 30
+
+  - key: floor_area
+    label: Floor area (sq ft)
+    help: Conditioned floor area of the building (ResStock) or of the whole building (ComStock).
+    kind: numeric
+    columns:
+      resstock: in.sqft..ft2
+      comstock: in.sqft..ft2
+    operators: [range]
+    min: 0
+    max: 5000000
+    order: 40
+
+  - key: heating_fuel
+    label: Heating fuel
+    help: Main fuel used for space heating.
+    kind: categorical
+    columns:
+      resstock: in.heating_fuel          # [verify]
+      comstock: in.heating_fuel          # [verify]
+    operators: [equals, in]
+    choices: [Electricity, Natural Gas, Fuel Oil, Propane, Other Fuel, None]   # [verify]
+    order: 50
+
+  - key: has_heat_pump
+    label: Has a heat pump
+    help: Whether space heating is provided by a heat pump.
+    kind: boolean
+    columns:
+      resstock: in.has_heat_pump         # [verify] real data may express this through the HVAC type instead
+    operators: [is_true, is_false]
+    order: 60
+
+  - key: has_ev
+    label: Has an electric vehicle
+    help: Whether the home has an electric vehicle.
+    kind: boolean
+    columns:
+      resstock: in.has_ev                # [verify] may not exist in baseline data; see FR-ENG-12
+    operators: [is_true, is_false]
+    order: 70

@@ -52,20 +52,20 @@ archetype_filters:
     single_family_detached:
       building_type_heights:
         - "Single-Family Detached"
-      arealimit: 2000
-      garage: false
-      heatpump: 0.1
-      electric_vehicle: 0.1
-      solar_pv: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) arealimit: 2000
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) garage: false
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) heatpump: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) electric_vehicle: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) solar_pv: 0.1
       require_data_complete: true
     single_family_attached:
       building_type_heights:
         - "Single-Family Attached"
-      arealimit: 2000
-      garage: false
-      heatpump: 0.1
-      electric_vehicle: 0.1
-      solar_pv: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) arealimit: 2000
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) garage: false
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) heatpump: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) electric_vehicle: 0.1
+      # NOT YET SUPPORTED (was silently ignored; see FR-ENG-3, FR-ENG-11, FR-ENG-12) solar_pv: 0.1
       require_data_complete: true
     mf_small:
       building_type_heights:

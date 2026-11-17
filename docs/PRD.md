@@ -1,314 +1,338 @@
-# Product Requirements Document — Synthetic Neighborhood Load Generation (SNLG) Platform
+# Product Requirements Document — Community Energy Profiler (working title)
 
-**Status:** Draft v1.0
-**Date:** 2026-09-03
-**Owner:** Bill Eger (egeriicw@gmail.com)
-**Repository:** `Microgrid-Modeling/Community Load Profiles`
-**Working branch context:** `claude/software-methodology-plan-*`
+**Version:** 2.0 DRAFT for owner review · **Date:** 2026-11-03
+**Owner:** Bill Eger · **Supersedes:** [`archive/PRD-v1-snlg-platform.md`](./archive/PRD-v1-snlg-platform.md) (kept as a historical artifact)
+**Sources:** owner interview (2026-11-02/03), [`codebase-review.md`](./codebase-review.md), full git history.
+**Companions:** [`architecture-and-stack.md`](./architecture-and-stack.md), [`sprint-plan.md`](./sprint-plan.md), [`agent-team.md`](./agent-team.md).
 
----
-
-## 0. How to use this document
-
-This PRD is the entry point for an implementing agent. It has two jobs:
-
-1. **Document the existing system.** The `src/microgrid/community_load/synthetic/` package and
-   `notebooks/community_microgrid_load_profiles.ipynb` already implement a
-   working Monte-Carlo load-generation methodology. The agent must produce
-   faithful reference documentation for it (see `docs/engine-reference.md`,
-   which this PRD seeds) and lock its public contract with tests before any
-   new feature work.
-2. **Build the platform around it.** Wrap the engine in a service layer
-   (REST API + async workers), a Postgres/object-store persistence tier, and
-   a Next.js web application, all orchestrated with Docker Compose for local
-   and CI use.
-
-Companion specs (all under `docs/`):
-
-| File | Purpose |
-|---|---|
-| `architecture.md` | System context, containers, components, data flow, repo layout |
-| `requirements.md` | Numbered functional / non-functional requirements + acceptance criteria |
-| `engine-reference.md` | Reference documentation for the **existing** `snlg` engine + known gaps |
-| `domain-glossary.md` | Ubiquitous language for the load-generation methodology |
-| `api-spec.md` | REST contract: resources, endpoints, schemas, status codes |
-| `data-model.md` | Postgres schema (DDL) + MinIO object layout + retention |
-| `frontend-spec.md` | Next.js pages, components, flows, state, API client |
-| `infrastructure.md` | Docker Compose services, Dockerfiles, env, Make targets, CI |
-| `test-plan.md` | TDD methodology, test pyramid, coverage gates, full test-file index |
-| `implementation-plan.md` | Phased milestones, tiny-commit task list, sequencing, DoD |
-
-**The agent MUST follow `test-plan.md`: write the failing test first, then the
-code that makes it pass, then refactor. No production code lands without a
-test that fails without it.**
+> Status words used throughout: **MUST** = required for the 30-day MVP. **SHOULD** = target for the MVP, may slip.
+> **LATER** = explicitly not in the MVP, but the design must not block it. Items marked **[verify]** are facts about
+> outside tools or datasets that an agent must confirm before relying on them.
 
 ---
 
-## 1. Problem & background
+## 1. Summary
 
-Distribution planners, community-microgrid developers, and researchers need
-**realistic, uncertainty-aware hourly electricity load profiles** for a
-*hypothetical* neighborhood before any meters exist. A single deterministic
-profile understates diversity and peak risk. The methodology in this repo
-generates an **ensemble** of plausible neighborhoods by:
+A web application that estimates the **hourly and 15-minute electricity load of a community** — a hypothetical
+neighborhood defined by a building mix, a set of real mapped buildings, or a campus — **with quantified uncertainty**,
+before any meters exist. It samples real buildings from NREL **ResStock** (residential) and **ComStock** (commercial)
+to build many plausible neighborhoods, repeats until the average load **converges**, and presents the result as
+interactive charts and downloadable data. A **calibration module** compares the synthetic result with real or benchmark
+data so users (and the public) can see how much to trust it.
 
-- filtering NREL **ResStock** (residential) and **ComStock** (commercial)
-  building stock to archetypes that match a scenario,
-- sampling a **building mix** (category proportions → integer counts),
-- drawing **building instances** from the filtered pools,
-- optionally **perturbing** each instance (temporal shift, end-use scaling),
-- **aggregating** to a neighborhood 8760-hour profile,
-- screening each realization against **feasibility** constraints,
-- repeating until ensemble statistics **converge**,
-- emitting **percentile envelopes**, diversity metrics, representative cases,
-  and a **validation** report.
+Origin: the **DC Transactive Microgrid** project, in support of a community-microgrid RFP response that was won.
+First geography: **Washington, DC** (then Northern Virginia). The owner intends it to become a reusable and saleable
+tool for microgrid analysis, RFPs, campus aggregation, and microgrid **policy** analysis, and to publish it publicly.
 
-Today this runs only as a notebook driven by hand-edited YAML, executed on a
-laptop, with outputs as loose CSV/PNG files. There is no way for a
-non-Python user to configure a scenario, launch a run, watch progress, or
-browse results; no run history; no reproducible environment.
+## 2. Problem
 
-### Prior art already in the repository
+Community-microgrid planners (battery and solar sizing, PJM energy/capacity/ancillary revenue, critical-load resilience,
+feeder impact) need a defensible load profile for a neighborhood that has no smart-meter history. Today that means
+hand-built spreadsheets or notebooks, a single deterministic profile that hides diversity and peak risk, and no way for a
+non-programmer to configure, run, inspect or trust the result. Existing tools (e.g. NREL REopt/SAM/dGen, HOMER, City
+Energy Analyst **[verify]**) mostly assume a load profile is already known.
 
-Two parallel engine implementations exist:
+## 3. Goals and non-goals
 
-- **`src/microgrid/community_load/synthetic/`** (branch `main`, and this branch) — the methodology-driven,
-  typed, unit-tested package. **50 tests currently pass.** This is the
-  **engine of record.**
-- **`microgrid_profiles`** on the `feat/*` branches — an earlier
-  ChatGPT-assisted scaffold that *also* ships a FastAPI + SQLAlchemy/Alembic
-  skeleton, a Next.js (Pages Router + MUI) frontend, `docker-compose.yml`
-  (timescaledb image), an OEDI downloader, and an in-process run worker.
-  Useful as **reference material to harvest**, not as the engine.
+### 3.1 Goals
+- **G1** Make the load-forecasting core usable by a non-programmer through a web app (this is the success-or-failure core).
+- **G2** Make results **trustworthy and honest**: convergence evidence, uncertainty bands, a calibration/validation
+  module, benchmark checks, and a visible accuracy caveat.
+- **G3** Be **statistically sound and replayable**: sampling is genuinely random (Monte Carlo) so ensembles represent plausible real neighborhoods; every run records its seeds so it can be replayed exactly (e.g. for calibration comparisons); and converged results must be statistically equivalent across different seeds.
+- **G4** Be **extensible** without refactoring: new building types, new regions, weather normalization, DER, network,
+  metering, policy constraints.
+- **G5** Be **maintainable by a small human + agent team**: documented, test-driven, versioned, modular.
+- **G6** Ship a complete demo on the owner's machine by day 30; stretch: a public, constrained live demo, and (nice to have) a public repository.
 
-**Decision (see §4):** keep both, cleanly separated — `snlg` becomes a
-standalone installable library; a new service layer depends on it. The
-`feat/*` API/DB/frontend/compose scaffolds are mined for code and patterns.
+### 3.2 Non-goals for the 30-day MVP
+Power-flow physics, capacity checks, DER sizing and dispatch, revenue/economics, REopt/SAM file export, weather-driven
+forecasting, EV/heat-pump scenarios, multi-region data, billing, full user administration,
+arbitrary GIS uploads, open public simulation. These are **LATER** — see §9 for the hooks the MVP must leave.
+Separately, heavy industrial/manufacturing buildings are **out of scope** (not merely later) unless ComStock defines them;
+community-scale warehouses are **in scope** (FR-ENG-1).
 
----
+## 4. Users and access tiers
 
-## 2. Goals & non-goals
-
-### 2.1 Goals
-
-- **G1 — Package the engine.** `snlg` is `pip install`-able, importable
-  without `PYTHONPATH` hacks, with a documented, versioned public API and a
-  frozen determinism contract.
-- **G2 — Reference-document the existing system.** Every `snlg` module,
-  dataclass, config key, RNG layer, and methodology section has accurate
-  prose + diagrams in `docs/engine-reference.md`.
-- **G3 — Scenario management.** Users create, validate, edit, clone, and
-  version scenario configurations through an API and a web UI, without
-  writing YAML by hand (YAML import/export still supported).
-- **G4 — Run orchestration.** Users launch ensemble runs from a config;
-  runs execute asynchronously on a worker; progress, logs, and status are
-  observable in real time; runs are cancellable.
-- **G5 — Results & persistence.** Scalar metrics, lineage, and convergence
-  history live in Postgres; bulk artifacts (per-run CSVs, envelopes,
-  figures, compiled runs) live in an S3-compatible object store; every run
-  is reproducible from its stored config + seeds + engine version.
-- **G6 — Visualization.** The web app renders load envelopes, peak/energy
-  distributions, load-duration curves, convergence history, and
-  representative cases without downloading files.
-- **G7 — Reproducible environment.** `docker compose up` brings up web +
-  api + worker + db + redis + object store; one command runs the full test
-  suite; CI runs it on every push.
-- **G8 — Input data pipeline.** A documented, scriptable path to fetch the
-  required ResStock/ComStock parquet + characteristics files from NREL OEDI
-  into the expected `data/input/**` layout.
-
-### 2.2 Non-goals (v1)
-
-- Multi-tenant auth/RBAC, billing, or public hosting (single-team, trusted
-  network; a single API token is acceptable).
-- Kubernetes / Helm / cloud IaC (Compose only; production notes are
-  advisory — see `infrastructure.md` §9).
-- Power-flow / optimal-dispatch / DER-sizing modeling (load *generation*
-  only; downstream tools consume the profiles).
-- Replacing matplotlib exports for publication figures (the UI complements,
-  not replaces, notebook analysis).
-- Real-time streaming of meter data; weather-normalization beyond what the
-  engine already does.
-- Editing methodology math through the UI (config only).
-
----
-
-## 3. Personas & primary use cases
-
-| Persona | Needs |
-|---|---|
-| **Planner Priya** (utility DER planning) | Point-and-click scenario, launch 200-run ensemble, read P90 peak and load-duration curve, export CSV for her power-flow tool. |
-| **Researcher Ravi** (methodology dev) | Import the engine as a library, tweak perturbation math, run parity tests, compare two configs' envelopes side by side. |
-| **Developer Dana** (platform maintainer) | Stand the whole stack up locally, run tests, add an endpoint, ship a migration, keep CI green. |
-
-**Core user journey (UJ-1):** open web app → create config from the
-"DC Multifamily" template → adjust `total_buildings` and category bounds →
-UI shows validation passes → "Launch run" → watch progress bar and streamed
-log → run succeeds → open results dashboard → inspect P10/P50/P90 envelope,
-peak histogram, load-duration curve, representative "high_peak" case →
-download the compiled-runs CSV.
-
----
-
-## 4. Key design decisions (locked)
-
-| # | Decision | Rationale |
+| Tier | Who | Capabilities (MVP) |
 |---|---|---|
-| **D1 — Engine boundary** | Keep both engines, cleanly separated. `snlg` becomes a standalone, `pip`-installable library (its own `pyproject.toml`, semver, changelog). The platform (`api/`, `web/`) is a **separate service layer that depends on `snlg`**. `microgrid_profiles` and the `feat/*` scaffolds are reference-only; code is harvested into `api/`. Monorepo, two Python packages. | Preserves the tested methodology as the source of truth; lets researchers use the engine headless; avoids a risky big-bang merge; keeps API concerns out of the science. |
-| **D2 — Run execution** | **Redis + RQ worker queue.** FastAPI enqueues a job; one or more `worker` containers execute ensembles; progress/log/status stream to Postgres via the engine's progress callback. Runs survive API restarts; workers scale horizontally; jobs are cancellable. | Ensembles take minutes–hours and must not block the API or die with it. RQ is lighter than Celery and adequate for this scale. |
-| **D3 — Results storage** | **Postgres for metadata + MinIO (S3-compatible) for artifacts.** Postgres holds configs, runs, per-run scalars, convergence history, validation reports, artifact index rows. MinIO holds per-run/ensemble CSVs, Parquet, and PNGs, keyed and referenced from Postgres. | Keeps the DB lean and fast to query; artifacts are large and write-once; S3 API makes a later cloud move trivial; MinIO runs in Compose. |
-| **D4 — Frontend & deployment** | **Full Next.js app** (Pages Router + MUI, matching the `feat/*` foundation): config list/editor with live schema validation, run launcher + live progress, results dashboard (envelopes, distributions, load-duration curves, convergence, representative cases). **Single `docker-compose.yml`**: `web`, `api`, `worker`, `db` (Postgres 16), `redis`, `minio` (+ `minio-init`). Production guidance is documentation only. | Delivers the non-Python UX the project lacks; Compose is enough for a single team and CI; k8s is deferred (non-goal). |
+| **Admin** | Owner | Everything: define any parameter, **use and configure attribute filters**, manage compositions and demo content, view calibration and diagnostics, configure the demo. |
+| **Client** | Owner acting as first customer; later paying users | Full flexibility to define neighborhoods and parameters, run, view, download, upload calibration data. |
+| **Demo** | Anonymous public visitor | Locked down: choose from **predefined compositions** only and **run them live** with hard caps (small building count, low `max_runs`, queue, rate limit, one run at a time per visitor); results can be cached by (composition, seeds). Charts and downloads available. No uploads, no filters, no free-form compositions. Seed behavior (fixed stored seeds by default; optional "draw a new random sample" button) to be confirmed by the owner. |
 
-Supporting decisions:
+Business model (not built in MVP): subscription or pay-per-use. Persona stories: *Priya* (utility/DER planner),
+*Marcus* (community microgrid developer writing an RFP), *the owner* (power user and publisher), *a campus energy
+manager* (aggregating many meters), *a policy audience* (reading the public demo).
 
-- **D5** — Database engine is **plain PostgreSQL 16** (not TimescaleDB).
-  Hourly 8760 arrays are **not** row-per-hour in Postgres; they live as
-  Parquet artifacts in MinIO. Postgres stores only scalars + JSON. Revisit
-  Timescale only if SQL-side envelope queries become a hard requirement.
-- **D6** — Config canonical form is **structured JSON** in Postgres,
-  validated by a **Pydantic v2** schema generated to mirror
-  `microgrid.community_load.synthetic.config.ScenarioConfig`. YAML is an import/export format only.
-- **D7** — API auth v1: a single static bearer token (`API_TOKEN` env),
-  required on all mutating endpoints; read endpoints open on the local
-  network. Auth is a thin dependency so it can be swapped later.
-- **D8** — Engine ↔ platform contract is a **`microgrid.community_load.synthetic.run` façade** (new,
-  thin) exposing `run_scenario(config_dict, *, progress=cb, artifacts=sink)
-  -> RunResult`. The worker calls only this façade, never internal modules.
+## 5. Core concepts (glossary)
 
----
+- **Composition** — a recipe for a neighborhood: total buildings plus, per building type, either a fraction range or a
+  fixed count. May mix both (hybrid of hypothetical and mapped).
+- **Building type / category** — an entry in an extensible **registry** (e.g. `sf_detached`, `sf_attached`, `mf_small`,
+  `mf_mid`, `mf_large`, `commercial_small_office`, `institutional_school`, `institutional_hospital`, `civic`, `commercial_warehouse`), each
+  mapped to ResStock/ComStock filters. Heavy industrial/manufacturing is excluded; a community-scale warehouse is
+  included **only if ComStock defines it** (agent confirms against the DC dataset **[verify]**).
+- **Variation / realization** — one sampled neighborhood (one Monte-Carlo draw).
+- **Ensemble** — the set of accepted variations in a run. **Converged** — see FR-ENG-6.
+- **Load profile** — the aggregated electric demand time series (kW) at hourly and 15-minute resolution.
+- **Meter** — a measurement point (placeholder in MVP; see FR-DATA-3).
+- **Calibration / validation** — comparing synthetic output with measured or benchmark data.
+- **Run** — one execution of an ensemble for a composition and settings; replayable by stored seeds + version.
+- **Weather year** — AMY2018 datasets represent buildings under the *actual weather of 2018*, not a long-run typical year (TMY3). The MVP's "typical year" is therefore "the 2018 weather year"; the UI and exports must label it that way (FR-WEB-8). Genuine typical-year results would need TMY3 datasets or the weather-normalization work in §9.
+- **Dataset / scenario** — a ResStock or ComStock data package identified by release, weather version, upgrade id and state;
+  the baseline is the default scenario, and upgrade scenarios simulate other configurations (e.g. high heat-pump or EV penetration).
 
-## 5. Scope — feature list
+## 6. Functional requirements
 
-Features are specified in full in `requirements.md` (FR-IDs) and sequenced in
-`implementation-plan.md` (phases). Summary:
+Each requirement has an ID and **acceptance criteria (AC)** that an agent can turn into a failing test first.
 
-### 5.1 Engine (existing → hardened)
+### 6.1 Engine (existing code, hardened) — `ENG`
+- **FR-ENG-1 (MUST) Building-type registry.** Types are data, not code. AC: adding a type means adding a registry entry
+  and mapping rules; a test adds a fake type without changing engine code. MVP types: single-family detached/attached,
+  multifamily (small/mid/large), small commercial (office etc.), institutional (school, hospital), civic, and community-scale warehouse (if defined in ComStock).
+- **FR-ENG-2 (MUST) Composition modes.** Support fraction ranges, fixed counts, and a hybrid. AC: a composition with
+  3 fixed mapped counts + 2 ranged categories yields integer counts summing exactly to `total_buildings`.
+- **FR-ENG-3 (MUST) Config honesty.** Unknown or unsupported config keys raise an error listing them; none are silently
+  ignored. AC: a config with `heatpump: 0.1` either applies it (tested) or is rejected with a clear message.
+- **FR-ENG-4 (MUST) Seeding: random by default, replayable always.** A run uses fresh random seeds unless the user
+  supplies fixed ones; seeds are always recorded with the run. Per-run RNG streams are derived with
+  `numpy.random.SeedSequence.spawn`. AC: (a) same seeds + engine version + data manifest ⇒ byte-identical scalar
+  metrics (determinism golden test); (b) 10,000 run indices produce distinct streams; (c) **seed-robustness test:** for a
+  converged ensemble on fixture data, key metrics (annual energy, peak, P50 profile) from several different seeds agree
+  within the ensemble's stated uncertainty; (d) the UI shows the seeds and offers "replay with same seeds".
+- **FR-ENG-5 (MUST) Resolutions.** Output hourly and 15-minute profiles. AC: 15-minute totals equal source energy;
+  hourly equals the sum of its four 15-minute values; units labeled kW/kWh explicitly.
+- **FR-ENG-6 (MUST) Adaptive convergence** *(owner approved the proposed default 2026-11-06, provisional, revisit after first real runs)*. Run up to `max_runs` (default 1,000), stopping early when convergence
+  criteria hold. Criteria are a **methodology decision for the owner** (proposed default: relative change of the
+  ensemble mean of annual energy, peak kW, and the mean hourly profile below ε over M consecutive checks, plus a
+  standard-error target on the P50 profile). AC: criteria and thresholds are configurable and reported; a synthetic
+  test ensemble with known variance converges in the expected number of runs.
+- **FR-ENG-7 (MUST) Outputs.** Mean/P50, P10, P90 envelopes; residential vs commercial split (and per building type);
+  peak, annual energy, load factor, coincidence and diversity factors (attached to results); load-duration curves;
+  seasonal average daily profiles by load type; representative cases; composition summary.
+- **FR-ENG-8 (MUST) Progress events.** The engine emits typed progress events (stage, run index, feasible count,
+  convergence status, message). AC: a unit test collects events from a fixture run.
+- **FR-ENG-9 (SHOULD) Perturbations.** End-use scaling must actually run when enabled (currently dormant), or be
+  removed from the config surface. Requires owner approval (methodology).
+- **FR-ENG-10 (MUST) Temperature.** Each result carries the temperature series used (from the ResStock/ComStock
+  weather files) so charts can show load and temperature together. **[verify]** which weather file applies per dataset.
+- **FR-ENG-11 (MUST) Attribute filtering of source buildings, admin-configured.** For every composition category, the
+  user can filter the ResStock/ComStock building population by building characteristics. The mechanism has two layers:
+  1. **Discovery (automatic):** after ingestion, the system knows every characteristic column in the data, its type, and
+     its value summary (distinct values or min/max/count).
+  2. **Exposure (admin-configured):** an admin chooses which attributes users may filter on, with a friendly label,
+     help text, allowed operators, value choices or numeric bounds, which building types it applies to, and its
+     display order. The composition form is built from this configuration, not from code.
+  **Starter set (MVP defaults, editable by the admin):** stories/height; total dwelling units (multifamily only);
+  attached vs detached (single-family); EV present; and a few more chosen from the data in Sprint 1, for example year
+  built/vintage, floor area, heating fuel/system, and heat-pump presence **[verify column names in the DC data]**.
+  AC:
+  (a) a filter language supports equals/in-list, numeric ranges, not-null, AND-combination across attributes;
+  (b) the exposed-attribute configuration is stored in the database, versioned, and editable by an Admin through the
+      API (UI for it is FR-WEB-9); **in the MVP the filter feature is Admin-only** — Clients and Demo do not see or use
+      filters. Access is governed by a per-role **permission flag** (e.g. `filters.use`), not hard-coded role checks, so
+      enabling it for Clients later is a configuration change (when enabled, Clients see only exposed attributes; Demo
+      never gets it). Compositions created by an Admin with filters remain runnable by others as saved/predefined
+      compositions;
+  (c) a **pool preview** reports, per category, how many buildings match and warns on zero, or fewer than a configurable
+      minimum (default 10), since sampling with replacement from a tiny pool understates diversity;
+  (d) an attribute that is not in the data, or an invalid value, is a clear error (consistent with FR-ENG-3);
+  (e) the effective filters and matched pool size are stored with every run and shown in results;
+  (f) changing a filter changes only the sampled pool, never silently the methodology.
+  Dependencies: FR-ENG-1 (registry types carry default filters), FR-ENG-3 (no silently ignored keys), FR-DATA-7
+  (characteristics available for fast filtering), FR-WEB-1 (filter UI), FR-WEB-9 (admin screen), FR-WEB-7/DATA-6
+  (mapped buildings' stories/units/year built can seed filter values), FR-CAL (calibration may constrain pools).
+- **FR-ENG-12 (LATER; design now) Scenario switching and mixing.** ResStock and ComStock also simulate other
+  configurations (upgrades such as heat pumps, EV charging, efficiency measures) as separate datasets. The engine must
+  be able to draw each sampled building from the **baseline or from a scenario dataset** according to a **scenario
+  rule**. Example: when a target characteristic penetration (e.g. share of homes with heat pumps or EV charging)
+  reaches a threshold, draw that share from the matching upgrade dataset and the rest from baseline; or switch a whole
+  category to a different dataset. How penetration maps to datasets, how thresholds are defined, and how consistency
+  is kept (e.g. pairing the same building across baseline and upgrade) are **methodology decisions for the owner**
+  **[verify with ResStock/ComStock documentation how upgrade files relate to baseline buildings]**. MVP obligations
+  (so this is not a refactor later): dataset ids as inputs (FR-DATA-8); a `scenario` field in the composition schema
+  that defaults to baseline; the pool builder keyed by dataset; run records that store which dataset each sampled
+  building came from. AC (MVP part): a test builds pools from two fixture datasets labeled baseline and "upgrade" and
+  the run record shows per-building dataset ids, even though no UI exposes it yet.
+- **FR-ENG-13 (LATER; design now) Weather normalization before weather-driven use.** The datasets are AMY2018: each
+  building's load reflects actual 2018 weather. Before any load is driven by other weather (future years, TMY, or
+  actual observed weather), the loads are **weather-normalized**: for each building (or building group), fit a
+  **multivariate change-point regression** (Kissock-style; variants such as 3-, 4- or 5-parameter models, with
+  temperature and optionally other weather variables and time-of-day/day-type terms) of load against the **2018
+  weather the dataset was simulated with**; judge fit quality (e.g. R², CV(RMSE)); derive normalized annual
+  consumption patterns; then predict load under the target weather. Hourly/15-minute shape handling, grouping choices,
+  fit thresholds, and which weather variables to use are **methodology decisions for the owner**. Only after
+  normalization may any weather-driven forecast be produced. MVP obligations so this is not a refactor:
+  (a) the weather series used by each dataset is ingested, catalogued and stored with the dataset (FR-DATA-8,
+  FR-ENG-10) **[verify where NREL publishes the AMY2018 weather files for each release]**;
+  (b) building-level hourly/15-minute load is retrievable per sampled building, not only as neighborhood totals;
+  (c) the engine has an empty `weather` module with a documented interface (fit, predict, quality report);
+  (d) the same module can later weather-normalize measured/calibration data so calibration compares like with like.
+  Known limits to state in the docs: one weather year gives limited coverage of extremes, and fits on simulated loads
+  describe the simulation model, not necessarily real building behavior.
 
-- **FE-1** Package `snlg` as an installable distribution; add `microgrid.community_load.synthetic.run`
-  façade with progress + artifact-sink hooks.
-- **FE-2** Lock determinism: same config + seeds + engine version ⇒
-  byte-identical scalar metrics (golden test).
-- **FE-3** Fix known gaps (see `engine-reference.md` §7): config parser
-  ignores several documented YAML keys (`arealimit`, `garage`, `heatpump`,
-  `electric_vehicle`, `solar_pv`, `require_data_complete`); `scenario.name`
-  as a YAML list leaks a `["..."]` string; `derive_run_rng` adds `run_index`
-  to a seed (collision-prone); coincidence/diversity factors are computed
-  but never attached to `NeighborhoodResult`; `feasibility.py` imports an
-  unused symbol; timestamped output dir uses raw `str(time.time())`.
-- **FE-4** Structured logging + a typed `RunProgress` event
-  (`stage`, `run_index`, `n_feasible`, `n_attempted`, `converged`, `message`).
-- **FE-5** `snlg` CLI (`python -m snlg run --config path.yaml --out dir/`)
-  preserved for headless/parity use.
+### 6.2 Data — `DATA`
+- **FR-DATA-1 (MUST) DC ingestion.** A scripted, resumable path to provision (data root and dataset choice are **configurable** via an environment variable/config, never hard-coded paths) DC ResStock/ComStock inputs into the
+  `data/input` / `data/background` layout, with a manifest of files, sizes and checksums. Raw Parquet stays on disk, **not**
+  in the database. AC: running the script on a clean machine reproduces the expected layout; disk use is reported.
+- **FR-DATA-2 (MUST) Test fixtures.** A small committed fixture dataset (≤ ~5 buildings per type, checked in or
+  generated) so tests and CI run without the full data. Agents in the cloud run only on fixtures.
+- **FR-DATA-3 (MUST, placeholder) Meter hierarchy.** The data model has a `Meter` entity. In MVP each building has
+  exactly one meter; meters roll up to **residential total, commercial total, and neighborhood total**. AC: results can
+  be queried at building, class and total level. No metering behavior is built. Design must allow later: submeters under
+  a combined meter, a campus with many meters, meters hosting solar/storage (virtual power plant / virtual net
+  metering), and an aggregate meter at the distribution point of interconnection.
+- **FR-DATA-4 (MUST) Storage.** PostgreSQL with PostGIS and TimescaleDB (Docker). Interval load results and uploaded
+  calibration series in hypertables; geometry in PostGIS; configs, runs, users in plain tables. Alembic migrations.
+- **FR-DATA-5 (LATER, placeholder) SEED coupling.** A defined adapter interface for DOE's **SEED** platform
+  **[verify]** API, for storing or importing the final neighborhood and building records. MVP delivers only the interface
+  and a decision record.
+- **FR-DATA-6 (SHOULD) Building footprints, DC.** One footprint source for geometry (DC Open Data, OpenStreetMap,
+  Microsoft or Overture), with attributes (use, stories, units, year built) joined from DC open government property
+  data. An agent evaluates the options (coverage, attributes, license/attribution) and recommends one **for owner approval**.
+- **FR-DATA-7 (MUST) Building characteristics store.** The ResStock/ComStock building-characteristics tables (one row per
+  building, one column per characteristic) for the ingested region are loaded into PostgreSQL (plain tables, indexed on
+  commonly filtered columns) so filtering and pool previews are fast and queryable from the API. Raw 15-minute Parquet
+  stays on disk. AC: loading is repeatable from the manifest; a pool preview over DC returns in well under a second;
+  column names and value meanings are documented in a generated data dictionary shown in the UI.
+- **FR-DATA-8 (MUST) Dataset identity and catalog.** A "dataset" is identified by **(product ResStock|ComStock, release,
+  weather version e.g. TMY3|AMY2018, upgrade/scenario id, state)**. The system keeps a **dataset catalog** (database
+  table plus data dictionary per release) recording for each: location on disk, manifest hash, size, license, and a
+  human label and scenario family for the scenario (e.g. "Baseline", "Cold Climate Air-Source Heat Pump"; the owner-supplied
+  ResStock list is in [`reference/resstock-upgrade-measures.md`](./reference/resstock-upgrade-measures.md), ComStock in
+  [`reference/comstock-upgrade-measures.md`](./reference/comstock-upgrade-measures.md); ComStock scenario ids are strings, so the
+  catalog keeps an internal scenario key plus the on-disk partition id). Each dataset also records whether its load is **gross demand
+  or net of on-site generation** (some ComStock scenarios include PV/battery), and gross and net must never be mixed silently Every run stores the dataset ids it
+  used. **MVP datasets (owner decision, 2026-11-06):** ResStock **2025 Release 1, AMY2018** and ComStock **2025 Release 3, AMY2018**
+  (newest releases, shared 2018 weather year, full measure lists), DC only, subject to an agent confirming their OEDI
+  folder names, DC coverage, and known issues; if the owner's local files come from other releases, the data must be
+  re-ingested or the choice revisited with the owner. The MVP uses the **baseline** scenario only, currently believed to be `upgrade=0` **[verify in each release's
+  documentation/data dictionary: upgrade numbering and meaning are release-specific]**. AC: the catalog can describe
+  more than one upgrade for the same state; the engine takes dataset ids as inputs rather than hard-coded paths;
+  ingesting an extra upgrade adds catalog rows without code changes; ingestion shows progress and disk use.
+- **FR-DATA-9 (SHOULD) Compact building-profile library.** Live computation is cheap if each run does not have to read
+  large raw files. A build step extracts, for each ingested building, the needed load series (and its attributes) into a
+  compact, versioned library (for example one columnar file per dataset at float32), from which the engine samples
+  and sums. The public server then needs this library and not the raw 15-minute Parquet. AC: results from the library
+  match results from the raw files within a documented tolerance on fixtures; library size and load time are reported;
+  redistribution is permitted by the datasets' licenses **[verify]**.
 
-### 5.2 Backend API + worker
+### 6.3 Web application — `WEB`
+- **FR-WEB-1 (MUST) Composition form.** Define total buildings and per-type fractions/fixed counts, seeds, `max_runs`,
+  convergence settings; live validation; save, clone, and name compositions; import/export YAML.
+- **FR-WEB-2 (MUST) Run with progress.** Start a run; see live stage text, progress bar, runs completed, feasible/rejected
+  counts, and convergence status; cancel. Progress is shown for **every long operation** including data ingestion.
+- **FR-WEB-3 (MUST) Charts (interactive).** Time-series trends for residential and commercial; load-duration curves;
+  seasonal average daily profiles by load type; composition chart + table; P10/P50/P90 envelope; hover shows load (kW) and
+  temperature at that timestamp; zoom/pan; switch hourly ↔ 15-minute.
+- **FR-WEB-4 (MUST) Downloads.** CSV of hourly and 15-minute profiles (total, residential, commercial, per type, and
+  percentiles) with a metadata header (run id, version, seeds, composition). Parquet is **LATER**.
+- **FR-WEB-5 (MUST) Roles.** Admin, Client, Demo as in §4, enforced in the API (not only hidden in the UI).
+- **FR-WEB-6 (MUST) Calibration screen.** See §6.4.
+- **FR-WEB-7 (SHOULD) Minimal map viewer.** A DC map showing building footprints and a drawn/selected area producing
+  a composition's fixed counts. **Demoted: not a failure condition if it slips.** Full GIS workspace is LATER.
+- **FR-WEB-8 (MUST) Accuracy caveat.** Every results view shows: *methodology demonstration with benchmark checks — not
+  validated for engineering or investment decisions*, plus the calibration status of the run.
+- **FR-WEB-9 (SHOULD) Admin console.** Manage demo compositions and the demo account's allowed options, and **configure
+  which building attributes are exposed as filters** (FR-ENG-11). If the screen slips, the same configuration is edited
+  through the API or a versioned config file; the underlying configuration (not the screen) is MUST.
 
-- **FB-1** Health/readiness endpoints.
-- **FB-2** Config CRUD + validate + clone + YAML import/export + versioning.
-- **FB-3** Scenario templates (seed the "DC Multifamily" baseline as a
-  read-only template).
-- **FB-4** Run lifecycle: create (enqueue) → `queued` → `running` →
-  `succeeded` / `failed` / `cancelled`; cancel endpoint; list with filters;
-  detail with progress + tail-of-log; SSE/websocket progress stream.
-- **FB-5** Results API: per-run scalars, ensemble summary (diversity
-  metrics, convergence history, validation report), artifact index +
-  presigned download URLs, envelope/series JSON for charts.
-- **FB-6** RQ worker: consumes jobs, runs `microgrid.community_load.synthetic.run`, streams progress rows,
-  uploads artifacts to MinIO, writes metadata, honors cancellation.
-- **FB-7** Alembic migrations for every schema change; `make db-upgrade`.
-- **FB-8** Object-storage client abstraction (`Storage` protocol) with a
-  MinIO/S3 impl and a local-fs impl for unit tests.
+### 6.4 Calibration and validation — `CAL`
+- **FR-CAL-1 (MUST) Upload.** Client/Admin uploads a CSV (timestamp + kW, optional building class and name); the system
+  validates format, timezone, gaps, duplicates, and units, and reports problems clearly.
+- **FR-CAL-2 (MUST) Compare.** Overlay measured vs synthetic P10/P50/P90; compute and display NMBE, CV(RMSE), peak
+  error, energy error, load-factor error, and the share of measured hours inside the P10–P90 band. Thresholds follow
+  ASHRAE Guideline 14 hourly criteria as reference lines **[verify]**.
+- **FR-CAL-3 (MUST) Benchmarks.** An admin-managed benchmark set (e.g. CBECS, RECS **[verify]**, NREL/PNNL published
+  profiles) usable for annual-energy-intensity and shape checks per building type. MVP can start with a small curated set.
+- **FR-CAL-4 (LATER) Tuning.** Automatic adjustment of sampling weights/scalars to fit measured data (scikit-learn /
+  scipy optimization). MVP records the interface only; comparison is manual and read-only.
+- **FR-CAL-5 (LATER) PJM node data.** Use PJM load-area or node data as a calibration reference.
 
-### 5.3 Frontend
+### 6.5 Platform, API and quality — `PLAT`
+- **FR-PLAT-1 (MUST)** Versioned REST API (`/api/v1`), OpenAPI docs, modular routers; the engine is a separate Python
+  library that the API calls through one facade.
+- **FR-PLAT-2 (MUST)** Long runs execute on a background worker queue, survive API restarts, report progress, are
+  cancellable, and never block the API.
+- **FR-PLAT-3 (MUST)** Notebook-first: the engine installs as a package (`pip install -e .`) and every key function is
+  callable from an IPython notebook; example notebooks are maintained and tested.
+- **FR-PLAT-4 (MUST)** One command starts the whole stack locally (Docker Compose); one command runs all tests.
+- **FR-PLAT-5 (MUST)** CI runs lint, type-check, tests and coverage on every push; lint failures block merge.
+- **FR-PLAT-6 (SHOULD) Public demo with live capped computation.** Development and the first demo run **on the owner's
+  machine**; public hosting is decided later. Owner budget: **$100 per month total** for all hosting and services
+  (ceiling, not authorization: any spending needs the owner's approval first). An agent produces a costed hosting
+  recommendation (instance size from measured run cost, database, storage, domain, monitoring) **[verify current
+  pricing]** at the Day-14 checkpoint, or later if the owner defers it. Safeguards whatever the host: hard caps (§4),
+  rate limiting, queue, request size limits, HTTPS, no secrets in the repo, no uploads, spend alerts at the ceiling,
+  and a kill switch. A static site of precomputed results remains the fallback. Nothing is published without the
+  owner's approval.
+- **FR-PLAT-7 (SHOULD)** Public repo readiness: license (owner decision), README that works on a clean machine,
+  CONTRIBUTING, no secrets or large data in history, data attribution notices.
 
-- **FF-1** App shell (nav, health indicator, API-token entry).
-- **FF-2** Config list + create-from-template + editor (form + raw-YAML
-  tab) with debounced server-side validation and inline error display.
-- **FF-3** Run launcher (pick config, override seeds/`max_runs`, submit) and
-  runs table with live status.
-- **FF-4** Run detail: progress bar, streamed log, cancel button.
-- **FF-5** Results dashboard: P10/P50/P90 hourly envelope, peak-demand
-  histogram, annual-energy histogram, load-duration curve(s), convergence
-  history, representative-cases table, validation panel, artifact downloads.
-- **FF-6** Compare view: two runs' envelopes + scalar deltas.
+## 7. Non-functional requirements
 
-### 5.4 Data & infrastructure
+| Area | Requirement |
+|---|---|
+| Performance | A 50-building, 100-variation DC run completes in **minutes** on the owner's laptop with visible progress; chart interactions < 300 ms for 8,760 points and acceptable for 35,040. Targets to be measured in Sprint 1, then fixed. |
+| Resources | Fits the owner's **MacBook Air M2, 24 GB RAM, ~30 GB free disk**: Docker images + data + DB combined within budget; streaming/chunked reads; bounded caches. |
+| Replayability | Every run stores config snapshot, seeds, engine version, data manifest hash, so any run can be replayed exactly; new runs default to fresh random seeds. |
+| Security | Hashed passwords, JWT with short expiry, role checks in API, input validation, upload size/type limits, rate limiting on public endpoints, secrets only via environment. |
+| Privacy | Uploaded measured data is private to its owner; never used in the public demo without explicit consent. |
+| Observability | Structured logs with run ids; basic health/ready endpoints; error tracking is SHOULD. |
+| Accessibility/UX | Keyboard-operable forms, color-blind-safe chart palette, responsive down to tablet. |
+| Licensing/attribution | ResStock/ComStock, footprint, and weather data licenses and attribution displayed in-app and in the repo **[verify each]**. |
+| Documentation | Every module has a docstring-level purpose; architecture and ADRs current; a newcomer can read the code without help. |
 
-- **FD-1** `deploy/docker-compose.yml` (web, api, worker, db, redis, minio,
-  minio-init) + per-service Dockerfiles + `.env.example`.
-- **FD-2** `Makefile` targets: `up`, `down`, `test`, `test-api`,
-  `test-web`, `db-upgrade`, `db-revision`, `seed`, `fmt`, `lint`.
-- **FD-3** OEDI input-fetch: `scripts/download_oedi.py` (manifest-driven
-  `aws s3 sync` / HTTPS) producing `data/input/{resstock,comstock}/...` and
-  `data/background/*.xlsx`; documented in `infrastructure.md` §7.
-- **FD-4** CI workflow: lint + engine tests + api tests + web tests +
-  compose smoke test on every push/PR.
-- **FD-5** Seed script: create the baseline template config + a MinIO
-  bucket + run one tiny ensemble end-to-end as a smoke test.
+## 8. Quality standards
 
----
+- **Test-driven development is mandatory:** a failing test precedes each behavior; no behavior merges without a test.
+- Test pyramid: unit (engine, API), integration (API + DB + worker on fixtures), contract (OpenAPI), end-to-end (browser
+  happy path), plus **scientific tests**: determinism, conservation of energy, known-answer neighborhoods,
+  convergence on synthetic data, benchmark-range checks.
+- Coverage gates: engine ≥ 90%, API ≥ 85%, critical web components ≥ 80% (enforced in CI once each exists).
+- Static quality: ruff, black, mypy (strict on engine core), ESLint, TypeScript strict.
+- Semantic versioning for the engine package, API (`/v1`), and web app; Conventional Commits; CHANGELOG; ADRs for every
+  consequential decision.
 
-## 6. Requirements traceability
+## 9. Extension points the MVP must preserve (do not build)
 
-Every FR/NFR in `requirements.md` carries a stable ID and lists the test
-file(s) that verify it. `test-plan.md` inverts the mapping (test → FRs).
-The implementing agent keeps both current; a requirement with no green test
-is "not done."
+Weather normalization (FR-ENG-13) using Kissock-style multivariate change-point models fitted per building or group on
+the AMY2018 loads and weather, **before** loads are driven by future, typical or observed weather · EV / heat-pump / efficiency / solar scenarios from ResStock/ComStock upgrade datasets (design hooks: FR-DATA-8, FR-ENG-12) ·
+submeters, virtual power plant and virtual net metering, aggregate point-of-interconnection meter · network as
+one-line diagram; capacity checks; power flow (PyPSA / pandapower **[verify]**) · DER sizing and dispatch; REopt/SAM
+input/output files; economics (PJM energy, capacity, ancillary) · **policy constraints** (e.g. a utility's maximum
+microgrid size, PJM resource limits) as checkable rules · campus multi-meter aggregation · SEED storage · additional
+states · Parquet export · full admin, billing, subscriptions · AWS hosting at scale.
 
----
+## 10. Success criteria (30 days)
 
-## 7. Success metrics / acceptance for v1
+**Minimum viable goal (MUST): a complete demo on the owner's machine**, orchestrated with Docker Compose.
+**Stretch goal (SHOULD): a public live link** with capped live computation, within the $100/month ceiling.
 
-- **A1** `pip install ./snlg && python -c "import microgrid.community_load.synthetic"` works; `pytest`
-  (engine) green from repo root with **no `PYTHONPATH` override**.
-- **A2** `docs/engine-reference.md` covers 100% of public `snlg` symbols;
-  reviewed by the owner.
-- **A3** `docker compose up` yields a browsable app at `http://localhost:3000`
-  and API docs at `http://localhost:8000/docs` within 90s on a clean
-  checkout.
-- **A4** UJ-1 (the core user journey, §3) completes end-to-end against a
-  **small fixture dataset** (≤5 buildings, `max_runs=6`) in CI in under
-  3 minutes.
-- **A5** Determinism golden test (FE-2) passes; re-running the same config
-  reproduces stored scalar metrics exactly.
-- **A6** Coverage gates met: engine ≥ 90% line, api ≥ 85%, web critical
-  components ≥ 80% (see `test-plan.md` §6).
-- **A7** A cancelled run reaches `cancelled` within 5s and uploads no
-  partial artifacts (or clearly marks them partial).
-- **A8** All Alembic migrations run forward and backward cleanly on an empty
-  DB.
+1. **Core demo (failure if missing):** from the web app, a Client defines a composition, runs it with progress and
+   convergence, and views all required charts and downloads CSVs, on real DC data on the owner's machine via
+   `docker compose up`.
+2. Calibration screen compares an uploaded CSV with synthetic output and shows the metrics.
+3. Three roles enforced; the Demo role is restricted to predefined compositions.
+4. Test suite and CI green; docs sufficient for a newcomer; determinism golden test passing.
+5. SHOULD: minimal map viewer; public repository (owner publishes on their own command).
+6. STRETCH: public live link serving the constrained Demo role (FR-PLAT-6), published only with owner approval.
 
----
+## 11. Assumptions, risks and open decisions
 
-## 8. Risks & mitigations
+**Assumptions:** owner has the DC data locally (size/completeness not yet confirmed — Open Item O1); owner reviews at sprint
+boundaries; cloud agents work on fixtures only unless data is made available.
 
-| Risk | Impact | Mitigation |
+| # | Risk | Mitigation |
 |---|---|---|
-| Real ResStock/ComStock data is large (GBs) and gated behind OEDI | Devs/CI can't run the full pipeline | Ship a tiny committed fixture dataset (`tests/fixtures/data/`) exercised by an `integration`-marked path; OEDI fetch is opt-in for real runs |
-| Engine determinism is fragile (`derive_run_rng` seed arithmetic, float ordering) | Results not reproducible → G5/A5 fail | FE-2 golden test first; if it fails, fix `rng.py` to use `SeedSequence.spawn` before building anything on top |
-| `snlg` not currently installable (tests need `PYTHONPATH=src`) | Blocks FE-1 and CI | First task in Phase 1; add `snlg/pyproject.toml`, `pip install -e`, `pythonpath` in pytest config |
-| Long ensembles exhaust worker memory (300 runs × 8760 × many buildings, `lru_cache` on parquet) | Worker OOM-killed mid-run | Stream per-run artifacts and release; cap `lru_cache`; document worker memory sizing; expose `max_runs` guardrail |
-| Two config schemas drift (Pydantic vs `microgrid.community_load.synthetic.config` dataclasses) | Validation says OK, engine rejects | Single source: generate/derive the Pydantic model from the dataclasses; contract test asserts round-trip parity |
-| Harvesting `feat/*` code pulls in the `microgrid_profiles` engine by accident | Re-forks the source of truth | Explicit allowlist in `implementation-plan.md` of which `feat/*` files may be copied (API/DB/compose/frontend only) |
-| Scope creep into auth/k8s | v1 slips | §2.2 non-goals are binding; defer with a note, don't build |
+| R1 | Scope far exceeds 30 days | Riskiest items first; week-2 checkpoint; map and tuning are the first to slip. |
+| R2 | Real data can't be used in the cloud | Fixtures; local-only integration tests marked and documented. |
+| R3 | Convergence definition is scientifically weak | Owner-approved criteria (O3); tests on synthetic ensembles. |
+| R4 | Untrusted numbers published | Visible caveat; calibration screen; benchmark checks; honest messaging (FR-WEB-8). |
+| R5 | Public link abused or costs exceed the $100/month ceiling | Locked demo role with hard caps, rate limits, kill switch; compact profile library (FR-DATA-9); static fallback (FR-PLAT-6). |
+| R6 | 30 GB disk exhausted | Raw Parquet outside the DB; image and cache budgets; ingestion reports disk use. |
+| R7 | Data licensing/attribution missed | Per-dataset license review before public release. |
+| R8 | Dormant/ignored config silently misleads | FR-ENG-3 (strict config) in Sprint 1. |
 
----
-
-## 9. Open questions (non-blocking; default in brackets)
-
-- OQ-1 Retention policy for old run artifacts? [keep all; add a manual
-  `DELETE /runs/{id}` that also purges MinIO objects]
-- OQ-2 Should the UI allow uploading a custom parquet dataset? [no in v1;
-  data is provisioned by `scripts/download_oedi.py`]
-- OQ-3 Progress transport: SSE vs WebSocket? [SSE — simpler, one-way is
-  enough; `frontend-spec.md` assumes SSE]
-- OQ-4 Multi-config batch runs (sweep)? [deferred to v1.1; data model
-  leaves room via nullable `runs.batch_id`]
-
----
-
-## 10. Definition of done (v1)
-
-All of §7 A1–A8 pass in CI; every FR in `requirements.md` maps to ≥1 green
-test; `docs/engine-reference.md`, `architecture.md`, `api-spec.md`,
-`data-model.md`, `frontend-spec.md`, `infrastructure.md` reviewed and merged;
-`implementation-plan.md` Phases 1–6 complete; owner walks UJ-1 successfully.
+**Open items (owner input needed):** O1 DC data size/completeness (parked) · O2 footprint source choice · O3 convergence
+criteria (approved provisionally) · O4 public repo license · O5 hosting: budget ceiling $100/month total; provider chosen by agent recommendation after local MVP · O6 week-2 rule if the date is at risk
+(default: owner decides at the checkpoint) · O7 confirm "CBEX" means CBECS · O8 name of the product.

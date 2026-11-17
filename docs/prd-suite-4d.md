@@ -1,3 +1,5 @@
+> **Pre-v2 draft (dated 2026-10-27), kept as background.** The current contract is [`PRD.md`](./PRD.md) (v2), which replaced this draft; statuses and test counts below are from that date.
+
 # Community Microgrid Planning Suite — PRD v2 (4D structure)
 
 **Owner:** Bill Eger · **Draft:** 2026-10-27 · **Status:** Draft. `[OPEN]` marks answers only the owner can supply;
@@ -84,7 +86,7 @@ Footprint sources and licenses `[OPEN]` (OSM and some open footprint datasets ca
 | 2 | Real-footprint pilot and validation against metered data; resolve baseline-config ambiguity | Next |
 | 3 | DER: solar (pvlib), storage, EV | Interfaces only |
 | 4 | Dispatch and economics | Not started |
-| 5 | Platform and map UI per `PRD.md` / `frontend-spec.md` | Specified, not built |
+| 5 | Platform and map UI per `PRD.md` (the v1 `frontend-spec.md` is archived) | Specified, not built |
 
 ### 3.5 Success metrics `[OPEN: set targets after Phase 2 baseline]`
 Time from boundary to first study; P50 error vs. metered; share of structures modeled vs. skipped; reproducibility pass rate.

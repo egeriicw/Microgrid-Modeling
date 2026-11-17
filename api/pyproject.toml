@@ -2,7 +2,7 @@
 name = "microgrid-api"
 version = "0.1.0"
 description = "SNLG platform service layer: FastAPI + RQ worker (depends on microgrid-planner)."
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -12,7 +12,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "redis>=5.0",
-    "rq>=1.16",
+    "celery>=5.4",
     "boto3>=1.42",
     "python-multipart>=0.0.9",
     "sse-starlette>=2.1",
@@ -20,6 +20,16 @@ dependencies = [
     # engine (path dependency; see [tool.uv.sources] or install -e ..)
     "microgrid-planner",
 ]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+microgrid_api = ["py.typed", "migrations/script.py.mako"]
 
 [project.optional-dependencies]
 dev = [
@@ -29,14 +39,49 @@ dev = [
     "fakeredis>=2.23",
     "moto[s3]>=5.0",
     "freezegun>=1.5",
+    "anyio>=4.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "types-pyyaml",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = [
-    "integration: exercises the real microgrid.community_load.synthetic engine on fixture data",
+    "integration: needs a real service (set MICROGRID_TEST_DATABASE_URL for Postgres tests)",
 ]
 
-# When the engine lives at .. (repo root pyproject):
-# [tool.uv.sources]
-# microgrid-planner = { path = "..", editable = true }
+[tool.uv.sources]
+microgrid-planner = { path = "..", editable = true }
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are meant to be used as argument defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
+[tool.ruff.lint.isort]
+# A stray api/alembic directory (old migration location) must not make ruff treat the library as first-party.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The engine (microgrid) and celery ship no py.typed marker; treat them as untyped rather than failing.
+module = ["microgrid", "microgrid.*", "celery", "celery.*"]
+ignore_missing_imports = true

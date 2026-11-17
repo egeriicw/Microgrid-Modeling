@@ -1,0 +1,31 @@
+# Build context hygiene. The owner's data/ (about 10 GB) must NEVER be sent to the Docker daemon.
+data
+**/data
+.git
+.github
+.venv
+**/.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+.ipynb_checkpoints
+notebooks
+web/node_modules
+**/node_modules
+# secrets and local config
+.env
+**/.env
+deploy/.env
+# bulky or irrelevant data formats
+*.parquet
+*.csv
+*.xlsx
+*.zip
+docs
+tests
