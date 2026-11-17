@@ -293,10 +293,11 @@ def test_sse_ownership_and_auth(api, tiny_config):
 
 
 def test_client_with_filters_forbidden_admin_allowed(api, tiny_config):
+    # W1-FILTERS: filters arrive as exposed-attribute selections (never raw columns); the flag gates them.
     cfg = client_config(tiny_config)
-    cfg["archetype_filters"]["resstock"]["mf_small"]["attributes"] = [{"column": "x", "op": "not_null"}]
-    r = _post(api, cfg, who="alice")
+    sel = {"mf_small": [{"attribute": "vintage", "op": "in", "values": ["1960s", "1980s"]}]}
+    r = _post(api, cfg, who="alice", filter_selections=sel)
     assert r.status_code == 403
     assert "filters.use" in r.json()["detail"]
     assert api.app.state.enqueued == []
-    assert _post(api, cfg, who="admin").status_code == 202
+    assert _post(api, cfg, who="admin", filter_selections=sel).status_code == 202
