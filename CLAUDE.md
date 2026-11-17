@@ -28,6 +28,10 @@ uv run --extra dev ruff check src tests            # lint
 uv run --extra dev ruff format --check src tests   # format (run without --check to fix)
 uv run --extra dev mypy                            # types
 ```
+Web checks (run from the repo root; `npm --prefix web ci` first in a fresh container):
+```bash
+npm --prefix web run typecheck && npm --prefix web run lint && npm --prefix web test && npm --prefix web run build
+```
 CI (`.github/workflows/ci.yml`) runs the same and blocks on failure.
 
 ## Non-negotiable rules
@@ -51,10 +55,17 @@ DC (the owner's local copy may be older; unconfirmed).
 
 ## Where things live
 `src/microgrid/` library (core, geo, community_load{registry,categorize,sources,synthetic}, der/dispatch/economics
-stubs, study) · `tests/` · `configs/scenarios/` · `docs/` (PRD, architecture-and-stack, sprint-plan, agent-team,
-decision-log, traceability-matrix, sprints/, adr/, reference/) · `api/` and `web/` are scaffolds (placeholder tests only).
+stubs, study, datasets) · `tests/` · `configs/scenarios/` · `docs/` (PRD, architecture-and-stack, sprint-plan, agent-team,
+agent-deployment-plan, decision-log, traceability-matrix, sprints/, adr/, reference/, runbooks/; `archive/` is history) ·
+`api/` (FastAPI service + Celery worker, `api/src/microgrid_api`) · `web/` (Vite + React + MUI + ECharts; runs on a mock
+API client until Wave 1) · `deploy/` (Docker Compose).
 
 ## Working with sub-agents (lessons learned)
+- **`docs/agent-deployment-plan.md` is the operating plan** (waves, roster, write scopes). Section 4.3 is binding:
+  only the lead and `architect` run on the top model; every other role runs on the model in its agent file. Before each
+  wave the lead rates every story critical / standard / routine, which sets the builder's model and the review depth;
+  the lead reads the full diff of critical work itself. Reviewers move up a model only to clear a review queue, one
+  story at a time, logged in the wave report.
 - Agent worktrees (`isolation: "worktree"`) start from `main`, NOT from the working branch. Begin every brief with
   `git merge --ff-only <integration or working branch>` and ask the agent to confirm `CLAUDE.md` exists.
 - Pattern that worked (Wave A): build in parallel worktrees (disjoint directories) -> independent `qa-engineer` review of each

@@ -28,11 +28,15 @@ records, the decision log, the traceability matrix, the agent definitions and CI
 | Engine and library tests | 944 passed, 3 skipped |
 | API tests | 231 passed, 3 skipped, 27 expected failures (placeholders for later stories) |
 | Lint (ruff) and types (mypy, 51 files) | clean |
-| Web | 97 tests reported by the last session; **not re-run today** |
+| Web | 97 tests pass; typecheck, lint and build clean (re-run 2026-11-17) |
 
 ### 1.4 What has never been verified anywhere
-1. **GitHub CI has never run on this work.** The `api`, `web` and `compose-smoke` jobs are still switched off (`if: false`).
-2. **Docker images** have never been built or started (no Docker in the cloud sessions).
+1. **GitHub CI covers only part of this work.** *Corrected 2026-11-17:* the hand-off said CI had never been observed,
+   and the first draft of this plan repeated that. In fact it has run 42 times and passes: lint, types, engine tests and
+   the compose file check. The `api`, `web` and `compose-smoke` jobs are switched off (`if: false`), so the API and web
+   suites have never run on GitHub.
+2. **Docker images** have never been started. The API image build step reports success on GitHub, but it is marked
+   "continue on error", so that tick proves nothing until the flag is removed (Wave 0).
 3. **A real Redis broker with a live Celery worker** has never run; the compose `worker` service is still a placeholder.
 4. **The owner's real DC data** has never been touched by this code. Every test uses synthetic fixtures.
 5. **The web app has never talked to the real API**; it runs on a mock client.
@@ -260,7 +264,7 @@ Dates assume the owner actions in 3.1 happen by 2026-11-17. Each wave lists buil
 ### Wave 0: One trunk, real CI (Nov 16 to 17)
 | Story | Role |
 |---|---|
-| Open PR for the current line into `main`; watch the first CI run; fix what it finds | Lead, `devops-engineer` |
+| Open PR for the current line into `main`; watch the first full CI run (API and web jobs on); fix what it finds | Lead, `devops-engineer` |
 | Enable the `api` and `web` CI jobs (Node 22, `npm ci`, typecheck, lint, test, build); make the image build blocking | `devops-engineer` |
 | Close PRs 2 to 8 as superseded (if approved); move v1 specs (`api-spec`, `data-model`, `frontend-spec`, `infrastructure`, `implementation-plan`, `test-plan`, `requirements`) to `docs/archive/` | Lead, `tech-writer` |
 | Correct the traceability matrix; add the two agent files and the roster and model changes in 4.4 | `records-keeper`, lead |
@@ -377,7 +381,7 @@ Carried from the hand-off and the Sprint 2 backlog, plus two new ones.
 ## 10. Risks
 | Risk | Signal | Response |
 |---|---|---|
-| First CI run and first Docker build expose many failures at once | Wave 0 takes more than two days | Fix in Wave 0 before any feature work; this is why it is first |
+| First API, web and Docker runs on GitHub expose many failures at once | Wave 0 takes more than two days | Fix in Wave 0 before any feature work; this is why it is first |
 | Real data differs from the synthetic fixtures (column names, partitions, statuses) | Inspector report disagrees with catalog | Real-data track starts on day one; fixtures updated to match the real layout |
 | Owner review time is the bottleneck | Decisions older than two days | One batch per wave; every question has a default the team proceeds on if it is reversible |
 | Parallel agents disagree on names or contracts | QA cross-branch mismatch findings | OpenAPI file is the contract; generated client; QA mismatch hunt stays mandatory |
