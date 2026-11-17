@@ -20,6 +20,7 @@ from microgrid.community_load.synthetic.config import ScenarioConfig, config_fro
 from microgrid.community_load.synthetic.convergence import ConvergenceCheck
 from microgrid.community_load.synthetic.pool_preview import preview_pools
 from microgrid.community_load.synthetic.results import SCHEMA_VERSION, ResultsModel, build_results
+from microgrid.community_load.synthetic.temperature import build_temperature, check_declared_source
 
 Stage = Literal["building_pool", "running", "checking_convergence", "finished"]
 
@@ -142,6 +143,7 @@ def run_scenario(
                 "call community_load.resolve_dataset_paths first (the engine does not guess locations)"
             )
 
+    check_declared_source(cfg)  # a declared weather file must exist even if no run turns out feasible
     max_runs = cfg.ensemble.max_runs
 
     latest: dict[str, Any] | None = None
@@ -196,7 +198,8 @@ def run_scenario(
         engine_version=__version__,
         config_snapshot=snapshot,
         pool_summary=pool_summary,
-        results=build_results(ens),
+        # Temperature is read after the ensemble, from the files only; it never feeds back into the load numbers.
+        results=build_results(ens, build_temperature(cfg, ens.runs, dirs)),
         datasets={
             product: {"dataset_id": ds_id, "load_basis": getattr(cfg.data, f"{product}_load_basis")}
             for product in ("resstock", "comstock")

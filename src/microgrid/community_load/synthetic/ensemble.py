@@ -19,11 +19,13 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from microgrid.community_load.synthetic import aggregation, feasibility, perturbation
 from microgrid.community_load.synthetic._types import (
     ArchetypePool,
+    BuildingSelection,
     EnsembleResult,
     NeighborhoodResult,
     PerturbedProfile,
@@ -32,6 +34,7 @@ from microgrid.community_load.synthetic.composition import sample_buildings, sam
 from microgrid.community_load.synthetic.config import ConvergenceConfig, ScenarioConfig
 from microgrid.community_load.synthetic.convergence import ConvergenceCheck, ConvergenceTracker
 from microgrid.community_load.synthetic.loader import load_and_scale_profile
+from microgrid.community_load.synthetic.results import ENERGY_RTOL
 from microgrid.community_load.synthetic.rng import (
     RNGBundle,
     derive_run_rng,
@@ -46,6 +49,96 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Single-run helper
 # ---------------------------------------------------------------------------
+
+
+def _building_type(sel: BuildingSelection, pool: ArchetypePool) -> str:
+    """ResStock building type (for multifamily unit scaling); "" for ComStock or an unknown id."""
+    if sel.source != "resstock":
+        return ""
+    btype_match = pool.resstock_chars.loc[
+        pool.resstock_chars["bldg_id"] == sel.bldg_id,
+        "in.geometry_building_type_height",
+    ].values
+    return btype_match[0] if len(btype_match) > 0 else ""
+
+
+def _load_selection(
+    sel: BuildingSelection, pool: ArchetypePool, cfg: ScenarioConfig, data_dirs: dict[str, Path]
+) -> PerturbedProfile:
+    """Load one sampled building, multifamily-scaled, before perturbation."""
+    return load_and_scale_profile(
+        sel,
+        data_dirs,
+        cfg,
+        resstock_chars=pool.resstock_chars,
+        building_type=_building_type(sel, pool),
+    )
+
+
+def building_profiles(
+    run: NeighborhoodResult, pool: ArchetypePool, cfg: ScenarioConfig, data_dirs: dict[str, Path]
+) -> list[PerturbedProfile]:
+    """Per-building hourly and 15-minute kWh of one run (FR-ENG-13 b), in the order of ``run.selections``.
+
+    Rebuilt from the files with the run's own loading and multifamily scaling, then the perturbation recorded in
+    ``run.perturbation_logs`` is replayed (no random numbers are drawn), so the buildings sum to the run's totals.
+    Use the same ``pool``, ``cfg`` and ``data_dirs`` the run used. Only temporal shifts can be replayed; a log
+    with end-use factors (which the ensemble does not apply today) raises NotImplementedError.
+    """
+    if len(run.perturbation_logs) != len(run.selections):
+        raise ValueError(
+            f"run {run.run_index}: {len(run.perturbation_logs)} perturbation logs for {len(run.selections)} "
+            "selections; cannot match buildings to their recorded perturbation"
+        )
+    out: list[PerturbedProfile] = []
+    for sel, log in zip(run.selections, run.perturbation_logs, strict=True):
+        if "end_use_factors" in log:
+            raise NotImplementedError(
+                f"run {run.run_index}, building {sel.source}/{sel.bldg_id}: replaying end_use_factors is not "
+                "supported (the ensemble does not apply them today)"
+            )
+        p = _load_selection(sel, pool, cfg, data_dirs)
+        shift = int(log.get("shift_hours", 0))
+        if shift:
+            p.hourly_kwh = perturbation.apply_temporal_shift(p.hourly_kwh, shift)
+            if p.kwh_15min is not None:
+                p.kwh_15min = perturbation.apply_temporal_shift(p.kwh_15min, 4 * shift)
+            p.perturbed_annual_kwh = float(p.hourly_kwh.sum())
+        p.perturbation_log = dict(log)
+        out.append(p)
+    _check_buildings_match_run(run, out)
+    return out
+
+
+def _check_buildings_match_run(run: NeighborhoodResult, profiles: list[PerturbedProfile]) -> None:
+    """Rebuilt buildings must sum to the run's own totals; otherwise the inputs were not the run's (fail loudly)."""
+    if not profiles:
+        return
+    hint = "; pass the same pool, cfg and data_dirs the run used"
+    total_h = aggregation.aggregate_profiles(profiles)
+    if not _close(total_h, run.total_profile):
+        raise ValueError(
+            f"run {run.run_index}: rebuilt building profiles do not sum to the run's hourly total "
+            f"(relative tolerance {ENERGY_RTOL:g}){hint}"
+        )
+    for label, source, expected in (
+        ("residential", "resstock", run.residential_profile_15min),
+        ("commercial", "comstock", run.commercial_profile_15min),
+    ):
+        if expected is None:
+            continue
+        got = aggregation.aggregate_profiles_15min([p for p in profiles if p.source == source])
+        if got is None or not _close(got, expected):
+            raise ValueError(
+                f"run {run.run_index}: rebuilt building profiles do not sum to the run's 15-minute {label} total "
+                f"(relative tolerance {ENERGY_RTOL:g}){hint}"
+            )
+
+
+def _close(got: pd.Series, expected: pd.Series) -> bool:
+    if len(got) != len(expected) or (len(got) and not got.index.equals(expected.index)):
+        return False
+    return bool(np.allclose(got.to_numpy(dtype=float), expected.to_numpy(dtype=float), rtol=ENERGY_RTOL, atol=0.0))
 
 
 def _run_single(
@@ -74,23 +167,7 @@ def _run_single(
     perturbation_logs: list[dict] = []
 
     for sel in selections:
-        # Resolve building type for MF unit scaling
-        if sel.source == "resstock":
-            btype_match = pool.resstock_chars.loc[
-                pool.resstock_chars["bldg_id"] == sel.bldg_id,
-                "in.geometry_building_type_height",
-            ].values
-            building_type = btype_match[0] if len(btype_match) > 0 else ""
-        else:
-            building_type = ""
-
-        loaded = load_and_scale_profile(
-            sel,
-            data_dirs,
-            cfg,
-            resstock_chars=pool.resstock_chars,
-            building_type=building_type,
-        )
+        loaded = _load_selection(sel, pool, cfg, data_dirs)
 
         perturbed = perturbation.perturb_building(loaded, cfg.perturbation, run_rng.perturbation)
         profiles.append(perturbed)
