@@ -181,6 +181,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   be queried at building, class and total level. No metering behavior is built. Design must allow later: submeters under
   a combined meter, a campus with many meters, meters hosting solar/storage (virtual power plant / virtual net
   metering), and an aggregate meter at the distribution point of interconnection.
+  *Owner decision 2026-11-19:* deferred past the 30-day MVP (see `decision-log.md`).
 - **FR-DATA-4 (MUST) Storage.** PostgreSQL with PostGIS and TimescaleDB (Docker). Interval load results and uploaded
   calibration series in hypertables; geometry in PostGIS; configs, runs, users in plain tables. Alembic migrations.
   *Owner decision 2026-11-17 (ADR-004):* for the MVP, interval load results are stored as files (one results document
@@ -197,6 +198,7 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
   commonly filtered columns) so filtering and pool previews are fast and queryable from the API. Raw 15-minute Parquet
   stays on disk. AC: loading is repeatable from the manifest; a pool preview over DC returns in well under a second;
   column names and value meanings are documented in a generated data dictionary shown in the UI.
+  *Owner decision 2026-11-19:* deferred past the 30-day MVP (see `decision-log.md`).
 - **FR-DATA-8 (MUST) Dataset identity and catalog.** A "dataset" is identified by **(product ResStock|ComStock, release,
   weather version e.g. TMY3|AMY2018, upgrade/scenario id, state)**. The system keeps a **dataset catalog** (database
   table plus data dictionary per release) recording for each: location on disk, manifest hash, size, license, and a
@@ -233,11 +235,13 @@ Each requirement has an ID and **acceptance criteria (AC)** that an agent can tu
 - **FR-WEB-6 (MUST) Calibration screen.** See §6.4.
 - **FR-WEB-7 (SHOULD) Minimal map viewer.** A DC map showing building footprints and a drawn/selected area producing
   a composition's fixed counts. **Demoted: not a failure condition if it slips.** Full GIS workspace is LATER.
+  *Owner decision 2026-11-19 (Day-14 checkpoint):* cut from the 30-day MVP.
 - **FR-WEB-8 (MUST) Accuracy caveat.** Every results view shows: *methodology demonstration with benchmark checks — not
   validated for engineering or investment decisions*, plus the calibration status of the run.
 - **FR-WEB-9 (SHOULD) Admin console.** Manage demo compositions and the demo account's allowed options, and **configure
   which building attributes are exposed as filters** (FR-ENG-11). If the screen slips, the same configuration is edited
   through the API or a versioned config file; the underlying configuration (not the screen) is MUST.
+  *Owner decision 2026-11-19 (Day-14 checkpoint):* cut from the 30-day MVP.
 
 ### 6.4 Calibration and validation — `CAL`
 - **FR-CAL-1 (MUST) Upload.** Client/Admin uploads a CSV (timestamp + kW, optional building class and name); the system

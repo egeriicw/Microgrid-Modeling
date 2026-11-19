@@ -15,10 +15,11 @@
   API; temperature on results when a source is configured; Docker Compose stack with a real worker.
 - Next: Day-14 checkpoint decisions (deployment plan section 8), then Wave 2. First Wave 2 story: a browser test
   against the real containers (Playwright in CI). Then charts on real results, CSV downloads, results-model gaps.
-- Waiting on the owner (all asked, none answered yet): Wave 1 pull request; defer the characteristics table and
-  meter entity (FR-DATA-7, FR-DATA-3)?; fixed-count runs report convergence as "not checked"?; default convergence
-  rule; fix the engine to reject fixed counts above the total?; may Demo see data file names?; the Mac checks (data
-  inspector, Docker; an older `deploy/.env` needs an `API_KEYS` line, runbook top); deployment plan section 9.
+- Owner decisions 2026-11-19: PR 12 opened for Wave 1 (merge needs a separate yes); checkpoint cuts accepted (map,
+  admin console screen cut; public demo and profile library deferred); characteristics table and meter entity
+  deferred; engine count-rule fix approved; Demo may see data file names.
+- Still open with the owner: convergence defaults (explanation given 2026-11-19, review pending); merge of PR 12; the
+  Mac checks (data inspector, Docker; an older `deploy/.env` needs an `API_KEYS` line, runbook top).
 - Usage limits: run at most three or four Opus agents at once. Sub-agents cannot commit; the lead commits their work
   after re-running the checks. Worktrees live under `.claude/worktrees/` (git-ignored); all are removed.
 
