@@ -5,6 +5,11 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Decided, not yet implemented (owner, 2026-11-19)
+- Convergence: `prd_default` becomes the default rule when convergence is on; fixed-count runs will report convergence as "not checked". **[numbers change]** for adaptive runs that name no rule, once implemented.
+- The engine will refuse fixed counts above `total_buildings` and all-fixed counts that do not equal it.
+- Cut from the MVP: map viewer, admin console screen. Deferred: characteristics table in the database, meter entity, public live demo, compact profile library.
+
 ### Added (Wave 1 batch 2, 2026-11-19)
 - API: `GET /api/v1/me`, `GET /api/v1/building-types`; `POST /runs` accepts `composition`; run detail `data_files`; `/ready` `checks.data_files`; settings `MICROGRID_RESSTOCK_CHARS_FILE`, `MICROGRID_COMSTOCK_CHARS_FILE`, `MICROGRID_TEMPERATURE_*`.
 - Web: composition form on the real API, plain-language run and results screens, data-used panel, temperature overlay, per-field errors.

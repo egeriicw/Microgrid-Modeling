@@ -114,3 +114,16 @@ options for a filter form · saved compositions (also closes QA D1 from batch 1)
 ### Still unverified
 The owner's real data (file names, columns, time convention, first-read cost) · macOS and arm64 · a browser against
 the real containers · an adaptive run that actually converges, seen in the app · Firefox, Safari, screen readers.
+
+---
+
+## Close of session (2026-11-19)
+- Owner decisions today: Day-14 checkpoint GO with cuts; characteristics table and meter entity deferred; engine count
+  rule approved; convergence default `prd_default` and "not checked" for fixed-count runs approved; PR 12 opened and
+  merged into `main` on the owner's instruction.
+- Four checks at hand-off (lead, working branch `588c2b9` plus records): root 1,219 passed, 3 skipped, 2 expected
+  failures; ruff check clean; ruff format clean (116 files); mypy clean (53 files). API 686 passed and web 443 passed
+  were measured earlier today on `b2a9b40` and not re-run at hand-off (no code changed since).
+- In progress when the session ended: ENG-COUNTS (engine rejects impossible fixed counts). The builder's work was in a
+  local worktree and is NOT in the repository; the next session restarts it from the brief in the hand-off document.
+- Not started: ENG-CONV (convergence defaults), all of Wave 2.
