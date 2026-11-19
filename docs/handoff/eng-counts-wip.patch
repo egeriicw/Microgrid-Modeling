@@ -1,0 +1,294 @@
+diff --git a/src/microgrid/community_load/synthetic/config.py b/src/microgrid/community_load/synthetic/config.py
+index 07ae00b..d8c3da4 100644
+--- a/src/microgrid/community_load/synthetic/config.py
++++ b/src/microgrid/community_load/synthetic/config.py
+@@ -806,8 +806,26 @@ def validate_config(cfg: ScenarioConfig) -> None:
+                 f"{where}: need 0 <= min_fraction <= max_fraction <= 1, got {c.min_fraction}..{c.max_fraction}"
+             )
+ 
+-    # Composition bounds feasibility
++    # Composition counts (FR-ENG-2): fixed counts are taken first and the ranged categories share the remainder,
++    # so the sampled neighbourhood has exactly total_buildings buildings only if the fixed counts do not exceed the
++    # total and, with no ranged category, add up to it. Same rule as the API's check_category_counts, except that an
++    # empty category list is still accepted here (the default ScenarioConfig has none; see ENG-COUNTS report).
+     cats = cfg.composition.categories
++    total = cfg.composition.total_buildings
++    fixed_sum = sum(c.fixed_count for c in cats.values() if c.fixed_count is not None)
++    has_ranged = any(c.fixed_count is None for c in cats.values())
++    if cats and fixed_sum > total:  # ranged categories would get 0 and the fixed ones oversample
++        errors.append(
++            f"composition.categories: the fixed_count values add up to {fixed_sum}, more than "
++            f"composition.total_buildings ({total})"
++        )
++    elif cats and not has_ranged and fixed_sum != total:
++        errors.append(
++            f"composition.categories: every category has a fixed_count and they add up to {fixed_sum}, not "
++            f"composition.total_buildings ({total}); make them add up or give at least one category a fraction range"
++        )
++
++    # Composition bounds feasibility
+     # An all-fixed composition has no stochastic bounds to check.
+     if any(c.fixed_count is None for c in cats.values()):
+         p_min_sum = sum(c.min_fraction for c in cats.values() if c.fixed_count is None)
+diff --git a/tests/test_composition_counts.py b/tests/test_composition_counts.py
+new file mode 100644
+index 0000000..0ae239e
+--- /dev/null
++++ b/tests/test_composition_counts.py
+@@ -0,0 +1,187 @@
++"""ENG-COUNTS: the engine's count rules for fixed counts vs ``total_buildings`` (FR-ENG-2, FR-ENG-3).
++
++Rule (identical to the API's ``check_category_counts``): fixed counts are taken first and the ranged categories share
++the remainder by fraction, so
++  * the fixed counts may not add up to more than ``total_buildings``;
++  * with no ranged category, the fixed counts must add up to exactly ``total_buildings`` (this includes an empty
++    category list, which would sample nothing);
++  * the ranged fractions must be able to sum to 1: sum(min) <= 1 + 1e-9 and sum(max) >= 1 - 1e-9 (unchanged).
++Every configuration the engine accepts samples exactly ``total_buildings`` buildings.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++import numpy as np
++import pytest
++
++from microgrid.community_load.synthetic.composition import sample_composition
++from microgrid.community_load.synthetic.config import config_from_dict
++
++
++def _cfg(total: int, categories: dict[str, dict[str, Any]], method: str = "dirichlet") -> dict[str, Any]:
++    return {
++        "scenario": {"name": "counts"},
++        "composition": {"total_buildings": total, "method": method, "categories": categories},
++        "ensemble": {"mode": "fixed", "max_runs": 2},
++    }
++
++
++def _fixed(n: int, source: str = "resstock") -> dict[str, Any]:
++    return {"fixed_count": n, "source": source}
++
++
++def _ranged(lo: float, hi: float, source: str = "resstock") -> dict[str, Any]:
++    return {"min_fraction": lo, "max_fraction": hi, "source": source}
++
++
++def _samples(raw: dict[str, Any], seeds: range = range(25)) -> list[dict[str, int]]:
++    cfg = config_from_dict(raw, source="<test>")
++    return [dict(sample_composition(None, cfg, np.random.default_rng(s)).counts) for s in seeds]  # type: ignore[arg-type]
++
++
++# --- refused ---------------------------------------------------------------------------------------------------------
++
++
++def test_fixed_counts_above_total_refused_with_the_numbers():
++    raw = _cfg(4, {"a": _fixed(6), "b": _ranged(0.0, 1.0)})
++    with pytest.raises(ValueError) as exc:
++        config_from_dict(raw, source="<test>")
++    msg = str(exc.value)
++    assert "add up to 6" in msg and "composition.total_buildings (4)" in msg, msg
++
++
++def test_fixed_counts_above_total_refused_when_split_over_categories():
++    raw = _cfg(4, {"a": _fixed(3), "b": _fixed(2), "c": _ranged(0.0, 1.0)})
++    with pytest.raises(ValueError, match=r"add up to 5, more than composition\.total_buildings \(4\)"):
++        config_from_dict(raw, source="<test>")
++
++
++@pytest.mark.parametrize("counts", [(1, 1), (0, 0), (0, 3)], ids=["short", "all zero", "one zero"])
++def test_all_fixed_counts_below_total_refused(counts):
++    raw = _cfg(4, {"a": _fixed(counts[0]), "b": _fixed(counts[1])})
++    with pytest.raises(
++        ValueError,
++        match=rf"every category has a fixed_count and they add up to {sum(counts)}, not "
++        r"composition\.total_buildings \(4\)",
++    ):
++        config_from_dict(raw, source="<test>")
++
++
++def test_all_fixed_over_total_reports_one_problem_not_two():
++    """Above the total with no ranged category: one clear message (the 'more than' one), not a duplicate."""
++    raw = _cfg(4, {"a": _fixed(3), "b": _fixed(2)})
++    with pytest.raises(ValueError) as exc:
++        config_from_dict(raw, source="<test>")
++    msg = str(exc.value)
++    assert "add up to 5, more than composition.total_buildings (4)" in msg and msg.count("total_buildings") == 1, msg
++
++
++def test_no_categories_is_still_accepted_by_the_parser():
++    """Deliberately NOT covered by the ENG-COUNTS rule (open question for the lead): the default ScenarioConfig has no
++    categories and many callers rely on it parsing. A real run with no categories fails later, loudly, because it
++    has no buildings to aggregate. The API refuses it at run creation. Pinned so a change is deliberate."""
++    cfg = config_from_dict(_cfg(4, {}), source="<test>")
++    assert cfg.composition.categories == {}
++
++
++def test_message_is_in_the_validation_error_list_with_the_source():
++    raw = _cfg(4, {"a": _fixed(6), "b": _ranged(0.0, 1.0)})
++    with pytest.raises(ValueError) as exc:
++        config_from_dict(raw, source="scenario.yaml")
++    assert str(exc.value).startswith("scenario.yaml: ScenarioConfig validation failed:")
++
++
++# --- accepted, and the sampled size is exactly the total ------------------------------------------------------------
++
++
++@pytest.mark.parametrize("method", ["dirichlet", "uniform_renorm"])
++def test_fixed_counts_equal_to_total_leave_ranged_categories_at_zero(method):
++    raw = _cfg(5, {"a": _fixed(3), "b": _fixed(2), "c": _ranged(0.0, 1.0)}, method)
++    for counts in _samples(raw):
++        assert counts == {"a": 3, "b": 2, "c": 0}
++
++
++def test_ranged_bounds_still_checked_when_fixed_counts_fill_the_total():
++    """Unchanged behaviour, same as the API: the ranged bounds must still be feasible."""
++    raw = _cfg(5, {"a": _fixed(5), "c": _ranged(0.0, 0.4)})
++    with pytest.raises(ValueError, match="Sum of max_fraction"):
++        config_from_dict(raw, source="<test>")
++
++
++def test_fixed_count_of_zero_with_ranged_categories():
++    raw = _cfg(6, {"a": _fixed(0), "b": _ranged(0.0, 1.0), "c": _ranged(0.0, 1.0)})
++    for counts in _samples(raw):
++        assert counts["a"] == 0 and sum(counts.values()) == 6
++
++
++def test_all_fixed_with_a_zero_entry_summing_to_total():
++    raw = _cfg(4, {"a": _fixed(4), "b": _fixed(0)})
++    assert _samples(raw, range(3)) == [{"a": 4, "b": 0}] * 3
++
++
++@pytest.mark.parametrize(
++    "categories",
++    [
++        {"a": _ranged(0.0, 1.0), "b": _ranged(0.0, 1.0)},
++        {"a": _fixed(1), "b": _ranged(0.0, 1.0)},
++        {"a": _fixed(0), "b": _ranged(0.0, 1.0)},
++        {"a": _fixed(1), "b": _fixed(0)},
++    ],
++    ids=["all ranged", "fixed fills it", "fixed zero", "all fixed"],
++)
++def test_total_of_one(categories):
++    for counts in _samples(_cfg(1, categories)):
++        assert sum(counts.values()) == 1
++
++
++@pytest.mark.parametrize("method", ["dirichlet", "uniform_renorm"])
++@pytest.mark.parametrize("total", [1, 2, 7, 50])
++def test_every_accepted_hybrid_samples_exactly_the_total(method, total):
++    fixed = total // 3
++    raw = _cfg(total, {"a": _fixed(fixed), "b": _ranged(0.2, 0.8), "c": _ranged(0.1, 0.9)}, method)
++    for counts in _samples(raw):
++        assert counts["a"] == fixed and sum(counts.values()) == total
++
++
++# --- fraction-sum tolerance (unchanged; mirrors the API's 1e-9) -----------------------------------------------------
++
++
++def test_fraction_sum_within_float_noise_accepted():
++    """0.1 + 0.2 + 0.7 is 1.0000000000000002 in floats."""
++    raw = _cfg(10, {"a": _ranged(0.1, 1.0), "b": _ranged(0.2, 1.0), "c": _ranged(0.7, 1.0)})
++    for counts in _samples(raw):
++        assert sum(counts.values()) == 10
++
++
++def test_min_fraction_sum_above_one_refused():
++    raw = _cfg(10, {"a": _ranged(0.5, 1.0), "b": _ranged(0.500001, 1.0)})
++    with pytest.raises(ValueError, match="Sum of min_fraction"):
++        config_from_dict(raw, source="<test>")
++
++
++def test_max_fraction_sum_below_one_refused():
++    raw = _cfg(10, {"a": _ranged(0.0, 0.5), "b": _ranged(0.0, 0.499999)})
++    with pytest.raises(ValueError, match="Sum of max_fraction"):
++        config_from_dict(raw, source="<test>")
++
++
++def test_fraction_tolerance_boundary_is_1e9():
++    ok = _cfg(10, {"a": _ranged(0.5, 1.0), "b": _ranged(0.5 + 5e-10, 1.0)})
++    config_from_dict(ok, source="<test>")
++    bad = _cfg(10, {"a": _ranged(0.5, 1.0), "b": _ranged(0.5 + 2e-9, 1.0)})
++    with pytest.raises(ValueError, match="Sum of min_fraction"):
++        config_from_dict(bad, source="<test>")
++
++
++# --- a category with both a fixed count and fractions (current behaviour, pinned) -----------------------------------
++
++
++def test_fixed_count_wins_and_its_fractions_are_ignored():
++    """When fixed_count is set the category's fractions are neither validated nor used, in the engine and the API
++    alike (``config_to_dict`` writes the default fractions next to a fixed count, so a snapshot carries both).
++    Pinned here so a change is deliberate; see the ENG-COUNTS report."""
++    raw = _cfg(10, {"a": {"fixed_count": 2, "min_fraction": 0.9, "max_fraction": 0.1}, "b": _ranged(0.0, 1.0)})
++    for counts in _samples(raw):
++        assert counts == {"a": 2, "b": 8}
+diff --git a/tests/test_qa_w1_compose_engine_counts.py b/tests/test_qa_w1_compose_engine_counts.py
+index c642fcc..2af9b06 100644
+--- a/tests/test_qa_w1_compose_engine_counts.py
++++ b/tests/test_qa_w1_compose_engine_counts.py
+@@ -1,19 +1,18 @@
+ """QA (W1-COMPOSE review): engine count rules for fixed counts vs ``total_buildings`` (FR-ENG-2, FR-ENG-3).
+ 
+ The API's composition path refuses fixed counts above the total and all-fixed counts that do not add up to the
+-total; the engine's own parser does not. These are library defects for the engine role, recorded strictly.
++total. Before ENG-COUNTS the engine's own parser accepted both and then sampled a neighbourhood of the wrong size
++(fixed counts kept as given, ranged categories set to 0, ``total_buildings`` ignored). The engine now refuses both
++with the same rule as the API; the former "evidence" test is turned into a check that the sampler is never reached
++with such a configuration.
+ """
+ 
+ from __future__ import annotations
+ 
+ from typing import Any
+ 
+-import numpy as np
+-import pandas as pd
+ import pytest
+ 
+-from microgrid.community_load.synthetic._types import ArchetypePool
+-from microgrid.community_load.synthetic.composition import sample_composition
+ from microgrid.community_load.synthetic.config import config_from_dict
+ 
+ 
+@@ -32,35 +31,19 @@ OVER_TOTAL = {
+ ALL_FIXED_SHORT = {"a": {"fixed_count": 1, "source": "resstock"}, "b": {"fixed_count": 1, "source": "resstock"}}
+ 
+ 
+-def _pool() -> ArchetypePool:
+-    return ArchetypePool(residential={}, commercial={}, resstock_chars=pd.DataFrame(), comstock_chars=pd.DataFrame())
+-
+-
+ @pytest.mark.parametrize("categories", [OVER_TOTAL, ALL_FIXED_SHORT], ids=["fixed above total", "all fixed short"])
+-def test_engine_today_samples_a_neighbourhood_of_the_wrong_size(categories):
+-    """Evidence: the parser accepts these and sample_composition returns counts that do not sum to the total."""
+-    cfg = config_from_dict(_cfg(4, categories), source="<qa>")
+-    counts = sample_composition(_pool(), cfg, np.random.default_rng(0)).counts
+-    assert sum(counts.values()) != 4, counts
++def test_engine_no_longer_accepts_a_neighbourhood_of_the_wrong_size(categories):
++    """Was evidence of the defect (the parser accepted these and sample_composition returned 6 or 2 buildings for a
++    total of 4). Now the configuration never reaches the sampler."""
++    with pytest.raises(ValueError, match="total_buildings"):
++        config_from_dict(_cfg(4, categories), source="<qa>")
+ 
+ 
+-@pytest.mark.xfail(
+-    strict=True,
+-    reason="DEFECT (MEDIUM, engine): config_from_dict accepts fixed counts that add up to more than "
+-    "total_buildings; sample_composition then returns more buildings than total_buildings (the ranged categories "
+-    "get 0). Fix in synthetic/config.py validation: sum(fixed_count) must not exceed total_buildings.",
+-)
+ def test_engine_refuses_fixed_counts_above_total():
+     with pytest.raises(ValueError, match="total_buildings"):
+         config_from_dict(_cfg(4, OVER_TOTAL), source="<qa>")
+ 
+ 
+-@pytest.mark.xfail(
+-    strict=True,
+-    reason="DEFECT (MEDIUM, engine): config_from_dict accepts an all-fixed composition whose counts do not add up "
+-    "to total_buildings; the sampled neighbourhood then has sum(fixed_count) buildings, not total_buildings "
+-    "(FR-ENG-2 AC: counts sum exactly to total_buildings). Fix: require equality when no category is ranged.",
+-)
+ def test_engine_refuses_all_fixed_counts_not_equal_to_total():
+     with pytest.raises(ValueError, match="total_buildings"):
+         config_from_dict(_cfg(4, ALL_FIXED_SHORT), source="<qa>")

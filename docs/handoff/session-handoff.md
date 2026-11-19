@@ -48,8 +48,12 @@ app; Firefox, Safari, screen readers.
 6. Demo users may see data file names in run detail.
 
 ## 4. In progress when the session ended
-**ENG-COUNTS (approved, NOT in the repository).** A `modeling-engineer` agent was part-way through this in a local
-worktree; that work is lost with the container. Restart it. Brief essentials:
+**ENG-COUNTS (approved, NOT applied).** A `modeling-engineer` agent was stopped part-way through this at the session
+switch. Its unfinished, UNREVIEWED, never-fully-tested changes are saved as `docs/handoff/eng-counts-wip.patch` (three
+files: the engine config validation and two test files; it applies cleanly on top of Wave 1 with
+`git apply docs/handoff/eng-counts-wip.patch`). Treat it as a head start, not as done: it had not yet run the full
+suite, done the before/after equivalence proof, or swept the repository's configs. Give the patch and the brief below
+to a fresh `modeling-engineer`, then delete the patch file when the story merges. Brief essentials:
 - Rating: Standard, hard rule: no configuration that is valid today may change its numbers (golden file untouched;
   prove with a before/after comparison of full results).
 - Make `validate_config` / `config_from_dict` (`src/microgrid/community_load/synthetic/config.py`) refuse fixed counts
