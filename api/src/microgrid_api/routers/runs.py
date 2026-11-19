@@ -166,7 +166,7 @@ def selection_http_error(exc: ValueError, principal: Principal) -> HTTPException
     """422 for a selection/filter problem. Admins see the library's detail; other roles see the public message,
     which names only exposed attributes and their own categories (never columns or data values)."""
     if isinstance(exc, ea_svc.SelectionError) and principal.role != "admin":
-        logger.info("selection refused for %s: %s", principal.subject, exc)
+        logger.info("selection refused for %s: %r", principal.subject, str(exc))  # %r: no raw newlines in logs
         return HTTPException(422, exc.public)
     return HTTPException(422, str(exc))
 
@@ -292,6 +292,11 @@ def create_run(
         check_config_shape(body.config)  # depth and size before anything copies or walks it
         config = copy.deepcopy(body.config)
         check_client_config(config)
+    uses_filters = body.filter_selections is not None and any(body.filter_selections.values())
+    # Permission first: a caller without the flag gets the same 403 whatever the selections say (no validation
+    # detail about categories or attributes before the refusal).
+    if uses_filters and not can(principal.role, "filters.use", overrides):
+        raise HTTPException(403, f"role {principal.role!r} does not have the filters.use permission")
     if body.filter_selections is not None:  # every named category must exist, even with an empty list
         try:
             ea_svc.check_selection_categories(config, body.filter_selections)
@@ -299,9 +304,8 @@ def create_run(
             raise HTTPException(422, str(exc)) from None
     provenance: dict[str, Any] | None = None
     active: ea_svc.ActiveConfiguration | None = None
-    if body.filter_selections and any(body.filter_selections.values()):
-        if not can(principal.role, "filters.use", overrides):
-            raise HTTPException(403, f"role {principal.role!r} does not have the filters.use permission")
+    if uses_filters:
+        assert body.filter_selections is not None
         try:
             active = ea_svc.active_configuration(session)
         except ea_svc.InvalidStoredConfiguration as exc:

@@ -245,6 +245,8 @@ def preview(
         raise HTTPException(503, "the server's characteristics data lacks a column this category needs") from None
     except ValueError as exc:  # an attribute's column or value does not fit the data (FR-ENG-11 d)
         raise selection_http_error(exc, principal) from None
+    except OverflowError:
+        raise HTTPException(422, "a number in the filters is out of range") from None
     return PreviewOut(
         exposed_attributes_version=active.version,
         min_pool_size=cfg.archetype_filters.min_pool_size,

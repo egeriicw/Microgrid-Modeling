@@ -482,3 +482,14 @@ def test_postgres_version_check_and_activation_race():
     finally:
         engine.dispose()
         command.downgrade(_cfg(PG), "base")
+
+
+def test_lead_review_permission_is_refused_before_selection_categories_are_validated(tmp_path):
+    """Lead full-diff read: a caller without filters.use must get the same 403 whether or not the selections name a
+    real category (no validation detail before the refusal)."""
+    import inspect
+
+    from microgrid_api.routers import runs as runs_router
+
+    src = inspect.getsource(runs_router.create_run)
+    assert src.index('can(principal.role, "filters.use"') < src.index("check_selection_categories")
