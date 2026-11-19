@@ -4,7 +4,8 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "spikes", "playwright-report", "test-results"] },
+  // src/api/generated/ is written by `npm run gen:api` from api/openapi.json and never edited by hand.
+  { ignores: ["dist", "node_modules", "spikes", "playwright-report", "test-results", "src/api/generated"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -14,8 +15,15 @@ export default tseslint.config(
     rules: {
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-      // All HTTP lives in src/api/. The real generated client replaces src/api/mockClient.ts later.
+      // All HTTP lives in src/api/ (httpClient.ts).
       "no-restricted-globals": ["error", { name: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." }],
+      // Server text (error details, later admin-written labels and help) is always rendered as text, never as HTML.
+      "no-restricted-syntax": [
+        "error",
+        { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: "Render server text as text; no HTML injection (see web/README.md)." },
+        { selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]", message: "Use textContent; no HTML injection (see web/README.md)." },
+        { selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "Use textContent; no HTML injection (see web/README.md)." },
+      ],
       "no-restricted-properties": [
         "error",
         { object: "window", property: "fetch", message: "Use the ApiClient (src/api/); HTTP stays in one module." },
@@ -25,4 +33,5 @@ export default tseslint.config(
     },
   },
   { files: ["src/api/**", "src/**/*.test.{ts,tsx}"], rules: { "no-restricted-globals": "off", "no-restricted-properties": "off" } },
+  { files: ["scripts/**/*.mjs"], languageOptions: { globals: { ...globals.node } } },
 );

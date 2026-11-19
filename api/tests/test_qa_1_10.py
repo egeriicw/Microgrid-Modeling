@@ -130,8 +130,12 @@ def test_redelivery_while_running_is_a_noop(session_factory, session, monkeypatc
     assert _row(session_factory, run_id).status == "succeeded"
 
 
-def test_cancel_arriving_after_claim_before_first_poll_is_honored(session_factory, session, tiny_config, monkeypatch):
+def test_cancel_arriving_after_claim_before_first_poll_is_honored(
+    session_factory, session, tiny_config, settings, synthetic_dataset, monkeypatch
+):
     """Real engine: the flag is set during pool building (after the claim, before the first poll). No run starts."""
+    # the worker re-checks stored data paths against MICROGRID_DATA_DIR (W1-COMPOSE fix pass G)
+    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update={"data_dir": synthetic_dataset.root}))
     run_id = svc.create_run(session, tiny_config, trusted_data_paths=True).id
     real = worker.run_scenario
     stages: list[str] = []
@@ -305,9 +309,14 @@ def test_user_supplied_data_paths_are_rejected_unless_trusted(session):
     assert "/etc" not in str(exc.value) and "/root" not in str(exc.value)  # keys only, never values
 
 
-def test_trusted_data_paths_reach_the_engine_unchanged(session_factory, session, monkeypatch):
-    evil = {"background_dir": "/etc", "resstock_timeseries_dir": "/root", "comstock_timeseries_dir": "/proc"}
-    run_id = svc.create_run(session, {"scenario": {"name": "x"}, "data": evil}, trusted_data_paths=True).id
+def test_trusted_data_paths_reach_the_engine_unchanged(session_factory, session, settings, tmp_path, monkeypatch):
+    # W1-COMPOSE fix pass (G): the worker now re-checks stored paths against MICROGRID_DATA_DIR, so paths outside it
+    # (the former "/etc", "/root", "/proc" here) fail the run; see test_w1_compose_fixpass. Paths inside the data
+    # root still reach the engine unchanged.
+    root = tmp_path / "root"
+    data = {k: str(root / k) for k in ("background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir")}
+    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update={"data_dir": root}))
+    run_id = svc.create_run(session, {"scenario": {"name": "x"}, "data": data}, trusted_data_paths=True).id
     seen: dict = {}
 
     def engine(config, **kw):
@@ -316,7 +325,7 @@ def test_trusted_data_paths_reach_the_engine_unchanged(session_factory, session,
 
     monkeypatch.setattr(worker, "run_scenario", engine)
     worker.execute_run(run_id, session_factory)
-    assert seen == evil
+    assert seen == data
 
 
 def test_create_run_rejects_user_supplied_data_paths():
@@ -358,8 +367,10 @@ def test_server_side_data_section_builds_paths_under_data_dir(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     data = svc.server_side_data_section(Settings(data_dir=root, environment="test"))
-    assert set(data) == {"background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir"}
-    assert all(str(root.resolve()) in v for v in data.values())
+    dirs = {"background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir"}
+    # W1-COMPOSE: the section also names the characteristics files and declares the temperature source.
+    assert set(data) == dirs | {"resstock_chars_file", "comstock_chars_file", "temperature_source"}
+    assert all(str(root.resolve()) in data[k] for k in dirs)
 
 
 def test_server_side_data_section_requires_data_dir_and_rejects_symlink_escape(tmp_path):

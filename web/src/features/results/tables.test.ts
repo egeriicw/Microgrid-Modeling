@@ -7,9 +7,15 @@ const series = generateDataset({ points: 96 * 10, seed: 3 });
 describe("data-table alternatives to the charts", () => {
   it("daily table has one row per day with kW and temperature columns", () => {
     const t = dailyTable(series, "AMY2018");
-    expect(t.columns).toEqual(["Date (UTC)", "Mean load (kW)", "Peak load (kW)", "Mean temperature (°C)"]);
+    expect(t.columns).toEqual(["Date (local time)", "Mean load (kW)", "Peak load (kW)", "Mean temperature (°C)"]);
     expect(t.rows).toHaveLength(10);
     expect(t.rows[0][0]).toBe("2018-01-01");
+  });
+  it("daily table drops the temperature column when the results have no temperature", () => {
+    const t = dailyTable({ ...series, temperature: null }, "AMY2018");
+    expect(t.columns).toEqual(["Date (local time)", "Mean load (kW)", "Peak load (kW)"]);
+    expect(t.rows[0]).toHaveLength(3);
+    expect(t.caption).not.toMatch(/temperature/i);
   });
   it("load-duration table samples 0..100 percent in 10% steps for each load series", () => {
     const t = loadDurationTable(series, "AMY2018");

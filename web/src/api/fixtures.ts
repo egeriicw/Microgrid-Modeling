@@ -10,10 +10,12 @@ export const FULL_YEAR_POINTS = 35_040;
 const REALIZATIONS = 25;
 
 export const BUILDING_TYPES: BuildingType[] = [
-  { id: "sf", label: "Single-family detached", sector: "residential" },
-  { id: "mf", label: "Multifamily", sector: "residential" },
-  { id: "office", label: "Office", sector: "commercial" },
-  { id: "retail", label: "Retail", sector: "commercial" },
+  { id: "sf", label: "Single-family detached", sector: "residential", source: "resstock", description: null, active: true },
+  { id: "mf", label: "Multifamily", sector: "residential", source: "resstock", description: null, active: true },
+  { id: "office", label: "Office", sector: "commercial", source: "comstock", description: null, active: true },
+  { id: "retail", label: "Retail", sector: "commercial", source: "comstock", description: null, active: true },
+  // Like the real catalogue's `civic`: listed, but the server cannot model it yet and refuses it.
+  { id: "civic", label: "Civic building", sector: "commercial", source: "comstock", description: null, active: false },
 ];
 
 export const FILTER_OPTIONS: FilterOption[] = [
@@ -37,7 +39,7 @@ function gaussian(rand: () => number): number {
 }
 
 /** `points` 15-minute samples starting 2018-01-01 UTC; must be a positive multiple of 4 (whole hours). */
-export function generateDataset(opts: { points: number; seed?: number }): LoadSeries {
+export function generateDataset(opts: { points: number; seed?: number }): LoadSeries & { temperature: Float64Array } {
   const { points } = opts;
   if (!Number.isInteger(points) || points <= 0 || points % 4 !== 0) {
     throw new Error(`points must be a positive multiple of 4, got ${points}`);

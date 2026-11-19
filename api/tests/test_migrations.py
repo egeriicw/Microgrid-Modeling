@@ -16,7 +16,8 @@ from microgrid_api.db.base import Base
 from microgrid_api.db.models import Composition  # noqa: F401  (register models)
 
 API_DIR = Path(__file__).resolve().parents[1]
-TABLES = {"users", "compositions", "runs", "run_events"}
+TABLES = {"users", "compositions", "runs", "run_events", "exposed_attribute_versions", "exposed_attribute_activations"}
+TABLES_0003 = {"users", "compositions", "runs", "run_events"}
 
 
 def _cfg(url: str) -> Config:
@@ -66,6 +67,7 @@ def test_round_trip_and_parity_postgres():
     assert PG
     _round_trip(PG)
     assert _diffs(PG) == []
+    _check_0004_round_trip(PG)
     command.downgrade(_cfg(PG), "base")
 
 
@@ -77,3 +79,23 @@ def test_0003_adds_and_removes_runs_owner(tmp_path):
     command.downgrade(cfg, "0002")
     assert "owner" not in {c["name"] for c in inspect(create_engine(url)).get_columns("runs")}
     command.upgrade(cfg, "head")
+
+
+def _check_0004_round_trip(url: str) -> None:
+    """0004 adds the exposed-attribute tables and runs.filter_selections; its downgrade leaves 0003 intact."""
+    cfg = _cfg(url)
+    command.upgrade(cfg, "head")
+    insp = inspect(create_engine(url))
+    assert "filter_selections" in {c["name"] for c in insp.get_columns("runs")}
+    command.downgrade(cfg, "0003")
+    insp = inspect(create_engine(url))
+    assert _tables(url) == TABLES_0003
+    cols = {c["name"] for c in insp.get_columns("runs")}
+    assert "filter_selections" not in cols and "owner" in cols
+    assert "ix_runs_owner" in {i["name"] for i in insp.get_indexes("runs")}
+    command.upgrade(cfg, "head")
+    assert _tables(url) == TABLES
+
+
+def test_0004_adds_and_removes_exposed_attribute_tables(tmp_path):
+    _check_0004_round_trip(f"sqlite:///{tmp_path / 'filters.db'}")

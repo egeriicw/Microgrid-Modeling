@@ -1,21 +1,49 @@
 /**
- * End-to-end happy path against the mock API client (the Vite app wires the mock; no backend needed).
+ * End-to-end happy path against the mock API client (playwright.config.ts starts Vite with VITE_API_MODE=mock; no
+ * backend needed). In mock mode the API key is the role name.
  * Sign in as client -> composition -> run with progress -> results with caveat and charts -> data table.
- * Skeleton: not yet run in CI (needs `npx playwright install chromium`; see web/README.md).
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+const box = async (loc: Locator) => (await loc.boundingBox())!;
+
+test("phone width (390 px): touch targets are at least 44 px and nothing overflows (U10)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/login");
+  await page.getByLabel(/api key/i).fill("client");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByRole("heading", { name: /define a community composition/i })).toBeVisible();
+  // A tick box's clickable area is the MUI ButtonBase around the hidden input.
+  const tick = await box(page.getByRole("checkbox", { name: /include single-family detached/i }).locator("xpath=.."));
+  expect(Math.min(tick.width, tick.height)).toBeGreaterThanOrEqual(44);
+  await page.goto("/results/demo-run");
+  await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
+  for (const name of ["Hourly", "15-minute", "Zoom in", "Zoom out", "Pan left", "Pan right", "Reset zoom"]) {
+    expect((await box(page.getByRole("button", { name, exact: true }))).height, name).toBeGreaterThanOrEqual(44);
+  }
+  const band = await box(page.getByRole("checkbox", { name: "Uncertainty band (P10 to P90)" }).locator("xpath=.."));
+  expect(Math.min(band.width, band.height)).toBeGreaterThanOrEqual(44);
+  const o = await page.evaluate(() => ({ scroll: document.scrollingElement!.scrollWidth, client: document.scrollingElement!.clientWidth }));
+  expect(o.scroll).toBeLessThanOrEqual(o.client);
+});
 
 test("client: compose, run, inspect results", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
-  await page.getByRole("radio", { name: /client/i }).check();
+  await page.getByLabel(/api key/i).fill("client");
   await page.getByRole("button", { name: /sign in/i }).click();
 
-  await expect(page.getByRole("heading", { name: /composition/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /define a community composition/i })).toBeVisible();
   await page.getByLabel(/total buildings/i).fill("50");
+  await page.getByRole("checkbox", { name: /include single-family detached/i }).check();
+  await page.getByRole("checkbox", { name: /include office/i }).check();
+  await page.getByLabel(/how many\? single-family detached/i).selectOption("count");
+  await page.getByLabel(/number of buildings: single-family detached/i).fill("20");
+  await expect(page.getByRole("checkbox", { name: /include civic building/i })).toBeDisabled();
   await page.getByRole("button", { name: /start run/i }).click();
 
   await expect(page.getByRole("progressbar", { name: /run progress/i })).toBeVisible();
+  await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
   await page.getByRole("link", { name: /view results/i }).click({ timeout: 30_000 });
 
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
@@ -33,10 +61,16 @@ test("client: compose, run, inspect results", async ({ page }) => {
   await expect(section.getByRole("table")).toContainText("Residential");
 });
 
-test("demo: sees results but not the composition form", async ({ page }) => {
+test("demo: runs a predefined composition only", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("radio", { name: /demo/i }).check();
+  await page.getByLabel(/api key/i).fill("demo");
   await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByText("This account can run the ready-made neighbourhoods below. Pick one and press Run.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /start run/i })).toHaveCount(0);
+  await expect(page.getByLabel(/building mix seed/i)).toHaveCount(0);
+  await page.getByRole("button", { name: /^run /i }).first().click();
+  await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /replay/i })).toHaveCount(0);
+  await page.getByRole("link", { name: /view results/i }).click();
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible();
-  await expect(page.getByRole("link", { name: /compose/i })).toHaveCount(0);
 });

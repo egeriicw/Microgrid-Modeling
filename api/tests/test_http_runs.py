@@ -10,6 +10,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from microgrid.community_load.synthetic.config import DataConfig
 from sqlalchemy import select
 
 from microgrid_api.db.models import Run, RunEvent, RunStatus
@@ -292,11 +293,21 @@ def test_sse_ownership_and_auth(api, tiny_config):
     assert api.get(f"/api/v1/runs/{rid}/events").status_code == 401
 
 
-def test_client_with_filters_forbidden_admin_allowed(api, tiny_config):
+def test_client_with_filters_forbidden_admin_allowed(tmp_path, synthetic_dataset, tiny_config):
+    # W1-FILTERS: filters arrive as exposed-attribute selections (never raw columns); the flag gates them. Runs with
+    # selections are pool-checked at creation, so the data root needs the characteristics under the default names.
+    root = tmp_path / "data"
+    shutil.copytree(synthetic_dataset.root, root)
+    shutil.copy(synthetic_dataset.resstock_chars, root / "background" / DataConfig().resstock_chars_file)
+    shutil.copy(synthetic_dataset.comstock_chars, root / "background" / DataConfig().comstock_chars_file)
+    app = create_app(make_settings(tmp_path, synthetic_dataset, tiny_config, data_dir=root))
+    app.state.enqueued = []
+    app.state.enqueue = lambda run_id: app.state.enqueued.append(str(run_id))
     cfg = client_config(tiny_config)
-    cfg["archetype_filters"]["resstock"]["mf_small"]["attributes"] = [{"column": "x", "op": "not_null"}]
-    r = _post(api, cfg, who="alice")
-    assert r.status_code == 403
-    assert "filters.use" in r.json()["detail"]
-    assert api.app.state.enqueued == []
-    assert _post(api, cfg, who="admin").status_code == 202
+    sel = {"mf_small": [{"attribute": "vintage", "op": "in", "values": ["2010s", "<1940"]}]}
+    with TestClient(app) as api:
+        r = _post(api, cfg, who="alice", filter_selections=sel)
+        assert r.status_code == 403
+        assert "filters.use" in r.json()["detail"]
+        assert api.app.state.enqueued == []
+        assert _post(api, cfg, who="admin", filter_selections=sel).status_code == 202

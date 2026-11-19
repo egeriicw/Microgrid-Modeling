@@ -9,15 +9,16 @@ deploy/.env:
 	cp deploy/.env.example deploy/.env
 	@echo "Created deploy/.env from the template (development-only defaults; git-ignored)."
 
-# The worker is a placeholder that exits until story 1.10 (Celery). `--wait` would fail on it, so `make up`
-# starts everything EXCEPT the worker. Add `worker` here when story 1.10 lands.
-up:              ## build and start the stack (not the worker until story 1.10) and wait for health
+# Starts all six services and waits (up to 10 minutes) until every long-running one is healthy and migrate has exited 0.
+up:              ## build and start the whole stack (db, redis, migrate, api, worker, web) and wait for health
 	./deploy/preflight.sh full
 	@test -f deploy/.env || { cp deploy/.env.example deploy/.env && echo "Created deploy/.env from the template (development-only defaults; git-ignored)."; }
-	$(COMPOSE) up -d --build --wait db redis web migrate api
+	./deploy/check-env.sh deploy/.env
+	$(COMPOSE) up -d --build --wait --wait-timeout 600 db redis migrate api worker web
 
 lite-up:         ## small-disk stack: api + migrate on SQLite, one image, no db/redis/web/worker (about 1.5 to 3 GB)
 	./deploy/preflight.sh lite
+	$(if $(wildcard deploy/.env),./deploy/check-env.sh deploy/.env)
 	$(LITE) up -d --build --wait api
 
 lite-down:       ## stop and remove the lite containers; the lite volumes (SQLite file, outputs) are KEPT
@@ -35,7 +36,8 @@ logs:            ## tail logs, optionally one service: make logs s=api
 ps:              ## show service state and health
 	$(COMPOSE) ps
 
-config-check: deploy/.env  ## validate the compose file without starting anything
+config-check: deploy/.env  ## validate the compose file and deploy/.env without starting anything
+	./deploy/check-env.sh deploy/.env
 	$(COMPOSE) config -q && echo "compose config OK"
 
 image-check:     ## print (never run) the commands that verify arm64 manifests and image sizes
@@ -44,9 +46,10 @@ image-check:     ## print (never run) the commands that verify arm64 manifests a
 	@echo "  docker buildx imagetools inspect timescale/timescaledb-ha:pg17"
 	@echo "  docker buildx imagetools inspect redis:7.4-alpine"
 	@echo "  docker buildx imagetools inspect nginxinc/nginx-unprivileged:1.27-alpine"
+	@echo "  docker buildx imagetools inspect node:22-bookworm-slim   # web build stage only"
 	@echo "Look for 'Platform: linux/arm64' in each. After make up, check sizes and architecture:"
 	@echo "  docker image ls --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}'"
-	@echo "  docker image inspect --format '{{.Architecture}}' timescale/timescaledb-ha:pg17 microgrid-api:dev"
+	@echo "  docker image inspect --format '{{.Architecture}}' timescale/timescaledb-ha:pg17 microgrid-api:dev microgrid-worker:dev microgrid-web:dev"
 
 disk:            ## show Docker disk use and what to look at
 	docker system df
@@ -55,7 +58,7 @@ disk:            ## show Docker disk use and what to look at
 
 disk-plan:       ## print (never run) the expected disk need for the full and lite stacks
 	@echo "Expected disk need (see docs/runbooks/local-stack.md, 'Small disk', for sources; images measured 2026-11-11, rest ESTIMATED; the 12 and 5 GB thresholds are headroom over the estimates, not measurements):"
-	@echo "  full stack (make up):      about 5 to 8 GB of new use (images, build cache, empty database); needs 12 GB free (preflight)."
+	@echo "  full stack (make up):      about 5.5 to 9 GB of new use (images, build cache incl. the web build, empty database); needs 12 GB free (preflight)."
 	@echo "  lite stack (make lite-up): about 1.5 to 3 GB of new use (one Python image plus build cache); needs  5 GB free (preflight)."
 	@echo "  Your data/ folder (about 11 GB) is separate: mounted read-only, never copied."
 	@echo "Check free space FIRST, yourself:  df -h /System/Volumes/Data"
@@ -78,7 +81,7 @@ lite-nuke:       ## DESTRUCTIVE: remove the LITE containers AND LITE volumes onl
 	@read -p "Type DELETE to continue: " ans; [ "$$ans" = "DELETE" ] || { echo "Aborted; nothing deleted."; exit 1; }
 	$(LITE) down --volumes
 
-smoke:           ## owner-run check: free-disk preflight first, then start, wait healthy, curl the API, stop (volumes kept)
+smoke:           ## owner-run check: free-disk preflight first, then start all services, wait healthy, check API, web and worker, stop (volumes kept)
 	./deploy/tests/test_compose_smoke.sh
 
 test:            ## all root tests

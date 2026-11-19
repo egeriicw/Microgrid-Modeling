@@ -5,6 +5,28 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Decided, not yet implemented (owner, 2026-11-19)
+- Convergence: `prd_default` becomes the default rule when convergence is on; fixed-count runs will report convergence as "not checked". **[numbers change]** for adaptive runs that name no rule, once implemented.
+- The engine will refuse fixed counts above `total_buildings` and all-fixed counts that do not equal it.
+- Cut from the MVP: map viewer, admin console screen. Deferred: characteristics table in the database, meter entity, public live demo, compact profile library.
+
+### Added (Wave 1 batch 2, 2026-11-19)
+- API: `GET /api/v1/me`, `GET /api/v1/building-types`; `POST /runs` accepts `composition`; run detail `data_files`; `/ready` `checks.data_files`; settings `MICROGRID_RESSTOCK_CHARS_FILE`, `MICROGRID_COMSTOCK_CHARS_FILE`, `MICROGRID_TEMPERATURE_*`.
+- Web: composition form on the real API, plain-language run and results screens, data-used panel, temperature overlay, per-field errors.
+- Deploy: settings pass-through, `deploy/check-env.sh`, custom composition run in the CI smoke test.
+### Changed
+- Every run is checked at creation for count rules and empty building pools (422 instead of a late worker failure). All API responses are `Cache-Control: no-store`.
+
+### Added (Wave 1 batch 1, 2026-11-19)
+- API: exposed-attribute configuration (`/api/v1/exposed-attributes/...`: active, versions, activate, preview), stored and versioned (migration 0004); `filter_selections` on `POST /runs`; run detail shows effective filters, selections and pool sizes.
+- Engine: temperature series on results (results schema 1.1), `weather` module interface, `ensemble.building_profiles` (per-building load, verified against run totals).
+- Web: typed client generated from `api/openapi.json`, real API by default, API-key sign-in, seeds and "replay with same seeds", honest convergence wording, mock-mode banner.
+- Deploy: real Celery worker and web image in Docker Compose; `compose-smoke` CI job runs a fixture job end to end.
+### Changed
+- `POST /runs` refuses raw column-level attribute filters for every role. Request bodies over 1 MiB are refused (413). Validation errors no longer echo the input.
+### Fixed
+- Results documents and run detail no longer expose server folder paths. Compose now passes `MICROGRID_API_KEYS` (the stack could not start without it). An older `deploy/.env` needs an `API_KEYS` line: see `docs/runbooks/local-stack.md`.
+
 ### Changed (Wave 0, 2026-11-17)
 - CI: `api` job (ruff, mypy, migrate an empty Postgres 16 to head, pytest with coverage against Postgres) and `web` job
   (Node 22: typecheck, lint, test, build) are enabled and blocking; the API image build no longer uses continue-on-error.

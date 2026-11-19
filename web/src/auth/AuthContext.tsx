@@ -1,15 +1,16 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../api/context";
-import type { Role, Session } from "../api/types";
-import { canStartRuns, canUseFilters } from "./roles";
+import type { Session } from "../api/types";
+import { capabilitiesOf, type Capabilities } from "./roles";
 
 interface AuthValue {
   session: Session | null;
-  signIn(role: Role): Promise<Session>;
+  /** Validates the API key with the server and keeps it for this browser tab. */
+  signIn(apiKey: string): Promise<Session>;
   signOut(): Promise<void>;
-  /** UI affordances only. The server enforces every permission. */
-  can: { startRuns: boolean; useFilters: boolean };
+  /** UI affordances only, from the server's session (`GET /me`). The server enforces every permission. */
+  can: Capabilities;
 }
 
 const Ctx = createContext<AuthValue | null>(null);
@@ -19,9 +20,19 @@ export function AuthProvider({ initialSession = null, children }: { initialSessi
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(initialSession);
 
+  // The server rejected the stored key (401): drop the session and cached data; RequireAuth sends the user to sign-in.
+  useEffect(
+    () =>
+      client.onSignedOut(() => {
+        queryClient.clear();
+        setSession(null);
+      }),
+    [client, queryClient],
+  );
+
   const signIn = useCallback(
-    async (role: Role) => {
-      const s = await client.login(role);
+    async (apiKey: string) => {
+      const s = await client.login(apiKey);
       queryClient.clear();
       setSession(s);
       return s;
@@ -39,7 +50,7 @@ export function AuthProvider({ initialSession = null, children }: { initialSessi
       session,
       signIn,
       signOut,
-      can: { startRuns: session ? canStartRuns(session.role) : false, useFilters: session ? canUseFilters(session.role) : false },
+      can: capabilitiesOf(session),
     }),
     [session, signIn, signOut],
   );

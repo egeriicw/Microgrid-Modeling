@@ -1,0 +1,14 @@
+{
+  "composition": {
+    "name": "compose-smoke custom composition",
+    "total_buildings": 6,
+    "building_types": [
+      {"building_type": "sf_detached", "fixed_count": 1},
+      {"building_type": "commercial_private", "fixed_count": 1},
+      {"building_type": "mf_small", "min_fraction": 0.25, "max_fraction": 0.75},
+      {"building_type": "mf_mid", "min_fraction": 0.25, "max_fraction": 0.75}
+    ],
+    "max_runs": 5
+  },
+  "seeds": {"composition_seed": 11, "archetype_seed": 12, "perturbation_seed": 13}
+}

@@ -1,6 +1,288 @@
 {
   "components": {
     "schemas": {
+      "ActivateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_active_version": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version you believe is active now (0 = packaged). If another admin activated something else meanwhile, the request fails with 409 and nothing changes. Omit it for last-writer-wins.",
+            "title": "Expected Active Version"
+          }
+        },
+        "title": "ActivateRequest",
+        "type": "object"
+      },
+      "ActiveConfigurationOut": {
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "attributes": {
+            "description": "Active attributes only, in display order",
+            "items": {
+              "$ref": "#/components/schemas/OfferedAttribute"
+            },
+            "title": "Attributes",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "packaged",
+              "database"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "description": "0 = the packaged starter set (nothing stored or activated yet)",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "source",
+          "activated_at",
+          "attributes"
+        ],
+        "title": "ActiveConfigurationOut",
+        "type": "object"
+      },
+      "BuildingTypeList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BuildingTypeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BuildingTypeList",
+        "type": "object"
+      },
+      "BuildingTypeOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "building_class": {
+            "enum": [
+              "residential",
+              "commercial"
+            ],
+            "title": "Building Class",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "resstock",
+              "comstock"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "building_class",
+          "source",
+          "description",
+          "active"
+        ],
+        "title": "BuildingTypeOut",
+        "type": "object"
+      },
+      "CompositionEntry": {
+        "additionalProperties": false,
+        "description": "One building type: EITHER ``fixed_count`` (exactly this many) OR a fraction range of the buildings left after\nthe fixed counts (``min_fraction`` defaults to 0, ``max_fraction`` to 1; give at least one).",
+        "properties": {
+          "building_type": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Building Type",
+            "type": "string"
+          },
+          "fixed_count": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Count"
+          },
+          "max_fraction": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Fraction"
+          },
+          "min_fraction": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Fraction"
+          }
+        },
+        "required": [
+          "building_type"
+        ],
+        "title": "CompositionEntry",
+        "type": "object"
+      },
+      "CompositionRequest": {
+        "additionalProperties": false,
+        "description": "A neighbourhood by building type plus run settings. The server builds the engine scenario from the registry;\nfilters, columns and paths are never accepted here.",
+        "properties": {
+          "building_types": {
+            "items": {
+              "$ref": "#/components/schemas/CompositionEntry"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Building Types",
+            "type": "array"
+          },
+          "convergence": {
+            "default": false,
+            "title": "Convergence",
+            "type": "boolean"
+          },
+          "convergence_rule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "legacy_window",
+                  "prd_default"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convergence Rule"
+          },
+          "max_runs": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Runs",
+            "type": "integer"
+          },
+          "min_runs": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Runs"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "total_buildings": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Total Buildings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "total_buildings",
+          "building_types",
+          "max_runs"
+        ],
+        "title": "CompositionRequest",
+        "type": "object"
+      },
+      "DemoCaps": {
+        "properties": {
+          "max_buildings": {
+            "title": "Max Buildings",
+            "type": "integer"
+          },
+          "max_runs": {
+            "title": "Max Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_buildings",
+          "max_runs"
+        ],
+        "title": "DemoCaps",
+        "type": "object"
+      },
       "DemoCompositions": {
         "properties": {
           "items": {
@@ -15,6 +297,181 @@
           "items"
         ],
         "title": "DemoCompositions",
+        "type": "object"
+      },
+      "ExposedAttributeIn": {
+        "additionalProperties": false,
+        "description": "One entry of the exposed-attribute document (same fields as ``exposed_attributes.yaml``).",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "building_types": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Building Types",
+            "type": "array"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "columns": {
+            "additionalProperties": {
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.\\-]{0,127}$",
+              "type": "string"
+            },
+            "maxProperties": 2,
+            "minProperties": 1,
+            "propertyNames": {
+              "enum": [
+                "resstock",
+                "comstock"
+              ]
+            },
+            "title": "Columns",
+            "type": "object"
+          },
+          "help": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Help",
+            "type": "string"
+          },
+          "key": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "numeric",
+              "categorical",
+              "boolean"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "operators": {
+            "items": {
+              "enum": [
+                "equals",
+                "in",
+                "range",
+                "not_null",
+                "is_null",
+                "is_true",
+                "is_false"
+              ],
+              "type": "string"
+            },
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Operators",
+            "type": "array"
+          },
+          "order": {
+            "default": 100,
+            "maximum": 1000000.0,
+            "minimum": -1000000.0,
+            "title": "Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "columns",
+          "operators"
+        ],
+        "title": "ExposedAttributeIn",
+        "type": "object"
+      },
+      "ExposedAttributesDocument": {
+        "additionalProperties": false,
+        "description": "A full configuration document. ``version`` is the document format (always 1), not the stored version number.",
+        "properties": {
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/ExposedAttributeIn"
+            },
+            "maxItems": 100,
+            "title": "Attributes",
+            "type": "array"
+          },
+          "version": {
+            "const": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "attributes"
+        ],
+        "title": "ExposedAttributesDocument",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -41,6 +498,287 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "Limits": {
+        "properties": {
+          "default_min_runs": {
+            "title": "Default Min Runs",
+            "type": "integer"
+          },
+          "demo_caps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DemoCaps"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_ensemble_runs": {
+            "title": "Max Ensemble Runs",
+            "type": "integer"
+          },
+          "max_total_buildings": {
+            "title": "Max Total Buildings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_total_buildings",
+          "max_ensemble_runs",
+          "default_min_runs",
+          "demo_caps"
+        ],
+        "title": "Limits",
+        "type": "object"
+      },
+      "Me": {
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "may_set_seeds": {
+            "title": "May Set Seeds",
+            "type": "boolean"
+          },
+          "permissions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Permissions",
+            "type": "object"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "run_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Run Inputs",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "role",
+          "permissions",
+          "run_inputs",
+          "may_set_seeds",
+          "limits"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
+      "OfferedAttribute": {
+        "properties": {
+          "building_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Building Types",
+            "type": "array"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "help": {
+            "title": "Help",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "numeric",
+              "categorical",
+              "boolean"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "operators": {
+            "items": {
+              "enum": [
+                "equals",
+                "in",
+                "range",
+                "not_null",
+                "is_null",
+                "is_true",
+                "is_false"
+              ],
+              "type": "string"
+            },
+            "title": "Operators",
+            "type": "array"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "enum": [
+                "resstock",
+                "comstock"
+              ],
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "help",
+          "kind",
+          "operators",
+          "choices",
+          "min",
+          "max",
+          "building_types",
+          "sources",
+          "order"
+        ],
+        "title": "OfferedAttribute",
+        "type": "object"
+      },
+      "PoolPreviewOut": {
+        "properties": {
+          "matched": {
+            "title": "Matched",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "matched",
+          "total",
+          "warnings"
+        ],
+        "title": "PoolPreviewOut",
+        "type": "object"
+      },
+      "PreviewOut": {
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PoolPreviewOut"
+            },
+            "description": "Keyed \"resstock/<category>\" or \"comstock/<category>\"",
+            "title": "Categories",
+            "type": "object"
+          },
+          "exposed_attributes_version": {
+            "title": "Exposed Attributes Version",
+            "type": "integer"
+          },
+          "min_pool_size": {
+            "title": "Min Pool Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "exposed_attributes_version",
+          "min_pool_size",
+          "categories"
+        ],
+        "title": "PreviewOut",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "additionalProperties": false,
+        "description": "A scenario config WITHOUT a `data` section (the server adds it) plus optional selections per category.",
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "filter_selections": {
+            "anyOf": [
+              {
+                "maxProperties": 50,
+                "patternProperties": {
+                  "^[A-Za-z0-9_][A-Za-z0-9_\\-]{0,63}$": {
+                    "items": {
+                      "$ref": "#/components/schemas/Selection"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Selections"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
       "ReadyOut": {
         "properties": {
           "checks": {
@@ -64,8 +802,18 @@
       },
       "RunCreate": {
         "additionalProperties": false,
-        "description": "Exactly one of ``config`` (a scenario WITHOUT a `data` section) or ``composition_id`` (a predefined one).",
+        "description": "Exactly one of ``config`` (a scenario WITHOUT a `data` section), ``composition_id`` (a predefined one) or\n``composition`` (building types with counts or fraction ranges; the server builds the scenario).",
         "properties": {
+          "composition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompositionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "composition_id": {
             "anyOf": [
               {
@@ -89,6 +837,27 @@
             ],
             "title": "Config"
           },
+          "filter_selections": {
+            "anyOf": [
+              {
+                "maxProperties": 50,
+                "patternProperties": {
+                  "^[A-Za-z0-9_][A-Za-z0-9_\\-]{0,63}$": {
+                    "items": {
+                      "$ref": "#/components/schemas/Selection"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Selections"
+          },
           "seeds": {
             "anyOf": [
               {
@@ -107,6 +876,43 @@
         "title": "RunCreate",
         "type": "object"
       },
+      "RunDataFiles": {
+        "description": "Which data files the run read, as file NAMES only (FR-DATA-8 provenance; server paths are never shown).\nNone for runs stored before the names were recorded.",
+        "properties": {
+          "comstock_characteristics_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comstock Characteristics File"
+          },
+          "resstock_characteristics_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resstock Characteristics File"
+          },
+          "temperature": {
+            "$ref": "#/components/schemas/RunTemperatureFile"
+          }
+        },
+        "required": [
+          "resstock_characteristics_file",
+          "comstock_characteristics_file",
+          "temperature"
+        ],
+        "title": "RunDataFiles",
+        "type": "object"
+      },
       "RunDetail": {
         "properties": {
           "cancel_requested": {
@@ -123,6 +929,20 @@
             "title": "Created At",
             "type": "string"
           },
+          "data_files": {
+            "$ref": "#/components/schemas/RunDataFiles"
+          },
+          "effective_filters": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": "Effective Filters",
+            "type": "object"
+          },
           "engine_version": {
             "title": "Engine Version",
             "type": "string"
@@ -137,6 +957,18 @@
               }
             ],
             "title": "Error Message"
+          },
+          "filter_selections": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Selections"
           },
           "finished_at": {
             "anyOf": [
@@ -165,6 +997,18 @@
               }
             ],
             "title": "Owner"
+          },
+          "pool_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Summary"
           },
           "progress": {
             "additionalProperties": true,
@@ -225,7 +1069,11 @@
           "started_at",
           "finished_at",
           "composition_snapshot",
-          "result"
+          "data_files",
+          "result",
+          "effective_filters",
+          "filter_selections",
+          "pool_summary"
         ],
         "title": "RunDetail",
         "type": "object"
@@ -365,6 +1213,221 @@
         "title": "RunOut",
         "type": "object"
       },
+      "RunTemperatureFile": {
+        "description": "The temperature source the run declared (FR-ENG-10). ``source`` is None for runs stored before it was\nrecorded.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          }
+        },
+        "required": [
+          "source",
+          "file",
+          "column",
+          "time_column",
+          "units"
+        ],
+        "title": "RunTemperatureFile",
+        "type": "object"
+      },
+      "Selection": {
+        "additionalProperties": false,
+        "description": "One user selection on an exposed attribute. There is deliberately no ``column`` field.",
+        "properties": {
+          "attribute": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Attribute",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "max_inclusive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Inclusive"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "min_inclusive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Inclusive"
+          },
+          "op": {
+            "enum": [
+              "equals",
+              "in",
+              "range",
+              "not_null",
+              "is_null",
+              "is_true",
+              "is_false"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "type": "number"
+              },
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "maximum": 1000000000000000.0,
+                      "minimum": -1000000000000000.0,
+                      "type": "integer"
+                    },
+                    {
+                      "maximum": 1000000000000000.0,
+                      "minimum": -1000000000000000.0,
+                      "type": "number"
+                    },
+                    {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  ]
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "attribute",
+          "op"
+        ],
+        "title": "Selection",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -404,6 +1467,225 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VersionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "activate": {
+            "default": false,
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "base_version": {
+            "description": "The latest version number you started from (0 when none is stored). A stale value is a 409.",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "document": {
+            "$ref": "#/components/schemas/ExposedAttributesDocument"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "base_version",
+          "document"
+        ],
+        "title": "VersionCreate",
+        "type": "object"
+      },
+      "VersionDetail": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None for version 0 (packaged)",
+            "title": "Created By"
+          },
+          "document": {
+            "$ref": "#/components/schemas/ExposedAttributesDocument"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "based_on",
+          "note",
+          "created_by",
+          "created_at",
+          "active",
+          "document"
+        ],
+        "title": "VersionDetail",
+        "type": "object"
+      },
+      "VersionList": {
+        "properties": {
+          "active_version": {
+            "title": "Active Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VersionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "latest_version": {
+            "title": "Latest Version",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "latest_version",
+          "active_version"
+        ],
+        "title": "VersionList",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None for version 0 (packaged)",
+            "title": "Created By"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "based_on",
+          "note",
+          "created_by",
+          "created_at",
+          "active"
+        ],
+        "title": "VersionOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -420,6 +1702,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/building-types": {
+      "get": {
+        "operationId": "building_types_api_v1_building_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildingTypeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Building types a composition can use",
+        "tags": [
+          "building-types"
+        ]
+      }
+    },
     "/api/v1/demo-compositions": {
       "get": {
         "operationId": "demo_compositions_api_v1_demo_compositions_get",
@@ -446,6 +1754,307 @@
         ]
       }
     },
+    "/api/v1/exposed-attributes/active": {
+      "get": {
+        "operationId": "get_active_api_v1_exposed_attributes_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveConfigurationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attributes users may filter on (active)",
+        "tags": [
+          "exposed-attributes"
+        ]
+      }
+    },
+    "/api/v1/exposed-attributes/preview": {
+      "post": {
+        "operationId": "preview_api_v1_exposed_attributes_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pool preview: buildings matching each category",
+        "tags": [
+          "exposed-attributes"
+        ]
+      }
+    },
+    "/api/v1/exposed-attributes/versions": {
+      "get": {
+        "operationId": "list_versions_api_v1_exposed_attributes_versions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List stored versions (admin)",
+        "tags": [
+          "exposed-attributes"
+        ]
+      },
+      "post": {
+        "operationId": "create_version_api_v1_exposed_attributes_versions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save a new version (admin)",
+        "tags": [
+          "exposed-attributes"
+        ]
+      }
+    },
+    "/api/v1/exposed-attributes/versions/{version}": {
+      "get": {
+        "operationId": "get_version_api_v1_exposed_attributes_versions__version__get",
+        "parameters": [
+          {
+            "description": "Stored version number; 0 is the packaged starter set",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "Stored version number; 0 is the packaged starter set",
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read one version, with columns (admin)",
+        "tags": [
+          "exposed-attributes"
+        ]
+      }
+    },
+    "/api/v1/exposed-attributes/versions/{version}/activate": {
+      "post": {
+        "description": "Activates a stored version, or 0 for the packaged starter set. The body is optional: send `expected_active_version` (the version you believe is active now) to fail with **409** instead of silently replacing another admin's activation; without it the newest activation wins.",
+        "operationId": "activate_version_api_v1_exposed_attributes_versions__version__activate_post",
+        "parameters": [
+          {
+            "description": "Stored version number; 0 is the packaged starter set",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "Stored version number; 0 is the packaged starter set",
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ActivateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "expected_active_version is stale (another admin activated a version)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Make a version active (admin)",
+        "tags": [
+          "exposed-attributes"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -464,6 +2073,32 @@
         "summary": "Liveness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The caller's identity, permissions and limits",
+        "tags": [
+          "identity"
         ]
       }
     },
@@ -802,6 +2437,11 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -820,7 +2460,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Full results document (JSON file written by the worker)",
+        "summary": "Full results document (JSON written by the worker; server paths removed)",
         "tags": [
           "runs"
         ]

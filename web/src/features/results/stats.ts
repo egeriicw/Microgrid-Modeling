@@ -88,7 +88,8 @@ export interface DailyRow {
   meanTempC: number;
 }
 
-export function dailySummary(ts: ArrayLike<number>, kw: ArrayLike<number>, tempC: ArrayLike<number>): DailyRow[] {
+/** `tempC` null: no temperature in the results; `meanTempC` is then NaN and must not be shown. */
+export function dailySummary(ts: ArrayLike<number>, kw: ArrayLike<number>, tempC: ArrayLike<number> | null): DailyRow[] {
   const rows: DailyRow[] = [];
   let day = -1;
   let n = 0;
@@ -112,7 +113,7 @@ export function dailySummary(ts: ArrayLike<number>, kw: ArrayLike<number>, tempC
     }
     n += 1;
     sum += kw[i];
-    tsum += tempC[i];
+    tsum += tempC ? tempC[i] : Number.NaN;
     if (kw[i] > peak) peak = kw[i];
   }
   flush();

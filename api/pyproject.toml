@@ -13,6 +13,8 @@ dependencies = [
     "pydantic-settings>=2.3",
     "redis>=5.0",
     "celery>=5.4",
+    # kombu's redis transport imports `packaging` without declaring it; a plain pip install (the image) lacks it.
+    "packaging>=23",
     "boto3>=1.42",
     "python-multipart>=0.0.9",
     "sse-starlette>=2.1",

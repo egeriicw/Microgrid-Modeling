@@ -13,7 +13,8 @@ focused implementation to sub-agents so this conversation stays small; keep only
 ## First thing every session (in order)
 1. Read `docs/handoff/session-handoff.md` (current state, next steps, open questions). It is the source of truth for "where
    are we".
-2. Skim `docs/sprints/sprint-1-progress.md`, `docs/decision-log.md`, then the current sprint backlog in `docs/sprints/`.
+2. Read `docs/agent-deployment-plan.md` (sections 4 to 6), skim the latest progress log in `docs/sprints/` and the top
+   of `docs/decision-log.md`.
 3. Read `docs/PRD.md` sections relevant to the stories you will run. The PRD is the contract; `docs/archive/` is history only.
 4. Confirm the branch the harness assigned, run the checks below to prove the baseline is green, then state the plan.
 
@@ -57,8 +58,8 @@ DC (the owner's local copy may be older; unconfirmed).
 `src/microgrid/` library (core, geo, community_load{registry,categorize,sources,synthetic}, der/dispatch/economics
 stubs, study, datasets) · `tests/` · `configs/scenarios/` · `docs/` (PRD, architecture-and-stack, sprint-plan, agent-team,
 agent-deployment-plan, decision-log, traceability-matrix, sprints/, adr/, reference/, runbooks/; `archive/` is history) ·
-`api/` (FastAPI service + Celery worker, `api/src/microgrid_api`) · `web/` (Vite + React + MUI + ECharts; runs on a mock
-API client until Wave 1) · `deploy/` (Docker Compose).
+`api/` (FastAPI service + Celery worker, `api/src/microgrid_api`) · `web/` (Vite + React + MUI + ECharts; real API by
+default, demo data only with `VITE_API_MODE=mock`) · `deploy/` (Docker Compose).
 
 ## Working with sub-agents (lessons learned)
 - **`docs/agent-deployment-plan.md` is the operating plan** (waves, roster, write scopes). Section 4.3 is binding:
@@ -66,6 +67,12 @@ API client until Wave 1) · `deploy/` (Docker Compose).
   wave the lead rates every story critical / standard / routine, which sets the builder's model and the review depth;
   the lead reads the full diff of critical work itself. Reviewers move up a model only to clear a review queue, one
   story at a time, logged in the wave report.
+- Sub-agents cannot run `git commit` (the permission system blocks it). They leave work uncommitted in their
+  worktree; the lead re-runs their checks and commits it (tests first, then code, for critical stories). Worktrees are
+  local: nothing unfinished survives a session switch. Resume the same builder for its fix pass with `SendMessage`.
+- Run at most three or four Opus agents at once (nine exhausted the usage allowance and stopped work for two days).
+  Never run two stories that both touch `api/` in parallel. After any change to `api/openapi.json` run
+  `npm --prefix web run gen:api`.
 - Agent worktrees (`isolation: "worktree"`) start from `main`, NOT from the working branch. Begin every brief with
   `git merge --ff-only <integration or working branch>` and ask the agent to confirm `CLAUDE.md` exists.
 - Pattern that worked (Wave A): build in parallel worktrees (disjoint directories) -> independent `qa-engineer` review of each

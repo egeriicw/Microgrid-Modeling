@@ -1,8 +1,7 @@
 # Community Energy Profiler: local stack (FR-PLAT-4, FR-DATA-4). Targets Apple-silicon Docker Desktop.
 # Run from the repo root (Makefile does this):
 #   cp deploy/.env.example deploy/.env
-#   docker compose --project-directory . --env-file deploy/.env -f deploy/docker-compose.yml up -d --wait db redis web migrate api
-# (the worker is a placeholder that exits until story 1.10, so `make up` does not start it)
+#   docker compose --project-directory . --env-file deploy/.env -f deploy/docker-compose.yml up -d --build --wait db redis migrate api worker web
 # Relative paths below are relative to the repo root (--project-directory .).
 name: microgrid
 
@@ -11,9 +10,25 @@ x-app-env: &app-env
   MICROGRID_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-microgrid}:${POSTGRES_PASSWORD:?set in deploy/.env}@db:5432/${POSTGRES_DB:-microgrid}
   MICROGRID_REDIS_URL: redis://redis:6379/0
   MICROGRID_JWT_SECRET: ${JWT_SECRET:?set in deploy/.env}
+  # JSON list of {"subject","role","key"}; production Settings refuse to start without it (migrate, api AND worker).
+  MICROGRID_API_KEYS: ${API_KEYS:?set in deploy/.env}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   MICROGRID_DATA_DIR: /data
   MICROGRID_OUTPUT_DIR: /outputs
+  # Owner-tunable settings, documented in deploy/.env.example. PASS-THROUGH form (a name with no value): the value
+  # comes from the shell or deploy/.env; a line that is unset or commented out there leaves the variable ABSENT in
+  # the container, so the API uses its own default. Never give these a `${...:-}` default: an empty string counts as
+  # "set" and the API refuses it (a temperature setting the chosen source does not use is a startup error).
+  # deploy/check-env.sh refuses MICROGRID_* names in deploy/.env that are not in this list (typos would be dropped).
+  MICROGRID_RESSTOCK_CHARS_FILE:
+  MICROGRID_COMSTOCK_CHARS_FILE:
+  MICROGRID_TEMPERATURE_SOURCE:
+  MICROGRID_TEMPERATURE_COLUMN:
+  MICROGRID_TEMPERATURE_UNITS:
+  MICROGRID_TEMPERATURE_WEATHER_FILE:
+  MICROGRID_TEMPERATURE_TIME_COLUMN:
+  MICROGRID_MAX_REQUEST_BYTES:
+  MICROGRID_PERMISSION_OVERRIDES:
 
 services:
   db:
@@ -90,38 +105,45 @@ services:
       retries: 30
       start_period: 15s
 
+  # Celery worker: runs engine jobs from the Redis queue and (embedded beat) the stuck-run reaper. Exactly one.
   worker:
     build:
       context: .
       dockerfile: deploy/api.Dockerfile
       target: worker
     image: microgrid-worker:dev
-    # Placeholder: exits with a clear message until story 1.10 adds microgrid_api.worker.
-    environment: *app-env
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     volumes:
       - ${MICROGRID_DATA_DIR:-./data}:/data:ro
       - outputs:/outputs
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     mem_limit: ${WORKER_MEM_LIMIT:-8g}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD-SHELL", "celery -A microgrid_api.worker inspect ping -d celery@$$HOSTNAME -t 5"]
       interval: 15s
-      timeout: 10s
+      timeout: 15s
       retries: 5
-      start_period: 20s
+      start_period: 30s
 
+  # The React app (Vite build) behind unprivileged nginx. nginx also proxies /api/ to the api service, so the browser
+  # talks to one origin (http://127.0.0.1:3000) and the app uses its default base URL /api/v1.
   web:
-    # Placeholder static page; the React build replaces it later.
-    image: nginxinc/nginx-unprivileged:1.27-alpine
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      target: web
+    image: microgrid-web:dev
     ports: ["127.0.0.1:${WEB_PORT:-3000}:8080"]
-    volumes:
-      - ./deploy/web/index.html:/usr/share/nginx/html/index.html:ro
-      - ./deploy/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     mem_limit: 64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 10s

@@ -20,6 +20,18 @@ x-lite-env: &lite-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   MICROGRID_DATA_DIR: /data
   MICROGRID_OUTPUT_DIR: /outputs
+  # The lite API has the same read-only data folder (/data) and checks the same data files at /ready and at run
+  # creation, so it takes the same owner settings as the full stack, passed through ONLY when set (no value here:
+  # an unset or commented-out line in deploy/.env leaves the variable absent). See deploy/docker-compose.yml.
+  MICROGRID_RESSTOCK_CHARS_FILE:
+  MICROGRID_COMSTOCK_CHARS_FILE:
+  MICROGRID_TEMPERATURE_SOURCE:
+  MICROGRID_TEMPERATURE_COLUMN:
+  MICROGRID_TEMPERATURE_UNITS:
+  MICROGRID_TEMPERATURE_WEATHER_FILE:
+  MICROGRID_TEMPERATURE_TIME_COLUMN:
+  MICROGRID_MAX_REQUEST_BYTES:
+  MICROGRID_PERMISSION_OVERRIDES:
 
 services:
   # One-shot: applies migrations (alembic upgrade head) to the SQLite file, then exits 0. api waits for it.

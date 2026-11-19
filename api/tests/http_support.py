@@ -50,6 +50,11 @@ def make_settings(tmp_path: Path, synthetic_dataset: Any, tiny_config: dict[str,
         "demo_compositions_file": write_demo_file(tmp_path / "demo.yaml", tiny_config),
         "sse_poll_interval_s": 0.02,
     }
+    if "data_dir" not in over:
+        # The fixture's own characteristics file names (not the engine defaults): the server names them (W1-COMPOSE).
+        # A caller that supplies its own data root keeps the server defaults unless it names the files too.
+        kwargs["resstock_chars_file"] = synthetic_dataset.resstock_chars.name
+        kwargs["comstock_chars_file"] = synthetic_dataset.comstock_chars.name
     kwargs.update(over)
     s = Settings(**kwargs)
     upgrade_to_head(s.require_database_url())

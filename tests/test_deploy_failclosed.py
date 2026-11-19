@@ -117,7 +117,13 @@ def _scratch_repo(tmp: Path) -> Path:
     """A copy of just the files `make` needs, so a missing deploy/.env can be observed without touching the real repo."""
     work = tmp / "repo"
     (work / "deploy" / "tests").mkdir(parents=True)
-    for rel in ("Makefile", "deploy/preflight.sh", "deploy/.env.example", "deploy/tests/test_compose_smoke.sh"):
+    for rel in (
+        "Makefile",
+        "deploy/preflight.sh",
+        "deploy/check-env.sh",
+        "deploy/.env.example",
+        "deploy/tests/test_compose_smoke.sh",
+    ):
         shutil.copy(ROOT / rel, work / rel)
     return work
 
