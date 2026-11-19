@@ -358,8 +358,10 @@ def test_server_side_data_section_builds_paths_under_data_dir(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     data = svc.server_side_data_section(Settings(data_dir=root, environment="test"))
-    assert set(data) == {"background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir"}
-    assert all(str(root.resolve()) in v for v in data.values())
+    dirs = {"background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir"}
+    # W1-COMPOSE: the section also names the characteristics files and declares the temperature source.
+    assert set(data) == dirs | {"resstock_chars_file", "comstock_chars_file", "temperature_source"}
+    assert all(str(root.resolve()) in data[k] for k in dirs)
 
 
 def test_server_side_data_section_requires_data_dir_and_rejects_symlink_escape(tmp_path):
