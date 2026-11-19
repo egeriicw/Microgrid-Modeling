@@ -301,4 +301,24 @@ describe("results: temperature block (schema 1.1)", () => {
     const { c } = await signedIn(() => json(200, doc({ ...available, units: "degF" })));
     await expect(c.getResults(RUN_ID)).rejects.toThrow(/units/i);
   });
+
+  it("D2: an available series with NaN-like JSON (null) or a string is an error, naming the position", async () => {
+    const withNull = await signedIn(() => json(200, doc({ ...available, "15min": [1.5, null] })));
+    await expect(withNull.c.getResults(RUN_ID)).rejects.toThrow(/temperature \(15min\) has a missing or non-numeric value at position 2/);
+  });
+
+  it("D6: a time axis start with 'Z' or an offset is refused; plain local time (also with fractional seconds) is read", async () => {
+    const withTime = (start: string) => {
+      const d = doc(available);
+      d.results.time.hourly.start = start;
+      d.results.time["15min"]!.start = start;
+      return d;
+    };
+    for (const start of ["2018-01-01T00:00:00Z", "2018-01-01T00:00:00-05:00", "2018-01-01T00:00:00+0100"]) {
+      const { c } = await signedIn(() => json(200, withTime(start)));
+      await expect(c.getResults(RUN_ID), start).rejects.toThrow(/time zone/);
+    }
+    const ok = await signedIn(() => json(200, withTime("2018-01-01T00:00:00.000")));
+    expect((await ok.c.getResults(RUN_ID)).series.ts[0]).toBe(Date.UTC(2018, 0, 1));
+  });
 });

@@ -11,7 +11,20 @@ describe("role-aware shell", () => {
     const nav = await screen.findByRole("navigation");
     expect(nav).toHaveTextContent(/compose/i);
     expect(nav).toHaveTextContent(/demo results/i);
-    expect(screen.getByText(/signed in as mock client \(client\)/i)).toBeInTheDocument();
+    expect(screen.getByText("Signed in as demo data (client)")).toBeInTheDocument();
+  });
+
+  it("never shows 'mock' to a person in demo-data mode: not as a user name, nor as the engine version (U11)", async () => {
+    const base = createMockClient({ runsPerTick: 50, tickMs: 1, pointsPerYear: 96 * 20 });
+    await base.login("client");
+    const { runId } = await base.startRun({
+      kind: "custom",
+      composition: { name: "t", totalBuildings: 5, seeds: {}, maxRuns: 50, convergence: false, entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }] },
+    });
+    const { container } = await renderApp({ route: `/runs/${runId}`, role: "client", client: base });
+    await screen.findByRole("link", { name: /view results/i });
+    expect(screen.getByText(/engine version \(demo data\)/i)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/mock/i);
   });
 
   it("shows Compose to demo too (predefined compositions only)", async () => {
@@ -42,7 +55,7 @@ describe("role-aware shell", () => {
     const client: ApiClient = { ...base, kind: "http" };
     await renderApp({ route: "/composition", role: "client", client });
     await screen.findByRole("navigation");
-    expect(screen.queryByText(/demo data/i)).toBeNull();
+    expect(screen.queryByText(/demo data — not connected to a server/i)).toBeNull();
   });
 
   it("signs out back to the sign-in page", async () => {

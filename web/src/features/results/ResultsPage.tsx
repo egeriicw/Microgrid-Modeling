@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Alert, Box, Chip, LinearProgress, Typography, useMediaQuery } from "@mui/material";
+import { AccuracyCaveat } from "./caveat";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useApiClient } from "../../api/context";
@@ -10,8 +11,14 @@ import { ChartCard } from "./ChartCard";
 import { loadDurationTable, seasonalTable, splitTable } from "./tables";
 import { TimeSeriesChart } from "./TimeSeriesChart";
 
-// FR-WEB-8: shown on every results view.
-export const ACCURACY_CAVEAT = "Methodology demonstration with benchmark checks — not validated for engineering or investment decisions.";
+export { ACCURACY_CAVEAT } from "./caveat";
+
+export const NOT_CALIBRATED = "Not checked against measured data (no site data was uploaded).";
+
+/** Plain calibration line: not reported or "not calibrated" both mean no measured data was used. */
+export function calibrationText(status: string | null): string {
+  return status === null || /^not calibrated/i.test(status) ? NOT_CALIBRATED : status;
+}
 
 /** AMY<year> = actual weather of that year (not a typical year); anything else is described neutrally. */
 export function weatherYearNote(weatherYear: string): string {
@@ -43,13 +50,14 @@ export function ResultsPage() {
       {q.isError && <Alert severity="error">{q.error.message}</Alert>}
       {q.data && series && ldc && seasonal && split && (
         <>
-          <Alert role="note" severity="warning" sx={{ mb: 2 }}>{ACCURACY_CAVEAT}</Alert>
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", mb: 2 }}>
+          <AccuracyCaveat />
+          {/* Each fact on its own line (U8); the weather year is never claimed when the API did not report it. */}
+          <Box sx={{ display: "grid", gap: 0.75, justifyItems: "start", mb: 2 }}>
             <Chip color="primary" label={`Weather year: ${wy}`} />
             <Typography variant="body2">
               {q.data.weatherYear ? weatherYearNote(q.data.weatherYear) : "The results do not say which weather year was used."}
             </Typography>
-            <Typography variant="body2">Calibration status: {q.data.calibrationStatus ?? "not reported by the API"}</Typography>
+            <Typography variant="body2">Calibration status: {calibrationText(q.data.calibrationStatus)}</Typography>
           </Box>
 
           <TimeSeriesChart series={series} weatherYear={wy} temperatureNote={q.data.temperatureNote} />

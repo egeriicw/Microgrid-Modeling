@@ -35,7 +35,7 @@ describe("QA W1-WEB2: the form follows /me, not the role name", () => {
 
   // The notice is chosen by the flags but words them as a fact about the role ("Demo accounts ..."), which /me did
   // not say for this caller. LOW: word it from the flags ("This account can run the predefined compositions only").
-  it.fails("does not call a non-demo account a demo account", async () => {
+  it("does not call a non-demo account a demo account", async () => {
     const { client } = await withSession({ runInputs: ["composition_id"] });
     await renderApp({ route: "/composition", role: "client", client });
     await screen.findByRole("button", { name: /^run /i });
@@ -46,7 +46,7 @@ describe("QA W1-WEB2: the form follows /me, not the role name", () => {
     const { client } = await withSession({ role: "demo", runInputs: ["composition", "composition_id"], maySetSeeds: true });
     await renderApp({ route: "/composition", role: "client", client });
     expect(await screen.findByRole("form", { name: /your own composition/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/composition seed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/building mix seed/i)).toBeInTheDocument();
   });
 
   it("an unknown role name with every input works like any other", async () => {
@@ -60,7 +60,7 @@ describe("QA W1-WEB2: the form follows /me, not the role name", () => {
     await renderApp({ route: "/composition", role: "client", client });
     await screen.findByRole("heading", { name: /define a community composition/i });
     expect(screen.queryByRole("form")).toBeNull();
-    expect(screen.queryByRole("region", { name: /predefined compositions/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: /ready-made neighbourhoods/i })).toBeNull();
   });
 });
 
@@ -106,7 +106,7 @@ describe("QA W1-WEB2: server refusals appear as text near the form", () => {
     const civic = await screen.findByRole("checkbox", { name: /include civic building/i });
     await user.click(civic);
     expect(civic).not.toBeChecked();
-    expect(screen.queryByLabelText(/civic building mode/i)).toBeNull();
+    expect(screen.queryByLabelText(/how many\? civic building/i)).toBeNull();
   });
 
   it("an inactive type cannot be ticked by keyboard", async () => {

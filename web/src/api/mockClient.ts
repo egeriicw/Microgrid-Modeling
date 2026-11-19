@@ -3,6 +3,7 @@
 // so the UI is exercised against realistic behaviour. All HTTP lives in src/api/httpClient.ts.
 import { BUILDING_TYPES, FILTER_OPTIONS, FULL_YEAR_POINTS, generateDataset } from "./fixtures";
 import { applyProgress } from "./mapping";
+import { MAX_NAME, hasForbiddenNameChar, pyBlank, pyLength } from "./serverText";
 import {
   ApiError,
   SEED_KEYS,
@@ -52,9 +53,9 @@ const MOCK_DATA_FILES: DataFiles = {
 function sessionFor(role: Role): Session {
   const demo = role === "demo";
   return {
-    subject: `mock-${role}`,
+    subject: `demo-data-${role}`,
     role,
-    displayName: `Mock ${role}`,
+    displayName: "demo data", // never "Mock …": this mode is shown to people as demo data
     permissions: { "filters.use": role === "admin" },
     runInputs: demo ? ["composition_id"] : ["composition", "composition_id", "config"],
     maySetSeeds: !demo,
@@ -85,6 +86,26 @@ const unprocessable = (message: string) => new ApiError(422, message);
 
 /** The API's composition rules (services/compositions.py, routers/runs.py caps), with the API's own wording. */
 function checkComposition(c: Composition): void {
+  // The API schema's own rules first (composition_schemas.py: pydantic answers 422 before any sum is checked).
+  const whole = (v: number, min: number) => Number.isInteger(v) && v >= min && v <= 1_000_000;
+  if (c.name === "") throw unprocessable("composition.name: String should have at least 1 character");
+  if (pyLength(c.name) > MAX_NAME) throw unprocessable(`composition.name: String should have at most ${MAX_NAME} characters`);
+  if (pyBlank(c.name)) throw unprocessable("composition.name: Value error, name must contain at least one visible character");
+  if (hasForbiddenNameChar(c.name)) {
+    throw unprocessable("composition.name: Value error, name must not contain control, line-separator or text-direction characters");
+  }
+  if (!whole(c.totalBuildings, 1)) throw unprocessable("composition.total_buildings: Input should be a whole number of at least 1");
+  if (!whole(c.maxRuns, 1)) throw unprocessable("composition.max_runs: Input should be a whole number of at least 1");
+  for (const e of c.entries) {
+    if (e.mode === "count") {
+      if (!whole(e.count, 0)) throw unprocessable("composition.building_types.fixed_count: Input should be a whole number of at least 0");
+    } else {
+      for (const v of [e.minFraction, e.maxFraction]) {
+        if (!Number.isFinite(v) || v < 0 || v > 1) throw unprocessable("composition.building_types: Input should be between 0 and 1");
+      }
+      if (e.minFraction > e.maxFraction) throw unprocessable("composition.building_types: Value error, min_fraction must not exceed max_fraction");
+    }
+  }
   const seen = new Set<string>();
   for (const e of c.entries) {
     if (seen.has(e.typeId)) throw unprocessable(`building type '${e.typeId}' is listed more than once`);
@@ -191,7 +212,7 @@ export function createMockClient(options: MockOptions = {}): ApiClient {
       converged: null,
       seeds: { ...r.seeds },
       config: structuredClone(r.config),
-      engineVersion: "mock",
+      engineVersion: "demo data",
       cancelRequested: r.cancelled,
       ensembleMode: r.mode,
       convergenceRule: null,

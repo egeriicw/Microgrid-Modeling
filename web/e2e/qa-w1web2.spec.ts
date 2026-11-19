@@ -42,11 +42,11 @@ test.describe("accessibility basics on the composition form", () => {
     await tick.focus();
     await page.keyboard.press("Space");
     await expect(tick).toBeChecked();
-    const mode = page.getByLabel(/^single-family detached mode/i);
+    const mode = page.getByLabel(/how many\? single-family detached/i);
     await mode.focus();
     await page.keyboard.press("ArrowDown");
     await expect(mode).toHaveValue("count");
-    await expect(page.getByLabel(/^single-family detached number of buildings/i)).toBeVisible();
+    await expect(page.getByLabel(/number of buildings: single-family detached/i)).toBeVisible();
     const conv = page.getByRole("switch", { name: /convergence/i });
     await conv.focus();
     await page.keyboard.press("Space");
@@ -64,7 +64,7 @@ test.describe("accessibility basics on the composition form", () => {
     await expect(name).toHaveAccessibleDescription(/enter a name/i);
     await expect(page.getByRole("alert").filter({ hasText: /include at least one building type/i })).toBeVisible();
     await page.getByRole("switch", { name: /convergence/i }).check();
-    const runs = page.getByLabel(/maximum runs/i);
+    const runs = page.getByLabel(/number of runs \(at most\)/i);
     await runs.fill("5");
     await expect(runs).toHaveAccessibleDescription(/at least 20/i);
   });
@@ -85,7 +85,7 @@ test.describe("accessibility basics on the composition form", () => {
       await page.keyboard.press("Tab");
     }
     const at = (re: RegExp) => seen.findIndex((s) => re.test(s));
-    const order = [/composition name/i, /total buildings/i, /single-family detached mode/i, /maximum runs/i, /convergence/i, /composition seed/i, /start run/i].map(at);
+    const order = [/composition name/i, /total buildings/i, /how many\? single-family detached/i, /number of runs \(at most\)/i, /convergence/i, /building mix seed/i, /start run/i].map(at);
     expect(order.every((x) => x >= 0), JSON.stringify(seen)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
@@ -104,7 +104,7 @@ test.describe("server refusals near the form", () => {
   test("a real server refusal (a type with no buildings in the data) is shown in the form", async ({ page }) => {
     await signIn(page, KEYS.client);
     await page.getByRole("checkbox", { name: /include single-family attached/i }).check();
-    await page.getByLabel(/maximum runs/i).fill("2");
+    await page.getByLabel(/number of runs \(at most\)/i).fill("2");
     await page.getByRole("button", { name: /start run/i }).click();
     const form = page.getByRole("form", { name: /your own composition/i });
     await expect(form.getByText(/the server's data has no buildings for 'sf_attached'/)).toBeVisible();
@@ -146,7 +146,7 @@ test.describe("server refusals near the form", () => {
 test("demo: predefined only, fixed seeds shown, no replay", async ({ page }) => {
   await signIn(page, KEYS.demo);
   await expect(page.getByRole("form", { name: /your own composition/i })).toHaveCount(0);
-  await page.getByRole("button", { name: /run small-mixed/i }).click();
+  await page.getByRole("button", { name: /run this neighbourhood: small mixed/i }).click();
   await expect(page).toHaveURL(/\/runs\//);
   await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText("20260101").first()).toBeVisible();

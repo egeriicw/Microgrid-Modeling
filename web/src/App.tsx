@@ -29,33 +29,40 @@ function Layout() {
         Skip to main content
       </MuiLink>
       <AppBar position="static" color="primary" enableColorOnDark>
-        <Toolbar sx={{ gap: 2, flexWrap: "wrap" }}>
-          <Typography variant="h6" component="p" sx={{ mr: 2 }}>
+        {/* Phones: row 1 = title + Sign out, row 2 = navigation + who is signed in (at most two rows with a real
+            server). Wider screens: one row. The `order` values do the reflow; the DOM order stays logical. */}
+        <Toolbar sx={{ columnGap: 2, rowGap: 0.5, flexWrap: "wrap", py: { xs: 0.5, sm: 0 }, minHeight: { xs: 0, sm: 64 } }}>
+          <Typography variant="h6" component="p" sx={{ mr: { sm: 2 }, fontSize: { xs: "1.05rem", sm: "1.25rem" }, order: { xs: 1, sm: 1 } }}>
             Community Energy Profiler
           </Typography>
           {client.kind === "mock" && (
             // Black on Okabe-Ito yellow: high contrast, and not conveyed by colour alone (the text says it).
-            <Typography variant="body2" component="p" sx={{ bgcolor: "#F0E442", color: "#000", px: 1, py: 0.5, borderRadius: 1, fontWeight: 600 }}>
+            <Typography
+              variant="body2"
+              component="p"
+              sx={{ bgcolor: "#F0E442", color: "#000", px: 1, py: 0.25, borderRadius: 1, fontWeight: 600, order: { xs: 4, sm: 2 } }}
+            >
               Demo data — not connected to a server
             </Typography>
           )}
           {session && (
             <>
-              <Box component="nav" aria-label="Main" sx={{ display: "flex", gap: 1, flexGrow: 1 }}>
-                <Button color="inherit" component={RouterLink} to="/composition">
+              <Box component="nav" aria-label="Main" sx={{ display: "flex", gap: 1, flexGrow: 1, order: { xs: 3, sm: 3 } }}>
+                <Button color="inherit" component={RouterLink} to="/composition" sx={{ minHeight: 44 }}>
                   Compose
                 </Button>
                 {client.kind === "mock" && (
-                  <Button color="inherit" component={RouterLink} to={`/results/${DEMO_RUN_ID}`}>
+                  <Button color="inherit" component={RouterLink} to={`/results/${DEMO_RUN_ID}`} sx={{ minHeight: 44 }}>
                     Demo results
                   </Button>
                 )}
               </Box>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ order: { xs: 3, sm: 4 } }}>
                 {`Signed in as ${session.displayName} (${session.role})`}
               </Typography>
               <Button
                 color="inherit"
+                sx={{ minHeight: 44, order: { xs: 2, sm: 5 }, ml: { xs: "auto", sm: 0 } }}
                 onClick={async () => {
                   await signOut();
                   navigate("/login");

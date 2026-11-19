@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateDataset } from "../../api/fixtures";
 import {
+  LOAD_DEFS,
   OKABE_ITO,
   buildLoadDurationOption,
   buildSeasonalOption,
@@ -90,7 +91,7 @@ describe("buildTimeSeriesOption", () => {
     expect(stacked).toHaveLength(2);
     expect(stacked[0].areaStyle.opacity).toBe(0);
     expect(stacked[1].areaStyle.opacity).toBeGreaterThan(0);
-    expect(o.series.some((s: Opt) => s.name === "P50")).toBe(true);
+    expect(o.series.some((s: Opt) => s.name === "P50 (the median run)")).toBe(true);
     const span = o.dataset.source.span;
     expect(span[3]).toBeCloseTo(series.p90[3] - series.p10[3], 9);
   });
@@ -109,7 +110,7 @@ describe("buildTimeSeriesOption", () => {
 
   it("draws the band clearly: strong opacity, rect legend swatch in the band colour, hidden base", () => {
     const o = opt({ showBand: true });
-    const span = o.series.find((s: Opt) => s.name === "P10-P90 band");
+    const span = o.series.find((s: Opt) => s.name === "Uncertainty band (P10 to P90)");
     expect(span.areaStyle.opacity).toBeGreaterThanOrEqual(0.5);
     expect(span.itemStyle.color).toBe(span.areaStyle.color);
     expect(o.legend.icon).toBe("rect");
@@ -151,5 +152,50 @@ describe("other chart options", () => {
     const [r, c] = o.series[0].data as number[];
     expect(r).toBeGreaterThan(0);
     expect(c).toBeGreaterThan(0);
+  });
+});
+
+describe("time-series readability (U4): band under the lines, contrast, chosen loads", () => {
+  const luminance = (hex: string) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const contrast = (a: string, b: string) => {
+    const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const opt = (o: Partial<Parameters<typeof buildTimeSeriesOption>[0]> = {}): Opt =>
+    buildTimeSeriesOption({ series, resolution: "15min", showBand: true, showTemperature: false, ...o });
+
+  it("draws the band first and the load lines over it", () => {
+    const o = opt();
+    const names = o.series.map((s: Opt) => s.name);
+    expect(names.indexOf("Uncertainty band (P10 to P90)")).toBeLessThan(names.indexOf("Total"));
+    const band = o.series.find((s: Opt) => s.name === "Uncertainty band (P10 to P90)");
+    const total = o.series.find((s: Opt) => s.name === "Total");
+    expect(total.z).toBeGreaterThan(band.z);
+  });
+
+  it("the band fill and every coloured line have at least 3:1 contrast against the white background", () => {
+    const band = opt().series.find((s: Opt) => s.name === "Uncertainty band (P10 to P90)");
+    expect(band.areaStyle.opacity).toBe(1);
+    expect(contrast(band.areaStyle.color, "#FFFFFF")).toBeGreaterThanOrEqual(3);
+    for (const d of LOAD_DEFS) expect(contrast(d.color, "#FFFFFF"), d.name).toBeGreaterThanOrEqual(3);
+    expect(contrast(OKABE_ITO.orange, "#FFFFFF")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("the median line (inside the band) contrasts at least 3:1 with the band, and keeps a dash style", () => {
+    const o = opt();
+    const band = o.series.find((s: Opt) => s.name === "Uncertainty band (P10 to P90)");
+    const p50 = o.series.find((s: Opt) => s.name === "P50 (the median run)");
+    expect(contrast(p50.lineStyle.color, band.areaStyle.color)).toBeGreaterThanOrEqual(3);
+    expect(p50.lineStyle.type).toBe("dashed");
+  });
+
+  it("draws only the chosen load lines", () => {
+    const names = opt({ loads: ["total"] }).series.map((s: Opt) => s.name);
+    expect(names).toContain("Total");
+    expect(names).not.toContain("Residential");
+    expect(names).not.toContain("Commercial");
   });
 });

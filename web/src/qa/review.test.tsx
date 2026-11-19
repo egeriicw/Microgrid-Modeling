@@ -34,7 +34,7 @@ describe("QA: composition validation holes", () => {
     expect(validateComposition({ ...ok, totalBuildings: NaN }).totalBuildings).toBeTruthy();
     expect(validateComposition({ ...ok, seeds: { composition_seed: -1 } }).composition_seed).toBeTruthy();
     expect(validateComposition({ ...ok, maxRuns: Infinity }).maxRuns).toBeTruthy();
-    expect(validateComposition({ ...ok, entries: [{ typeId: "a", mode: "fraction", minFraction: -0.1, maxFraction: 1 }] }).entries).toBeTruthy();
+    expect(validateComposition({ ...ok, entries: [{ typeId: "a", mode: "fraction", minFraction: -0.1, maxFraction: 1 }] }).byType?.a.min).toBeTruthy();
   });
 
   // D1 (resolved, with a changed expectation): QA first expected "60 fixed + fraction 1 of 100" to be rejected as
@@ -82,7 +82,7 @@ describe("QA: results labels come from the API", () => {
 describe("QA: role gating and run lifecycle", () => {
   it("demo reaching /composition by URL sees no custom form and no Start run", async () => {
     await renderApp({ route: "/composition", role: "demo" });
-    await screen.findByText(/demo accounts can run the predefined compositions only/i);
+    await screen.findByText(/this account can run the ready-made neighbourhoods below/i);
     expect(screen.queryByRole("button", { name: /start run/i })).toBeNull();
     expect(screen.queryByText(/building filters/i)).toBeNull();
   });
@@ -147,8 +147,8 @@ describe("QA: gaps found by mutation (survived the author's tests)", () => {
     };
     const y = Object.fromEntries(opt.series.map((s) => [s.name, s.encode.y]));
     expect(y["P10 (base)"]).toBe("p10");
-    expect(y["P10-P90 band"]).toBe("span");
-    expect(y["P50"]).toBe("p50");
+    expect(y["Uncertainty band (P10 to P90)"]).toBe("span");
+    expect(y["P50 (the median run)"]).toBe("p50");
     opt.dataset.source.span.forEach((v, i) => expect(v).toBeCloseTo(series.p90[i] - series.p10[i]));
   });
 });

@@ -122,13 +122,13 @@ describe("QA W1-WEB2: results document honesty", () => {
 
   // The schema says missing or non-finite temperature values are errors; the mapper turns them into NaN and the chart
   // draws a gap instead of failing with a clear message.
-  it.fails("fails loudly when an available temperature series contains a null", async () => {
+  it("fails loudly when an available temperature series contains a null", async () => {
     const { c } = client(() => json(200, doc({ ...ok, hourly: [5, null] })));
     await c.login("secret-key-0123456789");
     await expect(c.getResults(RUN_ID)).rejects.toThrow(/temperature/i);
   });
 
-  it.fails("fails loudly when an available temperature series contains text", async () => {
+  it("fails loudly when an available temperature series contains text", async () => {
     const { c } = client(() => json(200, doc({ ...ok, hourly: [5, "6"] })));
     await c.login("secret-key-0123456789");
     await expect(c.getResults(RUN_ID)).rejects.toThrow(/temperature/i);
@@ -136,7 +136,7 @@ describe("QA W1-WEB2: results document honesty", () => {
 
   // The schema documents `start` as ISO local time (no offset). A start WITH an offset is silently read as wall clock
   // and labelled "local time"; it should be refused, not ignored.
-  it.fails("refuses a time axis start that carries a time-zone offset instead of ignoring the offset", async () => {
+  it("refuses a time axis start that carries a time-zone offset instead of ignoring the offset", async () => {
     const { c } = client(() => json(200, doc(ok, "2018-01-01T05:00:00+00:00")));
     await c.login("secret-key-0123456789");
     await expect(c.getResults(RUN_ID)).rejects.toThrow(/time/i);

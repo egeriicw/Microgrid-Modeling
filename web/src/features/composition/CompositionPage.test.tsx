@@ -39,13 +39,13 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
   it("an included type has a switch between share range and exact number", async () => {
     const user = userEvent.setup();
     await renderApp({ route: "/composition", role: "client" });
-    expect(screen.queryByLabelText(/single-family detached minimum share/i)).toBeNull();
+    expect(screen.queryByLabelText(/smallest share \(0 to 1\): single-family detached/i)).toBeNull();
     await include(user, "single-family detached");
-    expect(screen.getByLabelText(/single-family detached minimum share/i)).toHaveValue("0");
-    expect(screen.getByLabelText(/single-family detached maximum share/i)).toHaveValue("1");
-    await user.selectOptions(screen.getByLabelText(/single-family detached mode/i), "count");
-    expect(screen.getByLabelText(/single-family detached number of buildings/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/single-family detached minimum share/i)).toBeNull();
+    expect(screen.getByLabelText(/smallest share \(0 to 1\): single-family detached/i)).toHaveValue("0");
+    expect(screen.getByLabelText(/largest share \(0 to 1\): single-family detached/i)).toHaveValue("1");
+    await user.selectOptions(screen.getByLabelText(/how many\? single-family detached/i), "count");
+    expect(screen.getByLabelText(/number of buildings: single-family detached/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/smallest share \(0 to 1\): single-family detached/i)).toBeNull();
   });
 
   it("asks for at least one type, and disables Start while the form is invalid", async () => {
@@ -65,9 +65,9 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     await renderApp({ route: "/composition", role: "client" });
     for (const t of ["single-family detached", "multifamily"]) {
       await include(user, t);
-      await setText(user, new RegExp(`^${t} minimum share`, "i"), "0.9");
+      await setText(user, new RegExp(`smallest share \\(0 to 1\\): ${t}$`, "i"), "0.9");
     }
-    expect(await screen.findByText(/minimum shares add up to more than 1/i)).toBeInTheDocument();
+    expect(await screen.findByText(/smallest shares add up to more than 1/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start run/i })).toBeDisabled();
   });
 
@@ -76,10 +76,10 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     await renderApp({ route: "/composition", role: "client" });
     await include(user, "single-family detached");
     await include(user, "office");
-    await user.selectOptions(screen.getByLabelText(/single-family detached mode/i), "count");
-    await setText(user, /single-family detached number of buildings/i, "60");
+    await user.selectOptions(screen.getByLabelText(/how many\? single-family detached/i), "count");
+    await setText(user, /number of buildings: single-family detached/i, "60");
     expect(screen.queryByText(/exceeds/i)).toBeNull();
-    await setText(user, /single-family detached number of buildings/i, "101");
+    await setText(user, /number of buildings: single-family detached/i, "101");
     expect(await screen.findByText(/exceeds the total/i)).toBeInTheDocument();
   });
 
@@ -90,10 +90,10 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     await setText(user, /total buildings/i, "5001");
     expect(await screen.findByText(/at most 5000/i)).toBeInTheDocument();
     await setText(user, /total buildings/i, "50");
-    await setText(user, /maximum runs/i, "10");
+    await setText(user, /number of runs \(at most\)/i, "10");
     expect(screen.getByRole("button", { name: /start run/i })).toBeEnabled();
     await user.click(screen.getByRole("switch", { name: /convergence/i }));
-    expect(await screen.findByText(/maximum runs must be at least 20/i)).toBeInTheDocument();
+    expect(await screen.findByText(/number of runs must be at least 20/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start run/i })).toBeDisabled();
   });
 
@@ -106,11 +106,11 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     await include(user, "single-family detached");
     await include(user, "multifamily");
     await include(user, "office");
-    await user.selectOptions(screen.getByLabelText(/single-family detached mode/i), "count");
-    await setText(user, /single-family detached number of buildings/i, "10");
-    await setText(user, /^multifamily minimum share/i, "0.25");
-    await setText(user, /^office maximum share/i, "0.5");
-    await setText(user, /maximum runs/i, "30");
+    await user.selectOptions(screen.getByLabelText(/how many\? single-family detached/i), "count");
+    await setText(user, /number of buildings: single-family detached/i, "10");
+    await setText(user, /smallest share \(0 to 1\): multifamily/i, "0.25");
+    await setText(user, /largest share \(0 to 1\): office/i, "0.5");
+    await setText(user, /number of runs \(at most\)/i, "30");
     await user.click(screen.getByRole("switch", { name: /convergence/i }));
     await user.click(screen.getByRole("button", { name: /start run/i }));
     expect(await screen.findByRole("progressbar", { name: /run progress/i })).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     const { client, startRun } = spied();
     await renderApp({ route: "/composition", role: "client", client });
     await include(user, "office");
-    await user.type(screen.getByLabelText(/composition seed/i), "42");
+    await user.type(screen.getByLabelText(/building mix seed/i), "42");
     await user.click(screen.getByRole("button", { name: /start run/i }));
     await screen.findByRole("progressbar", { name: /run progress/i });
     const req = startRun.mock.calls[0][0];
@@ -148,7 +148,7 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     const user = userEvent.setup();
     await renderApp({ route: "/composition", role: "client" });
     await include(user, "office");
-    await user.type(await screen.findByLabelText(/archetype seed/i), "4294967296");
+    await user.type(await screen.findByLabelText(/building pick seed/i), "4294967296");
     expect(await screen.findByText(/at most 4294967295/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start run/i })).toBeDisabled();
   });
@@ -158,7 +158,7 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     const client: ApiClient = { ...base, login: async (k) => ({ ...(await base.login(k)), maySetSeeds: false }) };
     await renderApp({ route: "/composition", role: "client", client });
     await screen.findByRole("group", { name: /residential building types/i });
-    expect(screen.queryByLabelText(/composition seed/i)).toBeNull();
+    expect(screen.queryByLabelText(/building mix seed/i)).toBeNull();
   });
 
   it("shows the server's refusal (422 text) next to the form, as text", async () => {
@@ -194,7 +194,7 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
     await renderApp({ route: "/composition", role: "client", client });
     expect(await screen.findByText(/temporarily unavailable/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start run/i })).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /run dc_small_mixed/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /run this neighbourhood: dc small mixed/i })).toBeInTheDocument();
   });
 
   it("hides the building filters without the filters.use permission and shows them with it", async () => {
@@ -209,11 +209,91 @@ describe("composition form (FR-WEB-1) on the server's catalogue", () => {
   it("offers the demo role only the predefined compositions: no form, no seed fields", async () => {
     const user = userEvent.setup();
     await renderApp({ route: "/composition", role: "demo" });
-    expect(await screen.findByText(/demo accounts can run the predefined compositions only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/this account can run the ready-made neighbourhoods below\. pick one and press run\./i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start run/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/total buildings/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/composition seed/i)).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: /run dc_small_mixed/i }));
+    expect(screen.queryByLabelText(/building mix seed/i)).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /run this neighbourhood: dc small mixed/i }));
     expect(await screen.findByRole("progressbar", { name: /run progress/i })).toBeInTheDocument();
+  });
+
+  it("shows every problem on its own field, naming the building type, linked by aria-describedby, with a count near Start", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    await include(user, "single-family detached");
+    await include(user, "office");
+    await setText(user, /smallest share \(0 to 1\): single-family detached/i, "1.5");
+    await setText(user, /largest share \(0 to 1\): office/i, "abc");
+    const sf = screen.getByLabelText(/smallest share \(0 to 1\): single-family detached/i);
+    const office = screen.getByLabelText(/largest share \(0 to 1\): office/i);
+    expect(sf).toHaveAttribute("aria-invalid", "true");
+    expect(office).toHaveAttribute("aria-invalid", "true");
+    expect(sf).toHaveAccessibleDescription("Single-family detached: the smallest share must be between 0 and 1.");
+    expect(office).toHaveAccessibleDescription("Office: enter the largest share as a number from 0 to 1 (for example 0.25).");
+    expect(screen.getByRole("status")).toHaveTextContent("There are 2 problems to fix before the run can start. They are marked above.");
+    expect(screen.getByRole("button", { name: /start run/i })).toHaveAccessibleDescription(/there are 2 problems/i);
+  });
+
+  it("an exact number that is not whole is marked on its own field", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    await include(user, "single-family detached");
+    await user.selectOptions(screen.getByLabelText(/how many\? single-family detached/i), "count");
+    await setText(user, /number of buildings: single-family detached/i, "2.5");
+    expect(screen.getByLabelText(/number of buildings: single-family detached/i)).toHaveAccessibleDescription(
+      "Single-family detached: the number of buildings must be a whole number, 0 or more.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("There is 1 problem to fix before the run can start. It is marked above.");
+  });
+
+  it("accepts '.25' as a share", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    await include(user, "office");
+    await setText(user, /smallest share \(0 to 1\): office/i, ".25");
+    expect(screen.getByLabelText(/smallest share \(0 to 1\): office/i)).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: /start run/i })).toBeEnabled();
+  });
+
+  it("uses plain wording: type names without 'Include', 'How many?' with two plain options, and the inactive note", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    const tick = await screen.findByRole("checkbox", { name: "Include Single-family detached" });
+    expect(tick.closest("label")).toHaveTextContent(/^Single-family detached$/);
+    expect(screen.getByText("Not available yet: this building type will be added later.")).toBeInTheDocument();
+    await user.click(tick);
+    const how = screen.getByLabelText(/how many\? single-family detached/i);
+    expect(within(how).getByRole("option", { name: "An exact number of buildings" })).toBeInTheDocument();
+    expect(within(how).getByRole("option", { name: "A share of the neighbourhood (range)" })).toBeInTheDocument();
+    expect(screen.getAllByText("How many?").length).toBeGreaterThan(0); // label and its outline notch
+    expect(screen.getAllByText("Smallest share (0 to 1)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Largest share (0 to 1)").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Number of runs (at most)")).toBeInTheDocument();
+  });
+
+  it("the convergence switch says On or Off in words, not only by colour", async () => {
+    const user = userEvent.setup();
+    await renderApp({ route: "/composition", role: "client" });
+    const sw = await screen.findByRole("switch", { name: "Stop early when the results settle (convergence)" });
+    expect(screen.getByTestId("convergence-state")).toHaveTextContent("Off");
+    await user.click(sw);
+    expect(screen.getByTestId("convergence-state")).toHaveTextContent("On");
+  });
+
+  it("seed fields use the plain names and keep the technical name as secondary text", async () => {
+    await renderApp({ route: "/composition", role: "client" });
+    expect(await screen.findByLabelText("Building mix seed")).toHaveAccessibleDescription(
+      "Which mix of building types is drawn. Blank = random. Technical name: composition_seed.",
+    );
+    expect(screen.getByLabelText("Building pick seed")).toHaveAccessibleDescription(/Technical name: archetype_seed\./);
+    expect(screen.getByLabelText("Variation seed")).toHaveAccessibleDescription(/Technical name: perturbation_seed\./);
+  });
+
+  it("shows ready-made neighbourhoods with a readable name, the id as secondary text and a plain button", async () => {
+    await renderApp({ route: "/composition", role: "client" });
+    const section = await screen.findByRole("region", { name: "Ready-made neighbourhoods" });
+    expect(within(section).getByText("Dc small mixed")).toBeInTheDocument();
+    expect(within(section).getByText("dc_small_mixed")).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: "Run this neighbourhood: Dc small mixed" })).toHaveTextContent(/^Run this neighbourhood$/);
   });
 });

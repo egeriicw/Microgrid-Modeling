@@ -47,16 +47,16 @@ test("client: hybrid composition -> run with progress -> data used -> results wi
   await page.getByLabel(/composition name/i).fill("Hybrid block");
   await page.getByLabel(/total buildings/i).fill("12");
   await include(page, /include single-family detached/i);
-  await page.getByLabel(/^single-family detached mode/i).selectOption("count");
-  await page.getByLabel(/^single-family detached number of buildings/i).fill("3");
+  await page.getByLabel(/how many\? single-family detached/i).selectOption("count");
+  await page.getByLabel(/number of buildings: single-family detached/i).fill("3");
   await include(page, /include multifamily, 1-3 stories/i);
-  await page.getByLabel(/^multifamily, 1-3 stories minimum share/i).fill("0.2");
+  await page.getByLabel(/smallest share \(0 to 1\): multifamily, 1-3 stories/i).fill(".2");
   await include(page, /include multifamily, 4-7 stories/i);
-  await page.getByLabel(/^multifamily, 4-7 stories maximum share/i).fill("0.8");
+  await page.getByLabel(/largest share \(0 to 1\): multifamily, 4-7 stories/i).fill("0.8");
   await include(page, /include private commercial/i);
-  await page.getByLabel(/^private commercial.* mode/i).selectOption("count");
-  await page.getByLabel(/^private commercial.* number of buildings/i).fill("1");
-  await page.getByLabel(/maximum runs/i).fill("30");
+  await page.getByLabel(/how many\? private commercial/i).selectOption("count");
+  await page.getByLabel(/number of buildings: private commercial/i).fill("1");
+  await page.getByLabel(/number of runs \(at most\)/i).fill("30");
   await page.getByRole("switch", { name: /convergence/i }).check();
   await expect(page.getByRole("button", { name: /start run/i })).toBeEnabled();
   await shots(page, "w1web2-composition-form-client");
@@ -82,14 +82,14 @@ test("client: hybrid composition -> run with progress -> data used -> results wi
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("progressbar", { name: /run progress/i })).toBeVisible();
   console.log("first stage text:", await page.getByTestId("stage-text").innerText());
-  await expect(page.getByTestId("stage-text")).not.toHaveText(/^(queued|starting)$/i, { timeout: 60_000 });
-  console.log("live stage text:", await page.getByTestId("stage-text").innerText(), "|", await page.getByText(/^runs completed/i).innerText());
+  await expect(page.getByTestId("stage-text")).not.toHaveText(/queued|starting/i, { timeout: 60_000 });
+  console.log("live stage text:", await page.getByTestId("stage-text").innerText(), "|", await page.getByText(/^neighbourhoods simulated/i).innerText());
   await shots(page, "w1web2-run-screen-in-progress");
   await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/convergence rule used: legacy_window/i)).toBeVisible();
   const panel = page.getByRole("region", { name: /data used/i });
   await expect(panel).toContainText("DC_upgrade0.xlsx");
-  await expect(panel).toContainText(/column out\.outdoor_temp_c of each sampled building's load file, in degrees Celsius/i);
+  await expect(panel).toContainText(/taken from each sampled building's own load data, in degrees Celsius/i);
   console.log("run screen:", (await page.locator("main").innerText()).replace(/\n+/g, " | "));
   await shots(page, "w1web2-run-screen-finished");
   const firstUrl = page.url();
@@ -97,10 +97,12 @@ test("client: hybrid composition -> run with progress -> data used -> results wi
 
   await page.getByRole("link", { name: /view results/i }).click();
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("checkbox", { name: /temperature overlay/i })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Uncertainty band (P10 to P90)" })).toBeChecked();
   await expect(page.getByRole("region", { name: /data used/i })).toBeVisible();
   await expect(page.locator("canvas").first()).toBeVisible();
-  await shots(page, "w1web2-results");
+  await shots(page, "w1web2-results-default-chart"); // Total + uncertainty band only
+  await page.getByRole("checkbox", { name: "Temperature" }).check(); // temperature is available and opt-in
+  await expect(page.getByRole("img", { name: /with temperature/i })).toBeVisible();
 
   // replay of a composition run: the stored config with the same seeds
   await page.goto(firstUrl);
@@ -115,8 +117,8 @@ test("client: the server's refusals are shown next to the form, as text", async 
   await signIn(page, KEYS.client);
   await page.getByLabel(/total buildings/i).fill("10");
   await include(page, /include single-family detached/i);
-  await page.getByLabel(/^single-family detached mode/i).selectOption("count");
-  await page.getByLabel(/^single-family detached number of buildings/i).fill("3");
+  await page.getByLabel(/how many\? single-family detached/i).selectOption("count");
+  await page.getByLabel(/number of buildings: single-family detached/i).fill("3");
   await include(page, /include multifamily, 1-3 stories/i);
 
   // 1. Counts above the total. The form blocks this itself, so the request is altered on its way out to check that
@@ -141,7 +143,7 @@ test("client: the server's refusals are shown next to the form, as text", async 
   console.log("refusal 2:", await form.getByRole("alert").last().innerText());
 
   // 3. The form's own check for counts above the total (before anything is sent).
-  await page.getByLabel(/^single-family detached number of buildings/i).fill("11");
+  await page.getByLabel(/number of buildings: single-family detached/i).fill("11");
   await expect(page.getByText(/exceeds the total number of buildings/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /start run/i })).toBeDisabled();
 });
@@ -149,14 +151,56 @@ test("client: the server's refusals are shown next to the form, as text", async 
 test("demo: no composition form, no seed fields, no replay", async ({ page }) => {
   await signIn(page, KEYS.demo);
   await expect(page.getByText(/signed in as demo \(demo\)/i)).toBeVisible();
-  await expect(page.getByText(/demo accounts can run the predefined compositions only/i)).toBeVisible();
+  await expect(page.getByText("This account can run the ready-made neighbourhoods below. Pick one and press Run.")).toBeVisible();
   await expect(page.getByRole("form", { name: /your own composition/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /start run/i })).toHaveCount(0);
-  await expect(page.getByLabel(/composition seed/i)).toHaveCount(0);
+  await expect(page.getByLabel(/building mix seed/i)).toHaveCount(0);
   await shots(page, "w1web2-composition-demo");
-  await page.getByRole("button", { name: /^run small-mixed$/i }).click();
+  await page.getByRole("button", { name: /^run this neighbourhood: small mixed$/i }).click();
   await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /replay/i })).toHaveCount(0);
   await shots(page, "w1web2-run-screen-demo");
+});
+
+test("fix pass: two field errors, phone header, cancelled run", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, KEYS.client);
+  // U10: the phone header takes at most two rows with a real server (about 2 x 48 px plus padding).
+  const header = (await page.locator("header").boundingBox())!;
+  console.log("phone header height:", header.height);
+  expect(header.height).toBeLessThanOrEqual(112);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // U2: two field errors at once, each on its own field and naming the building type.
+  await include(page, /include single-family detached/i);
+  await include(page, /include school/i);
+  await page.getByLabel(/smallest share \(0 to 1\): single-family detached/i).fill("1.5");
+  await page.getByLabel(/largest share \(0 to 1\): school/i).fill("0,5");
+  await expect(page.getByLabel(/smallest share \(0 to 1\): single-family detached/i)).toHaveAccessibleDescription(
+    "Single-family detached: the smallest share must be between 0 and 1.",
+  );
+  await expect(page.getByLabel(/largest share \(0 to 1\): school/i)).toHaveAccessibleDescription(/^School: enter the largest share as a number/);
+  await expect(page.getByRole("status").filter({ hasText: "There are 2 problems" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Largest share (0 to 1)").first()).toBeVisible(); // the visible label is there at 390 px
+  await shots(page, "w1web2-form-two-field-errors");
+
+  // A long run, cancelled part way.
+  await page.getByRole("checkbox", { name: /include school/i }).uncheck();
+  await page.getByLabel(/smallest share \(0 to 1\): single-family detached/i).fill("0");
+  await page.getByLabel(/total buildings/i).fill("40");
+  await page.getByLabel(/number of runs \(at most\)/i).fill("1000");
+  await page.getByRole("button", { name: /start run/i }).click();
+  await expect(page).toHaveURL(/\/runs\//);
+  await expect(page.getByTestId("stage-text")).toHaveText(/building and simulating/i, { timeout: 60_000 });
+  await expect(page.getByText(/^neighbourhoods simulated \(runs\): [1-9]/i)).toBeVisible({ timeout: 60_000 });
+  await shots(page, "w1web2-run-in-progress");
+  await page.getByRole("button", { name: /cancel run/i }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Estimate cancelled" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("stage-text")).toHaveText(/^Cancelled at \d+ of 1000 runs\. No results were saved\.$/);
+  await expect(page.getByRole("link", { name: /view results/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start again with the same seeds" })).toBeVisible();
+  console.log("cancelled:", await page.getByTestId("stage-text").innerText());
+  await shots(page, "w1web2-run-cancelled");
 });

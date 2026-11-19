@@ -80,16 +80,25 @@ describe("results screen", () => {
     expect(hourly).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("adds the P10-P90 band and removes the temperature overlay via switches", async () => {
+  it("starts with Total and its uncertainty band; residential, commercial and temperature are opt-in (U4)", async () => {
     const user = userEvent.setup();
     await open();
     const chart = () => screen.getByRole("img", { name: /load over the year/i });
-    const base = Number(chart().getAttribute("data-series"));
-    await user.click(screen.getByRole("checkbox", { name: /p10.*p90 band/i }));
-    expect(Number(chart().getAttribute("data-series"))).toBeGreaterThan(base);
-    const withBand = Number(chart().getAttribute("data-series"));
-    await user.click(screen.getByRole("checkbox", { name: /temperature overlay/i }));
-    expect(Number(chart().getAttribute("data-series"))).toBe(withBand - 1);
+    expect(chart()).toHaveAccessibleName(/load over the year: total, with the uncertainty band, weather year/i);
+    const band = screen.getByRole("checkbox", { name: "Uncertainty band (P10 to P90)" });
+    expect(band).toBeChecked();
+    expect(band).toHaveAccessibleDescription(
+      "The shaded band covers the middle 80% of the sampled neighbourhoods: 1 in 10 runs fall below it and 1 in 10 above it. The white dashed line inside it is P50, the median run.",
+    );
+    for (const name of ["Residential", "Commercial", "Temperature"]) expect(screen.getByRole("checkbox", { name })).not.toBeChecked();
+    const base = Number(chart().getAttribute("data-series")); // band base + band + P50 + Total
+    expect(base).toBe(4);
+    await user.click(screen.getByRole("checkbox", { name: "Residential" }));
+    await user.click(screen.getByRole("checkbox", { name: "Temperature" }));
+    expect(Number(chart().getAttribute("data-series"))).toBe(base + 2);
+    expect(chart()).toHaveAccessibleName(/total, residential, with the uncertainty band, with temperature/i);
+    await user.click(band);
+    expect(Number(chart().getAttribute("data-series"))).toBe(base + 2 - 3);
   });
 
   it("has keyboard-operable zoom controls that drive the chart", async () => {
@@ -125,8 +134,8 @@ describe("results screen", () => {
     await renderApp({ route: "/results/demo-run", role: "client", client });
     await screen.findByText(/methodology demonstration/i); // the caveat is still shown
     expect(screen.getByText(/weather year: not reported/i)).toBeInTheDocument();
-    expect(screen.getByText(/calibration status: not reported/i)).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: /temperature overlay/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Calibration status: Not checked against measured data (no site data was uploaded).")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /temperature/i })).not.toBeInTheDocument();
     expect(screen.getByText(/these results do not include temperature/i)).toBeInTheDocument();
     expect(screen.queryByText(/AMY2018/)).not.toBeInTheDocument();
   });
@@ -177,5 +186,23 @@ describe("results screen", () => {
     expect(within(table).getByText("Residential")).toBeInTheDocument();
     expect(within(table).getByText("Commercial")).toBeInTheDocument();
     expect(table).toHaveAccessibleName(/AMY2018/);
+  });
+
+  it("puts weather year, its explanation and the calibration status each on their own line (U8)", async () => {
+    await open();
+    const chip = screen.getByText(/weather year: AMY2018/i);
+    const note = screen.getByText("AMY2018 is actual 2018 weather, not a typical year.");
+    const cal = screen.getByText("Calibration status: Not checked against measured data (no site data was uploaded).");
+    const box = note.parentElement!;
+    expect(box).toContainElement(cal);
+    expect(box).toContainElement(chip);
+    expect(getComputedStyle(box).display).toBe("grid"); // one item per row
+  });
+
+  it("shows a reported calibration status as the server gives it", async () => {
+    const base = createMockClient({ pointsPerYear: 96 * 20 });
+    const client: ApiClient = { ...base, getResults: async (id) => ({ ...(await base.getResults(id)), calibrationStatus: "Calibrated against 2023 meter data" }) };
+    await renderApp({ route: "/results/demo-run", role: "client", client });
+    expect(await screen.findByText("Calibration status: Calibrated against 2023 meter data")).toBeInTheDocument();
   });
 });

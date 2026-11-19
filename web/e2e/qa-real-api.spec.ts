@@ -53,7 +53,7 @@ test("client key: run a predefined composition, watch it live, results with cave
   await signIn(page, KEYS.client);
   await expect(page.getByRole("heading", { name: /define a community composition/i })).toBeVisible();
   expect(await keyLeaks(page, KEYS.client)).toEqual([]);
-  await page.getByRole("button", { name: /^run small-mixed$/i }).click();
+  await page.getByRole("button", { name: /^run this neighbourhood: small mixed$/i }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
   // live stage text from the engine via SSE
@@ -62,7 +62,7 @@ test("client key: run a predefined composition, watch it live, results with cave
   await expect(page.getByText(/runs completed: 6 of 6/i)).toBeVisible();
   await page.getByRole("link", { name: /view results/i }).click();
   await expect(page.getByText(/not validated for engineering or investment decisions/i)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/calibration status: not reported/i)).toBeVisible();
+  await expect(page.getByText(/calibration status: not checked against measured data/i)).toBeVisible();
   await expect(page.locator("canvas").first()).toBeVisible(); // ECharts drew under the CSP
   expect(await keyLeaks(page, KEYS.client)).toEqual([]);
   // every request stayed on the same origin (CSP connect-src 'self')
@@ -76,7 +76,7 @@ test("client key: run a predefined composition, watch it live, results with cave
 
 test("client key: cancel a running run", async ({ page }) => {
   await signIn(page, KEYS.client);
-  await page.getByRole("button", { name: /^run small-mixed$/i }).click();
+  await page.getByRole("button", { name: /^run this neighbourhood: small mixed$/i }).click();
   await expect(page).toHaveURL(/\/runs\//);
   await page.getByRole("button", { name: /cancel run/i }).click();
   await expect(page.getByTestId("stage-text")).toHaveText(/cancelled/i, { timeout: 30_000 });
@@ -84,14 +84,14 @@ test("client key: cancel a running run", async ({ page }) => {
 
 test("demo key: no replay offered (GET /me says the demo role may not set seeds; the API also refuses it)", async ({ page }) => {
   await signIn(page, KEYS.demo);
-  await page.getByRole("button", { name: /^run small-mixed$/i }).click();
+  await page.getByRole("button", { name: /^run this neighbourhood: small mixed$/i }).click();
   await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /replay with same seeds/i })).toHaveCount(0);
 });
 
 test("client key: replay with same seeds starts a new run with identical seeds", async ({ page }) => {
   await signIn(page, KEYS.client);
-  await page.getByRole("button", { name: /^run small-mixed$/i }).click();
+  await page.getByRole("button", { name: /^run this neighbourhood: small mixed$/i }).click();
   await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 60_000 });
   const firstUrl = page.url();
   const seeds = (await page.getByRole("table", { name: /seeds/i }).textContent()) ?? "";

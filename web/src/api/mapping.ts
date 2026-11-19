@@ -237,10 +237,28 @@ function f64(v: unknown, count: number, what: string): Float64Array {
   return out;
 }
 
-/** The engine's local wall-clock ISO time (no offset) encoded as UTC milliseconds, so labels never shift. */
+/** Strict: every value must be a finite number (the schema says missing or non-finite temperatures are errors). */
+function strictF64(v: unknown, count: number, what: string): Float64Array {
+  const out = f64(v, count, what);
+  const arr = v as unknown[];
+  for (let i = 0; i < count; i++) {
+    if (typeof arr[i] !== "number" || !Number.isFinite(arr[i])) {
+      throw new Error(`results: ${what} has a missing or non-numeric value at position ${i + 1}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * The engine's local wall-clock ISO time encoded as UTC milliseconds, so labels never shift. The schema documents
+ * `start` as local time with NO offset; a start carrying "Z" or an offset is refused rather than silently ignored.
+ */
 function wallClockMs(iso: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(iso);
-  if (!m) throw new Error(`results: unreadable start time ${iso}`);
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(iso)) {
+    throw new Error(`results: the time axis start ${iso} carries a time zone, but the results schema documents local time without one`);
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/.exec(iso);
+  if (!m) throw new Error(`results: unreadable time axis start ${iso}`);
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
 }
 
@@ -288,7 +306,7 @@ export function resultsFromApi(runId: string, doc: unknown): ResultsData {
     temperatureNote = typeof t.reason === "string" && t.reason ? t.reason : "the results do not say why";
   } else {
     if (t.units !== "degC") throw new Error(`results: temperature units ${String(t.units)} are not degC`);
-    series.temperature = f64(t[res], count, `temperature (${res})`);
+    series.temperature = strictF64(t[res], count, `temperature (${res})`);
   }
   return { runId, weatherYear: weatherYearFrom(doc.datasets), calibrationStatus: null, series, temperatureNote };
 }

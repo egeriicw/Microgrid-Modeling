@@ -19,7 +19,8 @@ import { useNavigate } from "react-router-dom";
 import { useApiClient } from "../../api/context";
 import { ApiError, SEED_KEYS, type BuildingType, type Composition, type CompositionEntry, type EntryMode, type SeedKey, type Seeds } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { parseNumber as num, validateComposition } from "./validate";
+import { SEED_INFO } from "../seeds";
+import { parseNumber as num, problemList, validateComposition, type EntryErrors } from "./validate";
 
 interface EntryForm {
   included: boolean;
@@ -32,16 +33,22 @@ interface EntryForm {
 // A type starts excluded; once included it starts as a full share range (the API's own defaults, 0 to 1).
 const NEW_ENTRY: EntryForm = { included: false, mode: "fraction", min: "0", max: "1", count: "0" };
 
-const SEED_LABELS: Record<SeedKey, string> = {
-  composition_seed: "Composition seed",
-  archetype_seed: "Archetype seed",
-  perturbation_seed: "Perturbation seed",
-};
-
 const SECTORS: { sector: BuildingType["sector"]; title: string }[] = [
   { sector: "residential", title: "Residential building types" },
   { sector: "commercial", title: "Commercial building types" },
 ];
+
+export const PREDEFINED_ONLY_NOTICE = "This account can run the ready-made neighbourhoods below. Pick one and press Run.";
+export const INACTIVE_TYPE_NOTE = "Not available yet: this building type will be added later.";
+
+/**
+ * A readable name for a ready-made neighbourhood's id, for display only (the API sends ids only): separators become
+ * spaces, then sentence case. "DC_SMALL_MIXED" -> "Dc small mixed". The id itself is still shown as secondary text.
+ */
+export function readableId(id: string): string {
+  const words = id.replace(/[_\-.]+/g, " ").trim().toLowerCase();
+  return words ? words[0].toUpperCase() + words.slice(1) : id;
+}
 
 /** An API error with the server's field messages (422) listed under it. Server text is rendered as text. */
 export function ErrorAlert({ error }: { error: Error }) {
@@ -63,7 +70,7 @@ export function ErrorAlert({ error }: { error: Error }) {
   );
 }
 
-/** Predefined compositions (server-side). Every role may run these; for demo they are the only option. */
+/** Ready-made (predefined, server-side) neighbourhoods. For some accounts they are the only option. */
 function PredefinedSection() {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -73,59 +80,101 @@ function PredefinedSection() {
     onSuccess: ({ runId }) => navigate(`/runs/${runId}`),
   });
   return (
-    <Paper component="section" aria-labelledby="predefined-h" sx={{ p: 3, mb: 3 }}>
-      <Typography id="predefined-h" variant="h2" sx={{ fontSize: "1.2rem", mb: 1 }}>Predefined compositions</Typography>
-      {(list.isPending || start.isPending) && <LinearProgress aria-label={start.isPending ? "Starting run" : "Loading predefined compositions"} sx={{ mb: 2 }} />}
+    <Paper component="section" aria-labelledby="predefined-h" sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+      <Typography id="predefined-h" variant="h2" sx={{ fontSize: "1.2rem", mb: 1 }}>Ready-made neighbourhoods</Typography>
+      {(list.isPending || start.isPending) && <LinearProgress aria-label={start.isPending ? "Starting run" : "Loading ready-made neighbourhoods"} sx={{ mb: 2 }} />}
       {list.isError && <ErrorAlert error={list.error} />}
-      {list.data?.length === 0 && <Typography variant="body2">The server has no predefined compositions.</Typography>}
-      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-        {list.data?.map((name) => (
-          <Button key={name} variant="outlined" onClick={() => start.mutate(name)} disabled={start.isPending} aria-label={`Run ${name}`}>
-            {name}
-          </Button>
-        ))}
+      {list.data?.length === 0 && <Typography variant="body2">The server has no ready-made neighbourhoods.</Typography>}
+      <Box component="ul" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gap: 1.5 }}>
+        {list.data?.map((id) => {
+          const label = readableId(id);
+          return (
+            <Box component="li" key={id} sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+              <Box sx={{ flex: "1 1 200px" }}>
+                <Typography>{label}</Typography>
+                <Typography variant="caption" color="text.secondary">{id}</Typography>
+              </Box>
+              <Button variant="outlined" onClick={() => start.mutate(id)} disabled={start.isPending} aria-label={`Run this neighbourhood: ${label}`} sx={{ minHeight: 44 }}>
+                Run this neighbourhood
+              </Button>
+            </Box>
+          );
+        })}
       </Box>
       {start.isError && <Box sx={{ mt: 2 }}><ErrorAlert error={start.error} /></Box>}
     </Paper>
   );
 }
 
-function TypeRow({ type, entry, onChange }: { type: BuildingType; entry: EntryForm; onChange: (patch: Partial<EntryForm>) => void }) {
+const FIELD_WIDTH = { width: { xs: "100%", sm: 210 } };
+
+function TypeRow({ type, entry, errors, onChange }: { type: BuildingType; entry: EntryForm; errors?: EntryErrors; onChange: (patch: Partial<EntryForm>) => void }) {
   const l = type.label;
   return (
-    <Box sx={{ display: "flex", gap: 2, mb: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+    <Box sx={{ display: "flex", gap: 2, mb: 1.5, alignItems: "flex-start", flexWrap: "wrap" }}>
       <Box sx={{ minWidth: 240, flex: "1 1 240px" }}>
         <FormControlLabel
-          control={<Checkbox checked={type.active && entry.included} disabled={!type.active} onChange={(e) => onChange({ included: e.target.checked })} />}
-          label={`Include ${l}`}
+          control={
+            <Checkbox
+              checked={type.active && entry.included}
+              disabled={!type.active}
+              onChange={(e) => onChange({ included: e.target.checked })}
+              slotProps={{ input: { "aria-label": `Include ${l}` } }}
+              sx={{ p: "10px" /* 44 px touch target */ }}
+            />
+          }
+          label={l}
         />
-        {type.description && <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>{type.description}</Typography>}
-        {!type.active && (
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
-            Not available yet: the server cannot model this type, so it cannot be included.
-          </Typography>
-        )}
+        {type.description && <Typography variant="body2" color="text.secondary" sx={{ ml: 5.5 }}>{type.description}</Typography>}
+        {!type.active && <Typography variant="body2" color="text.secondary" sx={{ ml: 5.5 }}>{INACTIVE_TYPE_NOTE}</Typography>}
       </Box>
       {type.active && entry.included && (
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", flex: "2 1 320px" }}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", flex: "2 1 320px", alignItems: "flex-start" }}>
           <TextField
             select
             size="small"
-            label="Set by"
+            label="How many?"
             value={entry.mode}
             onChange={(ev) => onChange({ mode: ev.target.value as EntryMode })}
-            slotProps={{ select: { native: true }, htmlInput: { "aria-label": `${l} mode` } }}
-            sx={{ minWidth: 150 }}
+            slotProps={{ select: { native: true }, htmlInput: { "aria-label": `How many? ${l}` } }}
+            sx={{ width: { xs: "100%", sm: 290 } }}
           >
-            <option value="fraction">Share range</option>
-            <option value="count">Exact number</option>
+            <option value="fraction">A share of the neighbourhood (range)</option>
+            <option value="count">An exact number of buildings</option>
           </TextField>
           {entry.mode === "count" ? (
-            <TextField size="small" label="Number of buildings" value={entry.count} onChange={(ev) => onChange({ count: ev.target.value })} slotProps={{ htmlInput: { inputMode: "numeric", "aria-label": `${l} number of buildings` } }} sx={{ maxWidth: 190 }} />
+            <TextField
+              size="small"
+              label="Number of buildings"
+              value={entry.count}
+              onChange={(ev) => onChange({ count: ev.target.value })}
+              error={!!errors?.count}
+              helperText={errors?.count}
+              slotProps={{ htmlInput: { inputMode: "numeric", "aria-label": `Number of buildings: ${l}` } }}
+              sx={FIELD_WIDTH}
+            />
           ) : (
             <>
-              <TextField size="small" label="Minimum share" value={entry.min} onChange={(ev) => onChange({ min: ev.target.value })} slotProps={{ htmlInput: { inputMode: "decimal", "aria-label": `${l} minimum share` } }} sx={{ maxWidth: 150 }} />
-              <TextField size="small" label="Maximum share" value={entry.max} onChange={(ev) => onChange({ max: ev.target.value })} slotProps={{ htmlInput: { inputMode: "decimal", "aria-label": `${l} maximum share` } }} sx={{ maxWidth: 150 }} />
+              <TextField
+                size="small"
+                label="Smallest share (0 to 1)"
+                value={entry.min}
+                onChange={(ev) => onChange({ min: ev.target.value })}
+                error={!!errors?.min}
+                helperText={errors?.min}
+                slotProps={{ htmlInput: { inputMode: "decimal", "aria-label": `Smallest share (0 to 1): ${l}` } }}
+                sx={FIELD_WIDTH}
+              />
+              <TextField
+                size="small"
+                label="Largest share (0 to 1)"
+                value={entry.max}
+                onChange={(ev) => onChange({ max: ev.target.value })}
+                error={!!errors?.max}
+                helperText={errors?.max}
+                slotProps={{ htmlInput: { inputMode: "decimal", "aria-label": `Largest share (0 to 1): ${l}` } }}
+                sx={FIELD_WIDTH}
+              />
             </>
           )}
         </Box>
@@ -171,8 +220,10 @@ function CustomForm() {
     }),
     ...(can.useFilters && vintage !== "Any" ? { vintageFilter: vintage } : {}),
   };
-  const errors = validateComposition(composition, limits);
-  const invalid = Object.keys(errors).length > 0;
+  const labelOf = (id: string) => types.data?.find((t) => t.id === id)?.label ?? id;
+  const errors = validateComposition(composition, limits, labelOf);
+  const problems = problemList(errors).length;
+  const invalid = problems > 0;
 
   const start = useMutation({
     mutationFn: () => client.startRun({ kind: "custom", composition }),
@@ -208,8 +259,8 @@ function CustomForm() {
       <Typography variant="h3" sx={{ fontSize: "1.1rem", mb: 1 }}>Building types</Typography>
       <Typography variant="body2" sx={{ mb: 2 }}>
         Tick the types in your neighbourhood. Give a type an exact number of buildings, or a share range: types with an exact
-        number are placed first, and the buildings left over are shared among the share-range types, each between its minimum
-        and maximum share of that remainder (0.25 = a quarter).
+        number are placed first, and the buildings left over are shared among the share-range types, each between its smallest
+        and largest share of that remainder (0.25 = a quarter).
       </Typography>
       {SECTORS.map(({ sector, title }) => {
         const list = (types.data ?? []).filter((t) => t.sector === sector);
@@ -217,16 +268,18 @@ function CustomForm() {
         return (
           <Box key={sector} component="fieldset" sx={{ border: 0, p: 0, m: 0, mb: 2, minWidth: 0 }}>
             <Typography component="legend" sx={{ fontWeight: 600, mb: 1 }}>{title}</Typography>
-            {list.map((t) => <TypeRow key={t.id} type={t} entry={entryOf(t.id)} onChange={(p) => setEntry(t.id, p)} />)}
+            {list.map((t) => (
+              <TypeRow key={t.id} type={t} entry={entryOf(t.id)} errors={errors.byType?.[t.id]} onChange={(p) => setEntry(t.id, p)} />
+            ))}
           </Box>
         );
       })}
-      {errors.entries && <FormHelperText error role="alert" sx={{ mb: 2 }}>{errors.entries}</FormHelperText>}
+      {errors.entries && <FormHelperText error role="alert" sx={{ mb: 2, fontSize: "0.9rem" }}>{errors.entries}</FormHelperText>}
 
       <Typography variant="h3" sx={{ fontSize: "1.1rem", mb: 1, mt: 2 }}>Run settings</Typography>
       <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "flex-start", mb: 3 }}>
         <TextField
-          label="Maximum runs"
+          label="Number of runs (at most)"
           value={maxRuns}
           onChange={(e) => setMaxRuns(e.target.value)}
           error={!!errors.maxRuns}
@@ -234,30 +287,39 @@ function CustomForm() {
           slotProps={{ htmlInput: { inputMode: "numeric" } }}
         />
         <Box>
-          <FormControlLabel control={<Switch checked={convergence} onChange={(e) => setConvergence(e.target.checked)} />} label="Convergence: stop early when the results settle" />
+          <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+            <FormControlLabel
+              control={<Switch checked={convergence} onChange={(e) => setConvergence(e.target.checked)} />}
+              label="Stop early when the results settle (convergence)"
+              sx={{ mr: 1 }}
+            />
+            {/* The state in words, so it never depends on the track colour. */}
+            <Typography data-testid="convergence-state" sx={{ fontWeight: 600 }} aria-hidden="true">{convergence ? "On" : "Off"}</Typography>
+          </Box>
           <FormHelperText>
             {convergence
-              ? `The server's standard convergence rule decides when to stop${limits ? `; it needs at least ${limits.defaultMinRuns} runs` : ""}.`
-              : "Off: exactly the maximum number of runs is made."}
+              ? `On: the server's standard convergence rule decides when to stop${limits ? `; it needs at least ${limits.defaultMinRuns} runs` : ""}.`
+              : "Off: exactly the number of runs above is made."}
           </FormHelperText>
         </Box>
       </Box>
 
       {can.setSeeds && (
         <>
-          <Typography variant="h3" sx={{ fontSize: "1.1rem", mb: 1 }}>Seeds (optional)</Typography>
+          <Typography variant="h3" sx={{ fontSize: "1.1rem", mb: 1 }}>Random seeds (optional)</Typography>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Leave a seed blank for a fresh random one. The run screen shows every seed used, so any run can be replayed.
+            Only needed to repeat an earlier estimate exactly. Leave a seed blank for a fresh random one; the run screen shows every
+            seed used.
           </Typography>
           <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { sm: "1fr 1fr 1fr" }, mb: 3 }}>
             {SEED_KEYS.map((k) => (
               <TextField
                 key={k}
-                label={SEED_LABELS[k]}
+                label={SEED_INFO[k].label}
                 value={seedText[k]}
                 onChange={(e) => setSeedText((s) => ({ ...s, [k]: e.target.value }))}
                 error={!!errors[k]}
-                helperText={errors[k] ?? "Blank = random"}
+                helperText={errors[k] ?? `${SEED_INFO[k].explanation} Blank = random. Technical name: ${k}.`}
                 slotProps={{ htmlInput: { inputMode: "numeric" } }}
               />
             ))}
@@ -277,7 +339,22 @@ function CustomForm() {
       )}
 
       {start.isError && <ErrorAlert error={start.error} />}
-      <Button type="submit" variant="contained" disabled={invalid || start.isPending || types.isPending}>Start run</Button>
+      {invalid && (
+        <Alert id="form-problems" severity="warning" role="status" sx={{ mb: 2 }}>
+          {problems === 1
+            ? "There is 1 problem to fix before the run can start. It is marked above."
+            : `There are ${problems} problems to fix before the run can start. They are marked above.`}
+        </Alert>
+      )}
+      <Button
+        type="submit"
+        variant="contained"
+        disabled={invalid || start.isPending || types.isPending}
+        sx={{ minHeight: 44 }}
+        {...(invalid ? { "aria-describedby": "form-problems" } : {})}
+      >
+        Start run
+      </Button>
     </Paper>
   );
 }
@@ -287,8 +364,9 @@ export function CompositionPage() {
   return (
     <Box>
       <Typography variant="h1" sx={{ fontSize: "1.75rem", mb: 2 }}>Define a community composition</Typography>
-      {!can.composeCustom && (
-        <Alert severity="info" sx={{ mb: 2 }}>Demo accounts can run the predefined compositions only.</Alert>
+      {!can.composeCustom && can.runPredefined && <Alert severity="info" sx={{ mb: 2 }}>{PREDEFINED_ONLY_NOTICE}</Alert>}
+      {!can.composeCustom && !can.runPredefined && (
+        <Alert severity="info" sx={{ mb: 2 }}>This account cannot start estimates. Ask the administrator if you need to.</Alert>
       )}
       {can.runPredefined && <PredefinedSection />}
       {can.composeCustom && <CustomForm />}

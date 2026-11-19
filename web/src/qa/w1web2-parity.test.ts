@@ -86,26 +86,12 @@ const CASES: Case[] = [
 
 // Known disagreements (defects). Form: Python counts code points and does not strip U+FEFF; JS .length counts UTF-16
 // units and .trim() strips U+FEFF.
-const FORM_DIFFERS = new Set(["name_emoji_61", "name_emoji_120", "name_bom_only"]);
+// Fixed in the W1-WEB2 fix pass (D3, D4): none left.
+const FORM_DIFFERS = new Set<string>([]);
 // Mock: checks only the count/fraction sums, types and caps; none of the schema rules (name, total >= 1, per-entry
 // range, whole numbers, max_runs >= 1).
-const MOCK_DIFFERS = new Set([
-  "total_0",
-  "max_runs_0",
-  "min_gt_max",
-  "max_above_1",
-  "min_negative",
-  "fixed_fractional",
-  "name_blank",
-  "name_spaces",
-  "name_nbsp",
-  "name_121",
-  "name_control",
-  "name_tab",
-  "name_rlo",
-  "name_lri",
-  "name_lsep",
-]);
+// Fixed in the W1-WEB2 fix pass (D1): none left.
+const MOCK_DIFFERS = new Set<string>([]);
 
 const formVerdict = (c: Composition) => (Object.keys(validateComposition(c, LIMITS)).length === 0 ? "accept" : "refuse");
 
@@ -150,7 +136,7 @@ describe("QA W1-WEB2 typed fractions (the form parses text; the server receives 
   });
   // A person typing ".25" or "1e-1" means 0.25 / 0.1, which the server accepts; the form says "needs a number".
   // Usability defect (LOW): either accept them or say what format is expected.
-  it.fails("accepts '.25' (leading-dot decimal) as 0.25", () => {
+  it("accepts '.25' (leading-dot decimal) as 0.25", () => {
     expect(parseNumber(".25")).toBe(0.25);
   });
 });
