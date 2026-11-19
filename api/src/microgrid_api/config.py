@@ -8,6 +8,7 @@ variables only; they never include values.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -21,6 +22,39 @@ DEV_SQLITE_URL = "sqlite:///./microgrid_dev.db"
 
 class ConfigurationError(RuntimeError):
     """Raised for missing or contradictory configuration. Messages never contain secret values."""
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+# Temperature source -> the MICROGRID_TEMPERATURE_* fields it needs; every other one must stay unset. Mirrors the
+# engine's own rule (synthetic.config), which validates the built snapshot again at run creation.
+TEMPERATURE_FIELDS: dict[str, tuple[str, ...]] = {
+    "none": (),
+    "timeseries_column": ("temperature_column", "temperature_units"),
+    "weather_file": ("temperature_weather_file", "temperature_time_column", "temperature_column", "temperature_units"),
+}
+TEMPERATURE_OPTIONAL_FIELDS = (
+    "temperature_column",
+    "temperature_units",
+    "temperature_weather_file",
+    "temperature_time_column",
+)
+
+
+def is_plain_file_name(value: str) -> bool:
+    """One path component: no separators, no '.'/'..', no control characters, not empty."""
+    return (
+        bool(value)
+        and len(value) <= 255
+        and value not in (".", "..")
+        and "/" not in value
+        and "\\" not in value
+        and not _CONTROL_CHARS.search(value)
+    )
+
+
+def is_relative_data_path(value: str) -> bool:
+    """A forward-slash path relative to the data root whose every part is a plain file name."""
+    return bool(value) and len(value) <= 1024 and all(is_plain_file_name(part) for part in value.split("/"))
 
 
 class ApiKey(BaseModel):
@@ -81,6 +115,23 @@ class Settings(BaseSettings):
     permission_overrides: dict[str, dict[str, StrictBool]] = Field(default_factory=dict)
     # MICROGRID_MAX_REQUEST_BYTES: request bodies larger than this are refused with 413 before they are parsed.
     max_request_bytes: int = Field(default=1_048_576, gt=0)
+    # Data files the server names in every run's `data` section (FR-ENG-10, FR-DATA-8, FR-ENG-3). Always written
+    # into the snapshot, so a stored run says which files it read and the engine's own defaults are never relied on.
+    # MICROGRID_RESSTOCK_CHARS_FILE / MICROGRID_COMSTOCK_CHARS_FILE: plain file NAMES inside <data dir>/background/.
+    # The defaults are the names the owner's local copy is believed to use [verify]; checked to exist at run creation.
+    resstock_chars_file: str = "DC_upgrade0.xlsx"
+    comstock_chars_file: str = "DC_upgrade0_agg.xlsx"
+    # Outdoor temperature source (FR-ENG-10), declared, never guessed. Where real NREL data keeps temperature is not
+    # confirmed [verify]; the default "none" makes every result say explicitly that no temperature is available.
+    # MICROGRID_TEMPERATURE_SOURCE: none | timeseries_column | weather_file
+    # timeseries_column needs MICROGRID_TEMPERATURE_COLUMN and MICROGRID_TEMPERATURE_UNITS (C or F);
+    # weather_file needs MICROGRID_TEMPERATURE_WEATHER_FILE (a path RELATIVE to the data dir), _TIME_COLUMN, _COLUMN
+    # and _UNITS. A variable the chosen source does not use is an error (it would be silently ignored).
+    temperature_source: str = "none"
+    temperature_column: str | None = None
+    temperature_units: str | None = None
+    temperature_weather_file: str | None = None
+    temperature_time_column: str | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Settings:
@@ -113,6 +164,7 @@ class Settings(BaseSettings):
                 "MICROGRID_TASK_SOFT_TIME_LIMIT_S must be smaller than MICROGRID_TASK_TIME_LIMIT_S."
             )
         self._check_permission_overrides()
+        self._check_data_files()
         if "*" in self.cors_origins:
             raise ConfigurationError("cors_origins (MICROGRID_CORS_ORIGINS) must not contain '*'; list origins.")
         return self
@@ -126,6 +178,48 @@ class Settings(BaseSettings):
                     can(role, flag, self.permission_overrides)
         except ValueError as exc:
             raise ConfigurationError(f"MICROGRID_PERMISSION_OVERRIDES is invalid: {exc}") from None
+
+    def _check_data_files(self) -> None:
+        """File names and the temperature declaration. Messages name the variable, never its value."""
+        for field, var in (
+            ("resstock_chars_file", "MICROGRID_RESSTOCK_CHARS_FILE"),
+            ("comstock_chars_file", "MICROGRID_COMSTOCK_CHARS_FILE"),
+        ):
+            if not is_plain_file_name(getattr(self, field)):
+                raise ConfigurationError(
+                    f"{var} must be a plain file name inside the data directory's background folder (no folders, "
+                    "'..', backslashes or control characters; value not shown)."
+                )
+        source = self.temperature_source
+        if source not in TEMPERATURE_FIELDS:
+            raise ConfigurationError(
+                f"MICROGRID_TEMPERATURE_SOURCE must be one of {', '.join(TEMPERATURE_FIELDS)} (value not shown)."
+            )
+        required = TEMPERATURE_FIELDS[source]
+        for field in TEMPERATURE_OPTIONAL_FIELDS:
+            var = f"MICROGRID_{field.upper()}"
+            value = getattr(self, field)
+            if field in required and not value:
+                raise ConfigurationError(f"{var} is required when MICROGRID_TEMPERATURE_SOURCE is '{source}'.")
+            if field not in required and value is not None:
+                raise ConfigurationError(
+                    f"{var} is set but MICROGRID_TEMPERATURE_SOURCE is '{source}', which does not use it (it would "
+                    "be silently ignored); unset it or change the source."
+                )
+        if self.temperature_units is not None and self.temperature_units not in ("C", "F"):
+            raise ConfigurationError("MICROGRID_TEMPERATURE_UNITS must be 'C' or 'F' (value not shown).")
+        for field in ("temperature_column", "temperature_time_column"):
+            value = getattr(self, field)
+            if value is not None and (len(value) > 200 or _CONTROL_CHARS.search(value)):
+                raise ConfigurationError(
+                    f"MICROGRID_{field.upper()} must be at most 200 characters without control characters."
+                )
+        weather = self.temperature_weather_file
+        if weather is not None and not is_relative_data_path(weather):
+            raise ConfigurationError(
+                "MICROGRID_TEMPERATURE_WEATHER_FILE must be a path relative to MICROGRID_DATA_DIR (no leading '/', "
+                "no '..', '.' or empty parts, no backslashes or control characters; value not shown)."
+            )
 
     def require_database_url(self) -> str:
         assert self.database_url  # guaranteed by validation

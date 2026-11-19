@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from microgrid.community_load.registry import default_registry
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Backend name only (e.g. "postgresql"); never the host, path or credentials.
     app.state.session_factory = sessionmaker(app.state.engine, expire_on_commit=False)
     app.state.demo_compositions = load_demo_compositions(settings)  # fails loudly on a bad demo file
+    # Building-type registry for the catalogue and for building scenarios from compositions (packaged data).
+    app.state.building_registry = default_registry()
     app.state.enqueue = _enqueue
     app.state.cancel_run = _cancel_run
     logger.info("database backend: %s (environment=%s)", make_url(url).get_backend_name(), settings.environment)
