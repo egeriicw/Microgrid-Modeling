@@ -89,6 +89,13 @@ def packaged_document() -> dict[str, Any]:
     return doc
 
 
+@functools.lru_cache(maxsize=1)
+def packaged_exposed() -> ExposedAttributes:
+    """The packaged starter set, parsed once. Used to word pool-check messages for runs without selections (whose
+    filters carry no attributes), so those runs never depend on the stored configuration."""
+    return parse_document(packaged_document())
+
+
 def parse_document(document: dict[str, Any]) -> ExposedAttributes:
     """The library's validator, against the packaged building-type registry. Raises ValueError with a clear message."""
     return ExposedAttributes.from_dict(copy.deepcopy(document), default_registry())

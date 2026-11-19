@@ -3,7 +3,7 @@
 * The env contract: the environment Compose really renders for migrate, api and worker builds valid production
   Settings (proves the single-quoted JSON in deploy/.env.example survives Compose's .env parsing).
 * The response shape the smoke script's sed parsing depends on (compact JSON, `id` then `status`).
-* Defect: the server-built `data` section never names the characteristics files (xfail, strict).
+* The server-built `data` section names the characteristics files (a defect found here, fixed in W1-COMPOSE).
 """
 
 from __future__ import annotations
@@ -104,18 +104,11 @@ def test_run_json_is_compact_with_id_then_status(api, tiny_config):
     assert re.match(rf'^\{{"id":"{m.group(1)}","status":"queued"', d.text), d.text[:80]
 
 
-# --- defect: characteristics file names are never set by the server ----------------------------------------------
+# --- formerly a defect: characteristics file names are now set by the server (fixed in W1-COMPOSE) ---------------
+# The server names them from MICROGRID_RESSTOCK_CHARS_FILE / MICROGRID_COMSTOCK_CHARS_FILE, stores them in the
+# snapshot and checks the files exist before queueing.
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM): services/runs.server_side_data_section sets only background_dir and the two timeseries "
-    "dirs. The characteristics file names are neither set by the server nor allowed from the client, so every run "
-    "silently reads the engine defaults DC_upgrade0.xlsx / DC_upgrade0_agg.xlsx and the stored snapshot is not "
-    "self-contained (a change of engine default changes what a replay reads). W1-DEPLOY works around it by copying "
-    "fixture files to those names. Fix (later story): build the names server-side (setting or dataset catalog), "
-    "store them in the snapshot, and check the files exist before queueing.",
-)
 def test_http_run_snapshot_names_the_characteristics_files_and_runs(api, http_settings, monkeypatch):
     """The synthetic dataset names its files chars_resstock.xlsx / chars_comstock.xlsx (as a real release might use
     any name). A run created over HTTP must record which files it reads and must execute."""

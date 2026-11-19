@@ -29,9 +29,11 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from microgrid_api.auth import Principal, current_principal
+from microgrid_api.composition_schemas import CompositionRequest
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run, RunEvent, RunStatus
 from microgrid_api.filter_schemas import MAX_CATEGORIES, FilterSelections, selections_to_plain
+from microgrid_api.services import compositions as comp_svc
 from microgrid_api.services import exposed_attributes as ea_svc
 from microgrid_api.services import runs as svc
 
@@ -43,12 +45,14 @@ RunStatusName = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 
 class RunCreate(BaseModel):
-    """Exactly one of ``config`` (a scenario WITHOUT a `data` section) or ``composition_id`` (a predefined one)."""
+    """Exactly one of ``config`` (a scenario WITHOUT a `data` section), ``composition_id`` (a predefined one) or
+    ``composition`` (building types with counts or fraction ranges; the server builds the scenario)."""
 
     model_config = ConfigDict(extra="forbid")
 
     config: dict[str, Any] | None = None
     composition_id: str | None = None
+    composition: CompositionRequest | None = None
     seeds: dict[str, StrictInt] | None = None
     # FR-ENG-11: attribute filters by exposed-attribute key, per composition category. Needs the filters.use flag.
     # Raw column-level `attributes` inside `config.archetype_filters` are refused; these selections are turned into
@@ -57,8 +61,9 @@ class RunCreate(BaseModel):
 
     @model_validator(mode="after")
     def _one_source(self) -> RunCreate:
-        if (self.config is None) == (self.composition_id is None):
-            raise ValueError("send exactly one of 'config' or 'composition_id'")
+        given = [x for x in (self.config, self.composition_id, self.composition) if x is not None]
+        if len(given) != 1:
+            raise ValueError("send exactly one of 'config', 'composition_id' or 'composition'")
         for key, value in (self.seeds or {}).items():
             if not 0 <= value < 2**32:
                 raise ValueError(f"seed {key} must be between 0 and {2**32 - 1}")
@@ -79,8 +84,29 @@ class RunOut(BaseModel):
     finished_at: datetime | None
 
 
+class RunTemperatureFile(BaseModel):
+    """The temperature source the run declared (FR-ENG-10). ``source`` is None for runs stored before it was
+    recorded."""
+
+    source: str | None
+    file: str | None  # file NAME only, never a path
+    column: str | None
+    time_column: str | None
+    units: str | None
+
+
+class RunDataFiles(BaseModel):
+    """Which data files the run read, as file NAMES only (FR-DATA-8 provenance; server paths are never shown).
+    None for runs stored before the names were recorded."""
+
+    resstock_characteristics_file: str | None
+    comstock_characteristics_file: str | None
+    temperature: RunTemperatureFile
+
+
 class RunDetail(RunOut):
     composition_snapshot: dict[str, Any]
+    data_files: RunDataFiles
     result: dict[str, Any] | None
     # FR-ENG-11 e: the column-level filters the engine applied ("<source>/<category>" -> filters), the user's
     # selections with the exposed-attribute configuration version used, and the matched pool sizes (from the result;
@@ -119,6 +145,7 @@ def _detail(run: Run) -> RunDetail:
     return RunDetail(
         **base,
         composition_snapshot=snapshot,
+        data_files=RunDataFiles.model_validate(svc.data_files_provenance(run.composition_snapshot)),
         result=result,
         effective_filters=ea_svc.effective_filters(run.composition_snapshot),
         filter_selections=run.filter_selections,
@@ -171,10 +198,13 @@ def selection_http_error(exc: ValueError, principal: Principal) -> HTTPException
     return HTTPException(422, str(exc))
 
 
-def check_pools(settings: Settings, parsed: Any, exposed: Any, principal: Principal) -> dict[str, Any]:
+def check_pools(
+    settings: Settings, parsed: Any, exposed: Any, principal: Principal, *, filtered: bool = True
+) -> dict[str, Any]:
     """Pool preview on a parsed, server-built snapshot (FR-ENG-11 c/d on the run path). Refuses (422) a filter that
     does not fit the data and a category that may receive buildings but matches none, so a run never fails later
-    with only an exception class name. Returns the previews."""
+    with only an exception class name. ``filtered`` = attribute selections were applied (wording only). Returns
+    the previews."""
     assert settings.data_dir is not None  # the server-built data section exists
     try:
         previews = ea_svc.preview(parsed, settings.data_dir, exposed)
@@ -186,6 +216,12 @@ def check_pools(settings: Settings, parsed: Any, exposed: Any, principal: Princi
     except (ValueError, OverflowError) as exc:
         raise selection_http_error(exc if isinstance(exc, ValueError) else ValueError(str(exc)), principal) from None
     empty = ea_svc.unsampleable_categories(parsed, previews)
+    if empty and not filtered:
+        raise HTTPException(
+            422,
+            f"the server's data has no buildings for {', '.join(repr(n) for n in empty)}, so it cannot be sampled; "
+            "give it a fixed count of 0 or a max_fraction of 0, or remove it",
+        )
     if empty:
         raise HTTPException(
             422,
@@ -230,9 +266,10 @@ def _build_snapshot(settings: Settings, config: dict[str, Any], run_id: uuid.UUI
     """Server-built `data` section and per-run `output.base_dir` (<MICROGRID_OUTPUT_DIR>/<run id>)."""
     try:
         data: dict[str, str] = svc.server_side_data_section(settings)
-    except ValueError:
-        logger.error("cannot build the data section: data directory missing or outside its root")
-        raise HTTPException(503, "the server data directory is not available") from None
+        svc.require_data_files(data)
+    except svc.DataSectionError as exc:
+        logger.error("cannot build the data section: %s", exc)  # setting/key names only, never values
+        raise HTTPException(503, exc.public) from None
     if settings.output_dir is None:
         logger.error("MICROGRID_OUTPUT_DIR is not configured")
         raise HTTPException(503, "the server output directory is not available")
@@ -261,6 +298,17 @@ def _check_caps(settings: Settings, snapshot: dict[str, Any]) -> Any:
     return parsed
 
 
+def run_inputs(role: str) -> list[str]:
+    """Which of the `POST /runs` inputs a role may send (the rule `create_run` enforces; shown by `GET /me`)."""
+    return ["composition_id"] if role == "demo" else ["composition", "composition_id", "config"]
+
+
+def may_set_seeds(role: str) -> bool:
+    """Whether a role may send `seeds` (demo runs use the fixed stored seed). Enforced by `create_run`; shown by
+    `GET /me`."""
+    return role != "demo"
+
+
 @router.get("/demo-compositions", response_model=DemoCompositions, summary="Predefined compositions")
 def demo_compositions(request: Request, _: Principal = Depends(current_principal)) -> DemoCompositions:
     return DemoCompositions(items=sorted(request.app.state.demo_compositions))
@@ -276,7 +324,10 @@ def create_run(
     settings: Settings = request.app.state.settings
     overrides = settings.permission_overrides
     demo = principal.role == "demo"
-    if demo and (body.config is not None or body.seeds is not None):
+    sent = [k for k in ("config", "composition_id", "composition") if getattr(body, k) is not None]
+    if any(k not in run_inputs(principal.role) for k in sent) or (
+        body.seeds is not None and not may_set_seeds(principal.role)
+    ):
         raise HTTPException(403, "the demo role may only run a predefined composition with its fixed seed")
     if demo and body.filter_selections is not None:  # even only empty lists: demo never uses filters
         raise HTTPException(403, "role 'demo' does not have the filters.use permission")
@@ -287,6 +338,12 @@ def create_run(
             raise HTTPException(404, "unknown composition_id")
         saved = library[body.composition_id]
         config = copy.deepcopy(saved)
+    elif body.composition is not None:
+        try:
+            config = comp_svc.build_scenario(body.composition.to_composition(), request.app.state.building_registry)
+        except comp_svc.CompositionError as exc:
+            raise HTTPException(422, str(exc)) from None
+        check_client_config(config)  # the built scenario obeys the same rules as a client config (defence in depth)
     else:
         assert body.config is not None
         check_config_shape(body.config)  # depth and size before anything copies or walks it
@@ -322,8 +379,18 @@ def create_run(
     run_id = uuid.uuid4()
     snapshot = _build_snapshot(settings, config, run_id)
     parsed = _check_caps(settings, snapshot)
-    if active is not None:  # selections were applied: refuse now what would only fail later in the worker
-        check_pools(settings, parsed, active.exposed, principal)
+    try:  # every run input: the engine does not check fixed counts against the total (engine fix pending)
+        comp_svc.check_config_counts(parsed)
+    except comp_svc.CompositionError as exc:
+        raise HTTPException(422, str(exc)) from None
+    # Every run is pool-checked at creation (cheap after the first read: the characteristics are cached in-process),
+    # so a category that must be sampled but has no buildings is a 422 now, not a late worker failure. Without
+    # selections the packaged attribute set is used only to word messages, so an invalid stored configuration
+    # never blocks unfiltered runs.
+    check_pools(
+        settings, parsed, active.exposed if active is not None else ea_svc.packaged_exposed(), principal,
+        filtered=active is not None,
+    )  # fmt: skip
     try:
         # permission flag filters.use: adding, changing or removing filters relative to the stored composition
         validate_filter_edit(principal.role, new=snapshot, saved=saved, overrides=overrides)

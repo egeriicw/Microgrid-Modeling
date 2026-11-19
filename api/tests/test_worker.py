@@ -222,9 +222,13 @@ def test_request_cancel_unknown_run(session):
         svc.request_cancel(session, uuid.uuid4())
 
 
-def test_real_engine_cancel_during_run_stops_before_next_run(session_factory, session, tiny_config, monkeypatch):
+def test_real_engine_cancel_during_run_stops_before_next_run(
+    session_factory, session, tiny_config, settings, synthetic_dataset, monkeypatch
+):
     """Real facade on the synthetic dataset: cancel is requested after the 2nd run completes; the engine polls
     before each run, so nothing runs after the flag is seen (latency = one engine run)."""
+    # the worker re-checks stored data paths against MICROGRID_DATA_DIR (W1-COMPOSE fix pass G)
+    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update={"data_dir": synthetic_dataset.root}))
     run_id = svc.create_run(session, tiny_config, trusted_data_paths=True).id
     real = worker.run_scenario
     done: list[int] = []
@@ -272,8 +276,12 @@ def test_create_run_rejects_invalid_config_loudly(session):
         svc.create_run(session, {"ensemble": {"mode": "not-a-mode"}})
 
 
-def test_end_to_end_real_engine_and_replay(session_factory, session, tiny_config, settings, tmp_path, monkeypatch):
-    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update={"output_dir": tmp_path / "out"}))
+def test_end_to_end_real_engine_and_replay(
+    session_factory, session, tiny_config, settings, synthetic_dataset, tmp_path, monkeypatch
+):
+    # data_dir: the worker re-checks stored data paths against MICROGRID_DATA_DIR (W1-COMPOSE fix pass G)
+    over = {"output_dir": tmp_path / "out", "data_dir": synthetic_dataset.root}
+    monkeypatch.setattr(worker, "_settings_override", settings.model_copy(update=over))
     tiny_config["output"] = {"base_dir": str(tmp_path / "out" / "run1")}
     first = svc.create_run(session, tiny_config, trusted_data_paths=True)
     worker.execute_run(first.id, session_factory)

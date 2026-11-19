@@ -2,8 +2,8 @@
 
 The engine's new ``data.temperature_weather_file`` is a server-side file path. A client must never be able to set
 it (nor any other ``data.temperature_*`` field, since the whole ``data`` section is server-built). These tests prove
-that, and record that the server-built section declares no temperature source today, so API results always carry
-``temperature.available = false`` until the server is taught where the weather lives [verify].
+that, and record that the server-built section declares the source from settings (`none` by default), so API results carry
+``temperature.available = false`` unless the operator declares where the weather lives [verify].
 """
 
 from __future__ import annotations
@@ -59,7 +59,8 @@ def test_http_client_cannot_declare_a_temperature_source(api, tiny_config, field
     assert api.app.state.enqueued == []
 
 
-def test_server_built_data_section_declares_no_temperature(tmp_path, synthetic_dataset, tiny_config):
-    """Records today's behaviour: API runs never get a temperature series (the block says why)."""
+def test_server_built_data_section_declares_no_temperature_by_default(tmp_path, synthetic_dataset, tiny_config):
+    """W1-COMPOSE: the source is declared explicitly from settings; by default it is `none` (the results block says
+    no temperature is available) and nothing else about temperature is set."""
     data = svc.server_side_data_section(make_settings(tmp_path, synthetic_dataset, tiny_config))
-    assert not any(k.startswith("temperature_") for k in data)
+    assert {k: v for k, v in data.items() if k.startswith("temperature_")} == {"temperature_source": "none"}

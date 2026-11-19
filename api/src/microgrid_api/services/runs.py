@@ -26,6 +26,7 @@ import copy
 import uuid
 from dataclasses import asdict, fields
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from microgrid import __version__ as ENGINE_VERSION  # noqa: N812
@@ -34,7 +35,7 @@ from microgrid.community_load.synthetic.rng import resolve_seeds
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from microgrid_api.config import Settings
+from microgrid_api.config import TEMPERATURE_OPTIONAL_FIELDS, Settings, is_plain_file_name, is_relative_data_path
 from microgrid_api.db.models import Run, RunStatus
 
 SEED_KEYS = ("composition_seed", "archetype_seed", "perturbation_seed")
@@ -56,24 +57,150 @@ def _path_keys_present(snapshot: dict[str, Any]) -> list[str]:
 path_keys_present = _path_keys_present  # public alias for the HTTP layer
 
 
+class DataSectionError(ValueError):
+    """The server cannot build a usable `data` section. ``public`` is safe to show any caller (no paths, no file
+    names); ``str(exc)`` adds the setting involved, for the server log."""
+
+    def __init__(self, detail: str, public: str = "the server data directory is not available") -> None:
+        super().__init__(detail)
+        self.public = public
+
+
+def _contained(root: Path, rel: str, key: str) -> Path:
+    path = (root / rel).resolve()
+    if not path.is_relative_to(root):
+        raise DataSectionError(f"data path '{key}' resolves outside the data root")
+    return path
+
+
 def server_side_data_section(settings: Settings) -> dict[str, str]:
-    """Build the snapshot `data` paths from MICROGRID_DATA_DIR using the engine's default layout, verifying each
-    stays under the data root after symlink resolution. Messages never include path values."""
+    """Build the snapshot `data` section from settings: the directories under MICROGRID_DATA_DIR (the engine's default
+    layout), the characteristics file NAMES (always written, so the engine's defaults are never relied on) and the
+    declared temperature source. Every path, including each characteristics file and the weather file, must stay
+    under the data root after symlink resolution. Existence is checked separately (``require_data_files``) so this
+    stays usable for describing the section. Messages never include path values."""
     if settings.data_dir is None:
-        raise ValueError("MICROGRID_DATA_DIR is not configured")
+        raise DataSectionError("MICROGRID_DATA_DIR is not configured")
     root = settings.data_dir.resolve()
+    # (tests/test_deploy_wave1.py reads this literal from the source to check the CI fixture layout)
     layout = {
         "background_dir": "background",
         "resstock_timeseries_dir": "input/resstock/timeseries_individual_buildings",
         "comstock_timeseries_dir": "input/comstock/timeseries_individual_buildings",
     }
-    out: dict[str, str] = {}
-    for key, rel in layout.items():
-        path = (root / rel).resolve()
-        if not path.is_relative_to(root):
-            raise ValueError(f"data path '{key}' resolves outside the data root")
-        out[key] = str(path)
+    out: dict[str, str] = {key: str(_contained(root, rel, key)) for key, rel in layout.items()}
+    for key in ("resstock_chars_file", "comstock_chars_file"):
+        name: str = getattr(settings, key)
+        if not is_plain_file_name(name):  # Settings already refuses this; checked again where the path is built
+            raise DataSectionError(f"data file '{key}' is not a plain file name")
+        _contained(root, f"{layout['background_dir']}/{name}", key)  # a symlinked file must not escape either
+        out[key] = name  # the engine joins it to background_dir
+    out["temperature_source"] = settings.temperature_source
+    for key in TEMPERATURE_OPTIONAL_FIELDS:
+        value = getattr(settings, key)
+        if value is None:
+            continue
+        if key == "temperature_weather_file":
+            if not is_relative_data_path(value):  # Settings already refuses this; checked again here
+                raise DataSectionError(f"data file '{key}' is not a path relative to the data root")
+            value = str(_contained(root, value, key))
+        out[key] = value
     return out
+
+
+_FILE_LABELS = {
+    "resstock_chars_file": "ResStock characteristics file",
+    "comstock_chars_file": "ComStock characteristics file",
+    "temperature_weather_file": "weather file",
+}
+
+
+def require_data_files(data: dict[str, str]) -> None:
+    """Every file a server-built section names must exist now, so a missing file is a clear error at run creation,
+    not a late worker failure. DataSectionError names only the kind of file (public) and the key (log)."""
+    files = {
+        "resstock_chars_file": Path(data["background_dir"]) / data["resstock_chars_file"],
+        "comstock_chars_file": Path(data["background_dir"]) / data["comstock_chars_file"],
+    }
+    if "temperature_weather_file" in data:
+        files["temperature_weather_file"] = Path(data["temperature_weather_file"])
+    for key, path in files.items():
+        if not path.is_file():
+            raise DataSectionError(
+                f"data file '{key}' does not exist", public=f"the server's {_FILE_LABELS[key]} is not available"
+            )
+
+
+_STORED_DIR_KEYS = ("background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir")
+
+
+def check_stored_data_section(data: Any, data_dir: Path | None) -> None:
+    """The worker's check immediately before execution (defence in depth): every path a stored `data` section names
+    (directories, characteristics files, weather file) must still resolve inside the data root, and every file must
+    exist. A snapshot without path keys (none were stored) has nothing to check. DataSectionError carries a public,
+    path-free reason (``exc.public``) and key names only in ``str(exc)``."""
+    if not isinstance(data, dict):
+        return
+    present = sorted(k for k in data if k in DATA_PATH_KEYS)
+    if not present:
+        return
+    if data_dir is None:
+        raise DataSectionError("MICROGRID_DATA_DIR is not configured for the worker")
+    root = data_dir.resolve()
+
+    def inside(key: str, value: Any) -> Path:
+        if not isinstance(value, str) or not value:
+            raise DataSectionError(f"stored data path '{key}' is not a path")
+        path = Path(value).resolve()
+        if not path.is_relative_to(root):
+            raise DataSectionError(f"stored data path '{key}' resolves outside the data root")
+        return path
+
+    for key in _STORED_DIR_KEYS:
+        if key in data:
+            inside(key, data[key])
+    files: dict[str, Path] = {}
+    for key in ("resstock_chars_file", "comstock_chars_file"):
+        if key not in data:
+            continue
+        name = data[key]
+        if not isinstance(name, str) or not is_plain_file_name(name) or "background_dir" not in data:
+            raise DataSectionError(f"stored data file '{key}' is not a file name under background_dir")
+        files[key] = inside(key, str(Path(str(data["background_dir"])) / name))
+    if "temperature_weather_file" in data:
+        files["temperature_weather_file"] = inside("temperature_weather_file", data["temperature_weather_file"])
+    for key, path in files.items():
+        if not path.is_file():
+            raise DataSectionError(
+                f"stored data file '{key}' does not exist", public=f"the server's {_FILE_LABELS[key]} is not available"
+            )
+
+
+def data_files_provenance(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Which data files a stored run read, as file NAMES only (never paths), from its snapshot's `data` section.
+    Runs stored before the names were recorded report None (the engine defaults of that time were used)."""
+    data = snapshot.get("data")
+    data = data if isinstance(data, dict) else {}
+
+    def name(key: str) -> str | None:
+        value = data.get(key)
+        return Path(value).name if isinstance(value, str) and value else None
+
+    def text(key: str) -> str | None:
+        value = data.get(key)
+        return value if isinstance(value, str) else None
+
+    return {
+        "resstock_characteristics_file": name("resstock_chars_file"),
+        "comstock_characteristics_file": name("comstock_chars_file"),
+        "temperature": {
+            "source": text("temperature_source"),
+            "file": name("temperature_weather_file"),
+            "column": text("temperature_column"),
+            "time_column": text("temperature_time_column"),
+            "units": text("temperature_units"),
+        },
+    }
 
 
 def public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

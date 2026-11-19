@@ -67,6 +67,222 @@
         "title": "ActiveConfigurationOut",
         "type": "object"
       },
+      "BuildingTypeList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BuildingTypeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BuildingTypeList",
+        "type": "object"
+      },
+      "BuildingTypeOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "building_class": {
+            "enum": [
+              "residential",
+              "commercial"
+            ],
+            "title": "Building Class",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "resstock",
+              "comstock"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "building_class",
+          "source",
+          "description",
+          "active"
+        ],
+        "title": "BuildingTypeOut",
+        "type": "object"
+      },
+      "CompositionEntry": {
+        "additionalProperties": false,
+        "description": "One building type: EITHER ``fixed_count`` (exactly this many) OR a fraction range of the buildings left after\nthe fixed counts (``min_fraction`` defaults to 0, ``max_fraction`` to 1; give at least one).",
+        "properties": {
+          "building_type": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Building Type",
+            "type": "string"
+          },
+          "fixed_count": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Count"
+          },
+          "max_fraction": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Fraction"
+          },
+          "min_fraction": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Fraction"
+          }
+        },
+        "required": [
+          "building_type"
+        ],
+        "title": "CompositionEntry",
+        "type": "object"
+      },
+      "CompositionRequest": {
+        "additionalProperties": false,
+        "description": "A neighbourhood by building type plus run settings. The server builds the engine scenario from the registry;\nfilters, columns and paths are never accepted here.",
+        "properties": {
+          "building_types": {
+            "items": {
+              "$ref": "#/components/schemas/CompositionEntry"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Building Types",
+            "type": "array"
+          },
+          "convergence": {
+            "default": false,
+            "title": "Convergence",
+            "type": "boolean"
+          },
+          "convergence_rule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "legacy_window",
+                  "prd_default"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convergence Rule"
+          },
+          "max_runs": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Runs",
+            "type": "integer"
+          },
+          "min_runs": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Runs"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "total_buildings": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Total Buildings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "total_buildings",
+          "building_types",
+          "max_runs"
+        ],
+        "title": "CompositionRequest",
+        "type": "object"
+      },
+      "DemoCaps": {
+        "properties": {
+          "max_buildings": {
+            "title": "Max Buildings",
+            "type": "integer"
+          },
+          "max_runs": {
+            "title": "Max Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_buildings",
+          "max_runs"
+        ],
+        "title": "DemoCaps",
+        "type": "object"
+      },
       "DemoCompositions": {
         "properties": {
           "items": {
@@ -280,6 +496,83 @@
           }
         },
         "title": "HealthOut",
+        "type": "object"
+      },
+      "Limits": {
+        "properties": {
+          "default_min_runs": {
+            "title": "Default Min Runs",
+            "type": "integer"
+          },
+          "demo_caps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DemoCaps"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_ensemble_runs": {
+            "title": "Max Ensemble Runs",
+            "type": "integer"
+          },
+          "max_total_buildings": {
+            "title": "Max Total Buildings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_total_buildings",
+          "max_ensemble_runs",
+          "default_min_runs",
+          "demo_caps"
+        ],
+        "title": "Limits",
+        "type": "object"
+      },
+      "Me": {
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "may_set_seeds": {
+            "title": "May Set Seeds",
+            "type": "boolean"
+          },
+          "permissions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Permissions",
+            "type": "object"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "run_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Run Inputs",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "role",
+          "permissions",
+          "run_inputs",
+          "may_set_seeds",
+          "limits"
+        ],
+        "title": "Me",
         "type": "object"
       },
       "OfferedAttribute": {
@@ -509,8 +802,18 @@
       },
       "RunCreate": {
         "additionalProperties": false,
-        "description": "Exactly one of ``config`` (a scenario WITHOUT a `data` section) or ``composition_id`` (a predefined one).",
+        "description": "Exactly one of ``config`` (a scenario WITHOUT a `data` section), ``composition_id`` (a predefined one) or\n``composition`` (building types with counts or fraction ranges; the server builds the scenario).",
         "properties": {
+          "composition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompositionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "composition_id": {
             "anyOf": [
               {
@@ -573,6 +876,43 @@
         "title": "RunCreate",
         "type": "object"
       },
+      "RunDataFiles": {
+        "description": "Which data files the run read, as file NAMES only (FR-DATA-8 provenance; server paths are never shown).\nNone for runs stored before the names were recorded.",
+        "properties": {
+          "comstock_characteristics_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comstock Characteristics File"
+          },
+          "resstock_characteristics_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resstock Characteristics File"
+          },
+          "temperature": {
+            "$ref": "#/components/schemas/RunTemperatureFile"
+          }
+        },
+        "required": [
+          "resstock_characteristics_file",
+          "comstock_characteristics_file",
+          "temperature"
+        ],
+        "title": "RunDataFiles",
+        "type": "object"
+      },
       "RunDetail": {
         "properties": {
           "cancel_requested": {
@@ -588,6 +928,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "data_files": {
+            "$ref": "#/components/schemas/RunDataFiles"
           },
           "effective_filters": {
             "additionalProperties": {
@@ -726,6 +1069,7 @@
           "started_at",
           "finished_at",
           "composition_snapshot",
+          "data_files",
           "result",
           "effective_filters",
           "filter_selections",
@@ -867,6 +1211,75 @@
           "finished_at"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "RunTemperatureFile": {
+        "description": "The temperature source the run declared (FR-ENG-10). ``source`` is None for runs stored before it was\nrecorded.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          }
+        },
+        "required": [
+          "source",
+          "file",
+          "column",
+          "time_column",
+          "units"
+        ],
+        "title": "RunTemperatureFile",
         "type": "object"
       },
       "Selection": {
@@ -1289,6 +1702,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/building-types": {
+      "get": {
+        "operationId": "building_types_api_v1_building_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildingTypeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Building types a composition can use",
+        "tags": [
+          "building-types"
+        ]
+      }
+    },
     "/api/v1/demo-compositions": {
       "get": {
         "operationId": "demo_compositions_api_v1_demo_compositions_get",
@@ -1634,6 +2073,32 @@
         "summary": "Liveness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The caller's identity, permissions and limits",
+        "tags": [
+          "identity"
         ]
       }
     },
