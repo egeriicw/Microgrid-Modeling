@@ -1,6 +1,23 @@
 // GENERATED from api/openapi.json by `npm run gen:api` (openapi-typescript). Do not edit by hand.
 // `npm run check:api` (part of `npm test`) fails when this file is out of date with the contract.
 export interface paths {
+    "/api/v1/building-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Building types a composition can use */
+        get: operations["building_types_api_v1_building_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/demo-compositions": {
         parameters: {
             query?: never;
@@ -116,6 +133,23 @@ export interface paths {
         };
         /** Liveness */
         get: operations["health_api_v1_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's identity, permissions and limits */
+        get: operations["me_api_v1_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -259,6 +293,78 @@ export interface components {
              */
             version: number;
         };
+        /** BuildingTypeList */
+        BuildingTypeList: {
+            /** Items */
+            items: components["schemas"]["BuildingTypeOut"][];
+        };
+        /** BuildingTypeOut */
+        BuildingTypeOut: {
+            /** Active */
+            active: boolean;
+            /**
+             * Building Class
+             * @enum {string}
+             */
+            building_class: "residential" | "commercial";
+            /** Description */
+            description: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "resstock" | "comstock";
+        };
+        /**
+         * CompositionEntry
+         * @description One building type: EITHER ``fixed_count`` (exactly this many) OR a fraction range of the buildings left after
+         *     the fixed counts (``min_fraction`` defaults to 0, ``max_fraction`` to 1; give at least one).
+         */
+        CompositionEntry: {
+            /** Building Type */
+            building_type: string;
+            /** Fixed Count */
+            fixed_count?: number | null;
+            /** Max Fraction */
+            max_fraction?: number | null;
+            /** Min Fraction */
+            min_fraction?: number | null;
+        };
+        /**
+         * CompositionRequest
+         * @description A neighbourhood by building type plus run settings. The server builds the engine scenario from the registry;
+         *     filters, columns and paths are never accepted here.
+         */
+        CompositionRequest: {
+            /** Building Types */
+            building_types: components["schemas"]["CompositionEntry"][];
+            /**
+             * Convergence
+             * @default false
+             */
+            convergence: boolean;
+            /** Convergence Rule */
+            convergence_rule?: ("legacy_window" | "prd_default") | null;
+            /** Max Runs */
+            max_runs: number;
+            /** Min Runs */
+            min_runs?: number | null;
+            /** Name */
+            name: string;
+            /** Total Buildings */
+            total_buildings: number;
+        };
+        /** DemoCaps */
+        DemoCaps: {
+            /** Max Buildings */
+            max_buildings: number;
+            /** Max Runs */
+            max_runs: number;
+        };
         /** DemoCompositions */
         DemoCompositions: {
             /** Items */
@@ -337,6 +443,32 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** Limits */
+        Limits: {
+            /** Default Min Runs */
+            default_min_runs: number;
+            demo_caps: components["schemas"]["DemoCaps"] | null;
+            /** Max Ensemble Runs */
+            max_ensemble_runs: number;
+            /** Max Total Buildings */
+            max_total_buildings: number;
+        };
+        /** Me */
+        Me: {
+            limits: components["schemas"]["Limits"];
+            /** May Set Seeds */
+            may_set_seeds: boolean;
+            /** Permissions */
+            permissions: {
+                [key: string]: boolean;
+            };
+            /** Role */
+            role: string;
+            /** Run Inputs */
+            run_inputs: string[];
+            /** Subject */
+            subject: string;
+        };
         /** OfferedAttribute */
         OfferedAttribute: {
             /** Building Types */
@@ -413,9 +545,11 @@ export interface components {
         };
         /**
          * RunCreate
-         * @description Exactly one of ``config`` (a scenario WITHOUT a `data` section) or ``composition_id`` (a predefined one).
+         * @description Exactly one of ``config`` (a scenario WITHOUT a `data` section), ``composition_id`` (a predefined one) or
+         *     ``composition`` (building types with counts or fraction ranges; the server builds the scenario).
          */
         RunCreate: {
+            composition?: components["schemas"]["CompositionRequest"] | null;
             /** Composition Id */
             composition_id?: string | null;
             /** Config */
@@ -431,6 +565,18 @@ export interface components {
                 [key: string]: number;
             } | null;
         };
+        /**
+         * RunDataFiles
+         * @description Which data files the run read, as file NAMES only (FR-DATA-8 provenance; server paths are never shown).
+         *     None for runs stored before the names were recorded.
+         */
+        RunDataFiles: {
+            /** Comstock Characteristics File */
+            comstock_characteristics_file: string | null;
+            /** Resstock Characteristics File */
+            resstock_characteristics_file: string | null;
+            temperature: components["schemas"]["RunTemperatureFile"];
+        };
         /** RunDetail */
         RunDetail: {
             /** Cancel Requested */
@@ -444,6 +590,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            data_files: components["schemas"]["RunDataFiles"];
             /** Effective Filters */
             effective_filters: {
                 [key: string]: {
@@ -539,6 +686,23 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /**
+         * RunTemperatureFile
+         * @description The temperature source the run declared (FR-ENG-10). ``source`` is None for runs stored before it was
+         *     recorded.
+         */
+        RunTemperatureFile: {
+            /** Column */
+            column: string | null;
+            /** File */
+            file: string | null;
+            /** Source */
+            source: string | null;
+            /** Time Column */
+            time_column: string | null;
+            /** Units */
+            units: string | null;
         };
         /**
          * Selection
@@ -655,6 +819,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    building_types_api_v1_building_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildingTypeList"];
+                };
+            };
+        };
+    };
     demo_compositions_api_v1_demo_compositions_get: {
         parameters: {
             query?: never;
@@ -884,6 +1068,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    me_api_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
                 };
             };
         };
