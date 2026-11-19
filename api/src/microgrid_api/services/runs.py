@@ -76,6 +76,23 @@ def server_side_data_section(settings: Settings) -> dict[str, str]:
     return out
 
 
+def public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a run snapshot without server paths (`data`, `output.base_dir`), for anything a caller can read."""
+    out = {k: copy.deepcopy(v) for k, v in snapshot.items() if k != "data"}
+    if isinstance(out.get("output"), dict):
+        out["output"] = {k: v for k, v in out["output"].items() if k != "base_dir"}
+    return out
+
+
+def public_results_document(doc: dict[str, Any]) -> dict[str, Any]:
+    """A results document (``RunResult.to_dict``) whose ``config_snapshot`` carries no server paths. Used both when
+    the worker writes ``results.json`` and when the API serves one (files written before this existed)."""
+    out = dict(doc)
+    if isinstance(out.get("config_snapshot"), dict):
+        out["config_snapshot"] = public_snapshot(out["config_snapshot"])
+    return out
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 

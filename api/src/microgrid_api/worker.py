@@ -197,7 +197,7 @@ def _write_results(rid: uuid.UUID, config: dict[str, Any], full: dict[str, Any])
     directory.mkdir(parents=True, exist_ok=True)
     final = directory / svc.RESULTS_FILENAME
     tmp = directory / f".{svc.RESULTS_FILENAME}.{rid}.tmp"
-    tmp.write_text(json.dumps(full))
+    tmp.write_text(json.dumps(svc.public_results_document(full)))  # never server paths in a served file
     tmp.replace(final)
     return final
 

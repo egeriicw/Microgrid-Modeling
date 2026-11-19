@@ -120,11 +120,6 @@ def test_unfiltered_run_stores_pool_size_in_detail_and_results_document(api, tin
     assert results.json()["pool_summary"] == pools
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT: GET /runs/{id}/results serves results.json verbatim; its config_snapshot carries the server data "
-    "paths and output.base_dir that run detail now strips (pre-existing leak, made visible by FR-ENG-11 e).",
-)
 def test_results_document_never_contains_server_paths(api, tiny_config, full_data_root, qa_settings):
     rid = _post_run(api, {"config": client_config(tiny_config), "seeds": SEEDS}, who="alice").json()["id"]
     from microgrid_api import worker
@@ -176,18 +171,13 @@ def test_empty_selections_are_bit_identical_to_no_filter_field(api, tiny_config,
     assert _without_run_dir(full[2]) == _without_run_dir(full[0])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (FR-ENG-3): a filter_selections key naming a category that does not exist is silently ignored when "
-    "its list is empty; with a non-empty list the same key is a 422.",
-)
 def test_unknown_category_with_empty_selection_list_is_an_error(api, tiny_config):
     r = _post_run(api, {"config": client_config(tiny_config), "filter_selections": {"no_such_category": []}})
     assert r.status_code == 422
 
 
 def test_selection_only_narrows_the_pool_and_keeps_every_other_setting(api, tiny_config):
-    sel = {"mf_small": [{"attribute": "vintage", "op": "in", "values": ["1960s", "1980s"]}]}
+    sel = {"mf_small": [{"attribute": "vintage", "op": "in", "values": ["2010s"]}]}
     a = _post_run(api, {"config": client_config(tiny_config), "seeds": SEEDS}).json()["id"]
     b = _post_run(api, {"config": client_config(tiny_config), "seeds": SEEDS, "filter_selections": sel}).json()["id"]
     with api.app.state.session_factory() as s:
@@ -271,6 +261,11 @@ def test_preview_counts_equal_the_pool_the_worker_samples_from(api, tiny_config,
     pv = api.post(f"{BASE}/preview", headers=bearer("admin"), json=body)
     assert pv.status_code == 200, pv.text
     r = _post_run(api, body)
+    empty = sorted(k.split("/", 1)[1] for k, v in pv.json()["categories"].items() if v["matched"] == 0)
+    if empty and selections is not None:  # fix pass B: refused at creation instead of failing in the worker
+        assert r.status_code == 422, r.text
+        assert all(name in r.json()["detail"] for name in empty)
+        return
     assert r.status_code == 202, r.text
     with api.app.state.session_factory() as s:
         snap = s.get(Run, uuid.UUID(r.json()["id"])).composition_snapshot
@@ -282,12 +277,6 @@ def test_preview_counts_equal_the_pool_the_worker_samples_from(api, tiny_config,
     assert {k: v["matched"] for k, v in pv.json()["categories"].items()} == sampled
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (FR-ENG-11 c/d): preview warns 'no buildings match', but POST /runs accepts the same selection and "
-    "the worker then fails with only 'engine run failed (ValueError); see worker logs'. Refuse at creation (422) or "
-    "store a clear, path-free reason.",
-)
 def test_zero_pool_selection_is_refused_or_explained_on_the_run_path(api, tiny_config):
     sel = {"mf_small": [{"attribute": "vintage", "op": "equals", "value": "<1940"}]}
     sel["mf_small"].append({"attribute": "stories", "op": "range", "min": 150, "max": 200})
@@ -332,11 +321,6 @@ def test_attribute_column_missing_from_data_is_a_clear_422_in_preview(api, tiny_
     assert "in.not_in_the_data" in r.json()["detail"] and "not in the characteristics data" in r.json()["detail"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (FR-ENG-11 d): an active attribute whose column is not in the data is a clear 422 in preview, but "
-    "POST /runs accepts it and the run fails later with only the exception class name.",
-)
 def test_attribute_column_missing_from_data_is_clear_on_the_run_path(api, tiny_config):
     _activate_doc(api, _doc_with_missing_column())
     body = {
@@ -682,12 +666,6 @@ def test_type_specific_attribute_refused_for_a_registered_type_it_does_not_apply
     assert r.status_code == 422, r.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW): apply_selections passes the building type only when the category NAME is a registry key; a "
-    "category named freely (e.g. 'single_family_detached' in configs/scenarios/dc_multifamily_baseline_2.yaml) gets "
-    "building_type=None, so a multifamily-only attribute is accepted for a single-family pool.",
-)
 def test_type_specific_attribute_refused_for_an_unregistered_category_name(api, tiny_config):
     cfg = client_config(tiny_config)
     cfg["composition"]["categories"]["single_family_detached"] = {

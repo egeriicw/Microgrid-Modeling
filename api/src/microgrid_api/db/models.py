@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Uuid, false, func
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Integer, String, Uuid, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from microgrid_api.db.base import Base
@@ -101,10 +101,11 @@ class ExposedAttributeVersion(Base):
 
     ``version`` is assigned by the service as latest + 1; the primary key makes two writers that raced from the same
     base version collide (one wins, the other gets a conflict). Version 0 is reserved for the packaged starter set and
-    is never stored.
+    is never stored (CHECK version >= 1).
     """
 
     __tablename__ = "exposed_attribute_versions"
+    __table_args__ = (CheckConstraint("version >= 1", name="version_positive"),)
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     document: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -116,13 +117,17 @@ class ExposedAttributeVersion(Base):
 
 class ExposedAttributeActivation(Base):
     """Append-only activation log. The active configuration is the newest row (highest id); ``version`` NULL means
-    the packaged starter set. No rows at all also means the packaged starter set."""
+    the packaged starter set. No rows at all also means the packaged starter set. The service sets ``id`` to the
+    latest id + 1, so two activations made from the same state collide on the primary key (optimistic lock)."""
 
     __tablename__ = "exposed_attribute_activations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     version: Mapped[int | None] = mapped_column(
-        ForeignKey("exposed_attribute_versions.version", ondelete="RESTRICT"), nullable=True
+        ForeignKey(
+            "exposed_attribute_versions.version", ondelete="RESTRICT", name="fk_exposed_attribute_activations_version"
+        ),
+        nullable=True,
     )
     activated_by: Mapped[str] = mapped_column(String(64), nullable=False)
     activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now(), nullable=False)

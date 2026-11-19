@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column("note", sa.String(length=500), nullable=True),
         sa.Column("created_by", sa.String(length=64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.PrimaryKeyConstraint("version"),
+        sa.PrimaryKeyConstraint("version", name="pk_exposed_attribute_versions"),
+        # version 0 is the packaged starter set and is never stored
+        sa.CheckConstraint("version >= 1", name="ck_exposed_attribute_versions_version_positive"),
     )
     op.create_table(
         "exposed_attribute_activations",
@@ -36,8 +38,13 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=True),
         sa.Column("activated_by", sa.String(length=64), nullable=False),
         sa.Column("activated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["version"], ["exposed_attribute_versions.version"], ondelete="RESTRICT"),
-        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(
+            ["version"],
+            ["exposed_attribute_versions.version"],
+            name="fk_exposed_attribute_activations_version",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_exposed_attribute_activations"),
     )
     with op.batch_alter_table("runs") as batch:
         batch.add_column(sa.Column("filter_selections", sa.JSON(), nullable=True))

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from microgrid.community_load.permissions import can
 from microgrid.community_load.synthetic.config import config_from_dict
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from microgrid_api.auth import Principal, current_principal
@@ -28,6 +29,7 @@ from microgrid_api.config import Settings
 from microgrid_api.db.models import ExposedAttributeVersion
 from microgrid_api.filter_schemas import (
     MAX_VERSION,
+    ActivateRequest,
     ActiveConfigurationOut,
     ExposedAttributesDocument,
     OfferedAttribute,
@@ -40,7 +42,7 @@ from microgrid_api.filter_schemas import (
     VersionOut,
     selections_to_plain,
 )
-from microgrid_api.routers.runs import check_client_config, get_session
+from microgrid_api.routers.runs import check_client_config, check_config_shape, get_session, selection_http_error
 from microgrid_api.services import exposed_attributes as svc
 from microgrid_api.services import runs as run_svc
 
@@ -90,11 +92,20 @@ def get_active(
 ) -> ActiveConfigurationOut:
     active = active_or_503(session)
     attrs = sorted((a for a in active.exposed.attributes if a.active), key=lambda a: (a.order, a.key))
+    try:
+        offered = [OfferedAttribute(**svc.offered_view(a)) for a in attrs]
+    except (ValidationError, ValueError, OverflowError, TypeError):  # a stored document the view cannot represent
+        logger.error("active exposed-attribute configuration version %s cannot be shown", active.version)
+        raise HTTPException(
+            503,
+            f"the active exposed-attribute configuration (version {active.version}) cannot be shown; an admin must "
+            "activate or create a valid version",
+        ) from None
     return ActiveConfigurationOut(
         version=active.version,
         source="packaged" if active.version == svc.PACKAGED_VERSION else "database",
         activated_at=active.activated_at,
-        attributes=[OfferedAttribute(**svc.offered_view(a)) for a in attrs],
+        attributes=offered,
     )
 
 
@@ -141,7 +152,14 @@ def get_version(
     version: int = VersionPath, _: Principal = Depends(require_admin), session: Session = Depends(get_session)
 ) -> VersionDetail:
     meta, document = _describe(session, version)
-    return VersionDetail(**meta.model_dump(), document=ExposedAttributesDocument.model_validate(document))
+    try:
+        parsed = ExposedAttributesDocument.model_validate(document)
+    except ValidationError:  # stored before the current limits (or written outside the API); never a 500
+        logger.error("stored exposed-attribute version %s does not match the document schema", version)
+        raise HTTPException(
+            503, f"stored version {version} does not match the current document limits; create a corrected version"
+        ) from None
+    return VersionDetail(**meta.model_dump(), document=parsed)
 
 
 @router.post("/versions", response_model=VersionOut, status_code=201, summary="Save a new version (admin)")
@@ -164,14 +182,28 @@ def create_version(
     return _version_out(row, svc.active_version_number(session))
 
 
-@router.post("/versions/{version}/activate", response_model=VersionOut, summary="Make a version active (admin)")
+@router.post(
+    "/versions/{version}/activate",
+    response_model=VersionOut,
+    summary="Make a version active (admin)",
+    description="Activates a stored version, or 0 for the packaged starter set. The body is optional: send "
+    "`expected_active_version` (the version you believe is active now) to fail with **409** instead of silently "
+    "replacing another admin's activation; without it the newest activation wins.",
+    responses={409: {"description": "expected_active_version is stale (another admin activated a version)"}},
+)
 def activate_version(
-    version: int = VersionPath, principal: Principal = Depends(require_admin), session: Session = Depends(get_session)
+    version: int = VersionPath,
+    body: ActivateRequest | None = None,
+    principal: Principal = Depends(require_admin),
+    session: Session = Depends(get_session),
 ) -> VersionOut:
+    expected = body.expected_active_version if body is not None else None
     try:
-        svc.activate_version(session, version, principal.subject)
+        svc.activate_version(session, version, principal.subject, expected_active_version=expected)
     except svc.VersionNotFound:
         raise HTTPException(404, "version not found") from None
+    except svc.ActivationConflict as exc:
+        raise HTTPException(409, str(exc)) from None
     except ValueError as exc:
         raise HTTPException(422, f"version {version} cannot be activated: {exc}") from None
     return _describe(session, version)[0]
@@ -181,18 +213,19 @@ def activate_version(
 def preview(
     body: PreviewRequest,
     request: Request,
-    _: Principal = Depends(require_filters_use),
+    principal: Principal = Depends(require_filters_use),
     session: Session = Depends(get_session),
 ) -> PreviewOut:
     settings: Settings = request.app.state.settings
+    check_config_shape(body.config)  # depth and size before anything copies or walks it
     config: dict[str, Any] = copy.deepcopy(body.config)
     check_client_config(config)
     active = active_or_503(session)
-    if body.filter_selections:
+    if body.filter_selections is not None:
         try:
             config = svc.apply_selections(config, selections_to_plain(body.filter_selections), active.exposed)
         except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
+            raise selection_http_error(exc, principal) from None
     try:
         data = run_svc.server_side_data_section(settings)
     except ValueError:
@@ -200,18 +233,18 @@ def preview(
         raise HTTPException(503, "the server data directory is not available") from None
     try:
         cfg = config_from_dict({**config, "data": data}, source="<preview config>")
-    except ValueError as exc:
+    except (ValueError, OverflowError) as exc:
         raise HTTPException(422, str(exc)) from None
     assert settings.data_dir is not None  # server_side_data_section succeeded
     try:
-        previews = svc.preview(cfg, settings.data_dir)
+        previews = svc.preview(cfg, settings.data_dir, active.exposed)
     except svc.DataUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except KeyError as exc:
         logger.error("pool preview: characteristics data lacks column %s", exc)
         raise HTTPException(503, "the server's characteristics data lacks a column this category needs") from None
     except ValueError as exc:  # an attribute's column or value does not fit the data (FR-ENG-11 d)
-        raise HTTPException(422, str(exc)) from None
+        raise selection_http_error(exc, principal) from None
     return PreviewOut(
         exposed_attributes_version=active.version,
         min_pool_size=cfg.archetype_filters.min_pool_size,

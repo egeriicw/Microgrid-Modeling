@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse, Response
 from microgrid.community_load.permissions import FilterPermissionError, can, validate_filter_edit
 from microgrid.community_load.synthetic.config import config_from_dict
 from pydantic import BaseModel, ConfigDict, StrictInt, model_validator
@@ -31,7 +31,7 @@ from sse_starlette.sse import EventSourceResponse
 from microgrid_api.auth import Principal, current_principal
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run, RunEvent, RunStatus
-from microgrid_api.filter_schemas import FilterSelections, selections_to_plain
+from microgrid_api.filter_schemas import MAX_CATEGORIES, FilterSelections, selections_to_plain
 from microgrid_api.services import exposed_attributes as ea_svc
 from microgrid_api.services import runs as svc
 
@@ -110,19 +110,10 @@ def _out(run: Run) -> RunOut:
     return RunOut.model_validate(run, from_attributes=True)
 
 
-def _public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """A snapshot without server paths (`data`, `output.base_dir`)."""
-    out = {k: v for k, v in snapshot.items() if k != "data"}
-    if isinstance(out.get("output"), dict):
-        out["output"] = {k: v for k, v in out["output"].items() if k != "base_dir"}
-    return out
-
-
 def _detail(run: Run) -> RunDetail:
-    snapshot = _public_snapshot(run.composition_snapshot)  # never expose server paths
-    result = copy.deepcopy(run.result) if run.result is not None else None
-    if result is not None and isinstance(result.get("config_snapshot"), dict):
-        result["config_snapshot"] = _public_snapshot(result["config_snapshot"])  # the engine's copy holds them too
+    snapshot = svc.public_snapshot(run.composition_snapshot)  # never expose server paths
+    # the engine's copy of the config inside the result holds them too
+    result = svc.public_results_document(copy.deepcopy(run.result)) if run.result is not None else None
     pool = result.get("pool_summary") if result is not None else None
     base = _out(run).model_dump()
     return RunDetail(
@@ -135,8 +126,78 @@ def _detail(run: Run) -> RunDetail:
     )
 
 
+MAX_CONFIG_DEPTH = 32
+
+
+def config_too_deep(obj: Any, limit: int = MAX_CONFIG_DEPTH) -> bool:
+    """True when dicts/lists nest more than ``limit`` levels (iterative: no recursion on hostile input)."""
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict):
+            children: Any = node.values()
+        elif isinstance(node, list):
+            children = node
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def check_config_shape(config: dict[str, Any]) -> None:
+    """Size limits on a client config, checked BEFORE it is copied or parsed: nesting depth and category counts."""
+    if config_too_deep(config):
+        raise HTTPException(422, f"the config is nested more than {MAX_CONFIG_DEPTH} levels deep")
+    composition = config.get("composition")
+    categories = composition.get("categories") if isinstance(composition, dict) else None
+    if isinstance(categories, dict) and len(categories) > MAX_CATEGORIES:
+        raise HTTPException(422, f"composition.categories has {len(categories)} entries; the limit is {MAX_CATEGORIES}")
+    af = config.get("archetype_filters")
+    for source, cats in af.items() if isinstance(af, dict) else ():
+        if isinstance(cats, dict) and len(cats) > MAX_CATEGORIES:
+            raise HTTPException(
+                422, f"archetype_filters.{source} has {len(cats)} entries; the limit is {MAX_CATEGORIES}"
+            )
+
+
+def selection_http_error(exc: ValueError, principal: Principal) -> HTTPException:
+    """422 for a selection/filter problem. Admins see the library's detail; other roles see the public message,
+    which names only exposed attributes and their own categories (never columns or data values)."""
+    if isinstance(exc, ea_svc.SelectionError) and principal.role != "admin":
+        logger.info("selection refused for %s: %s", principal.subject, exc)
+        return HTTPException(422, exc.public)
+    return HTTPException(422, str(exc))
+
+
+def check_pools(settings: Settings, parsed: Any, exposed: Any, principal: Principal) -> dict[str, Any]:
+    """Pool preview on a parsed, server-built snapshot (FR-ENG-11 c/d on the run path). Refuses (422) a filter that
+    does not fit the data and a category that may receive buildings but matches none, so a run never fails later
+    with only an exception class name. Returns the previews."""
+    assert settings.data_dir is not None  # the server-built data section exists
+    try:
+        previews = ea_svc.preview(parsed, settings.data_dir, exposed)
+    except ea_svc.DataUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except KeyError as exc:
+        logger.error("pool check: characteristics data lacks column %s", exc)
+        raise HTTPException(503, "the server's characteristics data lacks a column this category needs") from None
+    except (ValueError, OverflowError) as exc:
+        raise selection_http_error(exc if isinstance(exc, ValueError) else ValueError(str(exc)), principal) from None
+    empty = ea_svc.unsampleable_categories(parsed, previews)
+    if empty:
+        raise HTTPException(
+            422,
+            f"no buildings match the filters of category {', '.join(repr(n) for n in empty)}, so it cannot be "
+            "sampled; preview the pool and loosen the filters, or set its max_fraction to 0",
+        )
+    return previews
+
+
 def check_client_config(config: dict[str, Any]) -> None:
     """Refuse anything in a client config the server must own: paths, the data section, raw column filters."""
+    check_config_shape(config)
     if "data" in config:
         raise HTTPException(
             422, "the 'data' section is built by the server and must not be sent; remove it from the config"
@@ -185,10 +246,11 @@ def _build_snapshot(settings: Settings, config: dict[str, Any], run_id: uuid.UUI
     return snapshot
 
 
-def _check_caps(settings: Settings, snapshot: dict[str, Any]) -> None:
+def _check_caps(settings: Settings, snapshot: dict[str, Any]) -> Any:
+    """Parse the snapshot with the engine's strict parser, enforce the server caps, and return the parsed config."""
     try:
         parsed = config_from_dict(copy.deepcopy(snapshot), source="<run config>")
-    except ValueError as exc:
+    except (ValueError, OverflowError) as exc:
         raise HTTPException(422, str(exc)) from None
     if parsed.composition.total_buildings > settings.max_total_buildings:
         raise HTTPException(
@@ -196,6 +258,7 @@ def _check_caps(settings: Settings, snapshot: dict[str, Any]) -> None:
         )
     if parsed.ensemble.max_runs > settings.max_ensemble_runs:
         raise HTTPException(422, f"ensemble.max_runs exceeds the server cap of {settings.max_ensemble_runs}")
+    return parsed
 
 
 @router.get("/demo-compositions", response_model=DemoCompositions, summary="Predefined compositions")
@@ -215,6 +278,8 @@ def create_run(
     demo = principal.role == "demo"
     if demo and (body.config is not None or body.seeds is not None):
         raise HTTPException(403, "the demo role may only run a predefined composition with its fixed seed")
+    if demo and body.filter_selections is not None:  # even only empty lists: demo never uses filters
+        raise HTTPException(403, "role 'demo' does not have the filters.use permission")
     saved: dict[str, Any] | None = None  # the stored composition, when one is being run (validate_filter_edit)
     if body.composition_id is not None:
         library: dict[str, dict[str, Any]] = request.app.state.demo_compositions
@@ -224,9 +289,16 @@ def create_run(
         config = copy.deepcopy(saved)
     else:
         assert body.config is not None
+        check_config_shape(body.config)  # depth and size before anything copies or walks it
         config = copy.deepcopy(body.config)
         check_client_config(config)
+    if body.filter_selections is not None:  # every named category must exist, even with an empty list
+        try:
+            ea_svc.check_selection_categories(config, body.filter_selections)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
     provenance: dict[str, Any] | None = None
+    active: ea_svc.ActiveConfiguration | None = None
     if body.filter_selections and any(body.filter_selections.values()):
         if not can(principal.role, "filters.use", overrides):
             raise HTTPException(403, f"role {principal.role!r} does not have the filters.use permission")
@@ -238,14 +310,16 @@ def create_run(
         try:
             config = ea_svc.apply_selections(config, plain, active.exposed)
         except ValueError as exc:
-            raise HTTPException(422, str(exc)) from None
+            raise selection_http_error(exc, principal) from None
         provenance = {"exposed_attributes_version": active.version, "categories": plain}
     if demo:  # fixed stored seed unless the predefined composition pins its own
         pinned = dict(config.get("rng") or {})
         config["rng"] = {k: pinned.get(k, settings.demo_seed) for k in svc.SEED_KEYS}
     run_id = uuid.uuid4()
     snapshot = _build_snapshot(settings, config, run_id)
-    _check_caps(settings, snapshot)
+    parsed = _check_caps(settings, snapshot)
+    if active is not None:  # selections were applied: refuse now what would only fail later in the worker
+        check_pools(settings, parsed, active.exposed, principal)
     try:
         # permission flag filters.use: adding, changing or removing filters relative to the stored composition
         validate_filter_edit(principal.role, new=snapshot, saved=saved, overrides=overrides)
@@ -313,15 +387,15 @@ def cancel(
 
 @router.get(
     "/runs/{run_id}/results",
-    summary="Full results document (JSON file written by the worker)",
-    response_class=FileResponse,
+    summary="Full results document (JSON written by the worker; server paths removed)",
+    response_class=JSONResponse,
 )
 def get_results(
     run_id: uuid.UUID,
     request: Request,
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
-) -> FileResponse:
+) -> Response:
     run = _visible_run(session, principal, run_id)
     settings: Settings = request.app.state.settings
     if run.status != RunStatus.succeeded.value or settings.output_dir is None:
@@ -333,7 +407,16 @@ def get_results(
     if not path.is_relative_to(settings.output_dir.resolve()) or not path.is_file():
         logger.warning("results file for run %s missing or outside the output root", run_id)
         raise HTTPException(404, "results not available")
-    return FileResponse(path, media_type="application/json")
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError):
+        logger.error("results file for run %s is unreadable", run_id)
+        raise HTTPException(404, "results not available") from None
+    if not isinstance(doc, dict):
+        raise HTTPException(404, "results not available")
+    # Filtered on the way out too, so files written before the worker stripped paths never leak them.
+    # json.dumps as the worker wrote it (Starlette's JSONResponse would refuse a NaN the engine may have produced).
+    return Response(json.dumps(svc.public_results_document(doc)), media_type="application/json")
 
 
 def _poll(factory: Callable[[], Session], run_id: uuid.UUID, after: int) -> tuple[str, list[dict[str, Any]]]:

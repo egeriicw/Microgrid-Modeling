@@ -36,9 +36,13 @@ AttributeKey = Annotated[str, StringConstraints(strict=True, pattern=KEY_PATTERN
 ColumnName = Annotated[str, StringConstraints(strict=True, pattern=COLUMN_PATTERN)]
 Name = Annotated[str, StringConstraints(strict=True, pattern=NAME_PATTERN)]
 Text = Annotated[str, StringConstraints(strict=True, max_length=MAX_TEXT)]
-FiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False)]
-Number = StrictInt | FiniteFloat
-Scalar = StrictBool | StrictInt | FiniteFloat | Text
+#: Bound for every number in documents and selections. Far beyond any building characteristic, exactly representable
+#: as a float, and small enough that no int/float conversion in the library can overflow (10**400 is a 422, not a 500).
+MAX_ABS_NUMBER = 10**15
+BoundedInt = Annotated[StrictInt, Field(ge=-MAX_ABS_NUMBER, le=MAX_ABS_NUMBER)]
+FiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=-MAX_ABS_NUMBER, le=MAX_ABS_NUMBER)]
+Number = BoundedInt | FiniteFloat
+Scalar = StrictBool | BoundedInt | FiniteFloat | Text
 
 
 class _Strict(BaseModel):
@@ -107,6 +111,14 @@ class VersionCreate(_Strict):
     document: ExposedAttributesDocument
     note: Annotated[str, StringConstraints(strict=True, max_length=MAX_NOTE)] | None = None
     activate: StrictBool = False
+
+
+class ActivateRequest(_Strict):
+    expected_active_version: Annotated[StrictInt, Field(ge=0, le=MAX_VERSION)] | None = Field(
+        default=None,
+        description="The version you believe is active now (0 = packaged). If another admin activated something else "
+        "meanwhile, the request fails with 409 and nothing changes. Omit it for last-writer-wins.",
+    )
 
 
 class PreviewRequest(_Strict):

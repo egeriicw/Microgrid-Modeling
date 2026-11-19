@@ -1,6 +1,27 @@
 {
   "components": {
     "schemas": {
+      "ActivateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_active_version": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version you believe is active now (0 = packaged). If another admin activated something else meanwhile, the request fails with 409 and nothing changes. Omit it for last-writer-wins.",
+            "title": "Expected Active Version"
+          }
+        },
+        "title": "ActivateRequest",
+        "type": "object"
+      },
       "ActiveConfigurationOut": {
         "properties": {
           "activated_at": {
@@ -143,9 +164,13 @@
           "max": {
             "anyOf": [
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "integer"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "number"
               },
               {
@@ -157,9 +182,13 @@
           "min": {
             "anyOf": [
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "integer"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "number"
               },
               {
@@ -852,9 +881,13 @@
           "max": {
             "anyOf": [
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "integer"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "number"
               },
               {
@@ -877,9 +910,13 @@
           "min": {
             "anyOf": [
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "integer"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "number"
               },
               {
@@ -918,9 +955,13 @@
                 "type": "boolean"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "integer"
               },
               {
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
                 "type": "number"
               },
               {
@@ -942,9 +983,13 @@
                       "type": "boolean"
                     },
                     {
+                      "maximum": 1000000000000000.0,
+                      "minimum": -1000000000000000.0,
                       "type": "integer"
                     },
                     {
+                      "maximum": 1000000000000000.0,
+                      "minimum": -1000000000000000.0,
                       "type": "number"
                     },
                     {
@@ -1501,6 +1546,7 @@
     },
     "/api/v1/exposed-attributes/versions/{version}/activate": {
       "post": {
+        "description": "Activates a stored version, or 0 for the packaged starter set. The body is optional: send `expected_active_version` (the version you believe is active now) to fail with **409** instead of silently replacing another admin's activation; without it the newest activation wins.",
         "operationId": "activate_version_api_v1_exposed_attributes_versions__version__activate_post",
         "parameters": [
           {
@@ -1517,6 +1563,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ActivateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -1527,6 +1590,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "expected_active_version is stale (another admin activated a version)"
           },
           "422": {
             "content": {
@@ -1906,6 +1972,11 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -1924,7 +1995,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Full results document (JSON file written by the worker)",
+        "summary": "Full results document (JSON written by the worker; server paths removed)",
         "tags": [
           "runs"
         ]
