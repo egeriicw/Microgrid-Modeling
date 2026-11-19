@@ -371,8 +371,14 @@ _SSE_OK = 'event: progress\r\nid: 1\r\ndata: {}\r\n\r\nevent: status\r\ndata: {"
 @pytest.mark.parametrize(
     ("mode", "stdin", "ok"),
     [
-        ("ready", '{"ready": true, "checks": {"redis": "ok", "schema": "ok", "db": "ok"}}', True),
+        ("ready", '{"ready": true, "checks": {"redis": "ok", "schema": "ok", "db": "ok", "data_files": "ok"}}', True),
+        ("ready", '{"ready": true, "checks": {"redis": "ok", "schema": "ok", "db": "ok"}}', False),  # no data_files
+        ("ready", '{"ready":true,"checks":{"db":"ok","schema":"ok","redis":"ok","data_files":"bad"}}', False),
         ("ready", '{"ready":true,"checks":{"db":"ok","schema":"ok"}}', False),
+        ("data-files-problem", '{"ready":false,"checks":{"db":"ok","data_files":"unavailable: x"}}', True),
+        ("data-files-problem", '{"ready":false,"checks":{"db":"ok","schema":"ok","redis":"down"}}', False),
+        ("data-files-problem", '{"ready":true,"checks":{"data_files":"ok"}}', False),
+        ("data-files-problem", "<html>503</html>", False),
         ("ready", '{"ready":"true","checks":{"db":"ok","schema":"ok","redis":"ok"}}', False),
         ("health", '{\n  "status": "ok"\n}', True),
         ("health", "<html>ok</html>", False),
@@ -413,7 +419,7 @@ def test_smoke_script_ci_mode_proves_the_full_round_trip():
     assert "--project-name" in code or " -p " in code, "CI mode must not share volumes with the owner's stack"
     for svc in ("db", "redis", "api", "worker", "web"):
         assert re.search(rf"\b{svc}\b", code)
-    assert 'for key in ("db", "schema", "redis")' in text and "check ready" in code
+    assert 'for key in ("db", "schema", "redis", "data_files")' in text and "check ready" in code
     assert "sed -n" not in code, "JSON replies are parsed, not matched with sed"
     assert "$WEB/api/v1/runs" in code, "the run is created through the web proxy (proves Authorization passes)"
     assert "/results" in code and "/events" in code and "succeeded" in code
@@ -505,7 +511,8 @@ if "-D" in args:
 if url.endswith("/api/v1/health"):
     sys.stdout.write('{{"status":"ok"}}'); sys.exit(0)
 if url.endswith("/api/v1/ready"):
-    sys.stdout.write('{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok"}}}}'); sys.exit(0)
+    sys.stdout.write('{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok","data_files":"ok"}}}}')
+    sys.exit(0)
 if url.endswith("/results"):
     sys.stdout.write('{{"schema_version":"1.1","results":{{"n_runs":2,"time":{{"hourly":{{"count":2}}}},'
                      '"envelopes":{{"hourly":{{"total":{{"mean_kw":[1.5,2.5]}}}}}}}}}}'); sys.exit(0)
@@ -528,9 +535,11 @@ def _smoke_with_stubs(tmp_path: Path, final: str) -> tuple[subprocess.CompletedP
     (work / "deploy" / "tests").mkdir(parents=True)
     for rel in (
         "deploy/preflight.sh",
+        "deploy/check-env.sh",
         "deploy/.env.example",
         "deploy/tests/test_compose_smoke.sh",
         "deploy/tests/smoke-run.json",
+        "deploy/tests/smoke-composition.json",
     ):
         shutil.copy(ROOT / rel, work / rel)
     background = work / "tests" / "fixtures" / "data" / "background"
@@ -576,6 +585,17 @@ def test_smoke_script_ci_happy_path_with_stubs(tmp_path):
     assert "http://127.0.0.1:3000/api/v1/runs" in post, "the run is created through the web proxy"
     assert "Authorization: Bearer dev-only-admin-key-change-me" in post
     assert "@deploy/tests/smoke-run.json" in post
+    # W1-DEPLOY2: a second run from a custom composition, and the pass-through absence check in both containers
+    posts = [ln for ln in curl_calls.splitlines() if "-X POST" in ln]
+    assert len(posts) == 2 and "@deploy/tests/smoke-composition.json" in posts[1]
+    assert "Authorization: Bearer dev-only-admin-key-change-me" in posts[1]
+    assert "composition run succeeded" in r.stdout
+    for svc in ("api", "worker"):
+        # the python snippet spans three lines; the variable names follow it as arguments
+        pattern = (
+            rf"exec -T {svc} python -c [^\n]*\n[^\n]*\n[^\n]* MICROGRID_RESSTOCK_CHARS_FILE [^\n]*PERMISSION_OVERRIDES"
+        )
+        assert re.search(pattern, docker_calls), svc
 
 
 @pytest.mark.parametrize("final", ["failed", "cancelled", "bogus"])

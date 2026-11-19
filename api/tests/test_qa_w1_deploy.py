@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PROD_SERVICES = ("migrate", "api", "worker")
 
 
-def _rendered_compose(extra_env: dict[str, str] | None = None) -> dict:
+def _rendered_compose(extra_env: dict[str, str] | None = None, env_file: Path | None = None) -> dict:
     if shutil.which("docker") is None:
         pytest.skip("docker CLI not installed (no daemon needed, only `docker compose config`)")
     import os
@@ -38,7 +38,7 @@ def _rendered_compose(extra_env: dict[str, str] | None = None) -> dict:
     env |= extra_env or {}
     r = subprocess.run(
         ["docker", "compose", "--project-directory", str(REPO_ROOT), "--env-file",
-         str(REPO_ROOT / "deploy" / ".env.example"), "-f", str(REPO_ROOT / "deploy" / "docker-compose.yml"),
+         str(env_file or REPO_ROOT / "deploy" / ".env.example"), "-f", str(REPO_ROOT / "deploy" / "docker-compose.yml"),
          "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=False,
     )  # fmt: skip
@@ -56,6 +56,8 @@ def test_rendered_compose_env_builds_valid_production_settings(service, monkeypa
         if key.startswith("MICROGRID_") or key == "DATABASE_URL":
             monkeypatch.delenv(key)
     for key, value in env.items():
+        if value is None:  # a pass-through setting deploy/.env leaves unset: absent in the container
+            continue
         monkeypatch.setenv(key, str(value))
     s = Settings()
     assert s.environment == "production"
@@ -154,3 +156,89 @@ def test_http_run_snapshot_names_the_characteristics_files_and_runs(api, http_se
     worker.execute_run(rid, factory)
     with factory() as s:
         assert s.get(Run, rid).status == RunStatus.succeeded.value
+
+
+# --- W1-DEPLOY2: data-file, temperature and request settings set through deploy/.env ----------------------------
+
+
+def _settings_from_rendered(env: dict, monkeypatch, tmp_path) -> Settings:
+    monkeypatch.chdir(tmp_path)  # no stray .env file
+    for key in list(__import__("os").environ):
+        if key.startswith("MICROGRID_") or key == "DATABASE_URL":
+            monkeypatch.delenv(key)
+    for key, value in env.items():
+        if value is not None:  # null = pass-through with nothing set = absent in the container
+            monkeypatch.setenv(key, str(value))
+    return Settings()
+
+
+def test_template_defaults_reach_the_api_as_its_own_defaults(monkeypatch, tmp_path):
+    """With every new line commented out in the template, the API sees its defaults, not empty strings."""
+    s = _settings_from_rendered(_rendered_compose()["services"]["api"]["environment"], monkeypatch, tmp_path)
+    fields = Settings.model_fields
+    assert s.resstock_chars_file == fields["resstock_chars_file"].default == "DC_upgrade0.xlsx"
+    assert s.comstock_chars_file == fields["comstock_chars_file"].default == "DC_upgrade0_agg.xlsx"
+    assert s.temperature_source == "none" and s.temperature_column is None and s.temperature_units is None
+    assert s.max_request_bytes == fields["max_request_bytes"].default and s.permission_overrides == {}
+    # the template documents these same defaults in its commented-out lines
+    template = (REPO_ROOT / "deploy" / ".env.example").read_text()
+    assert f"# MICROGRID_RESSTOCK_CHARS_FILE={s.resstock_chars_file}\n" in template
+    assert f"# MICROGRID_COMSTOCK_CHARS_FILE={s.comstock_chars_file}\n" in template
+    assert f"# MICROGRID_MAX_REQUEST_BYTES={s.max_request_bytes}\n" in template
+
+
+ENV_SET = (
+    "\nMICROGRID_RESSTOCK_CHARS_FILE=DC_res_named.xlsx\nMICROGRID_COMSTOCK_CHARS_FILE=DC_com_named.xlsx\n"
+    "MICROGRID_TEMPERATURE_SOURCE=weather_file\nMICROGRID_TEMPERATURE_WEATHER_FILE=weather/DC_2018.csv\n"
+    "MICROGRID_TEMPERATURE_TIME_COLUMN=date_time\nMICROGRID_TEMPERATURE_COLUMN=Dry Bulb Temperature [°C]\n"
+    "MICROGRID_TEMPERATURE_UNITS=C\nMICROGRID_MAX_REQUEST_BYTES=65536\n"
+    """MICROGRID_PERMISSION_OVERRIDES='{"client":{"filters.use":true}}'\n"""
+)
+
+
+@pytest.mark.parametrize("service", PROD_SERVICES)
+def test_owner_settings_in_deploy_env_reach_every_app_service(service, monkeypatch, tmp_path):
+    env_file = tmp_path / "deploy.env"
+    env_file.write_text((REPO_ROOT / "deploy" / ".env.example").read_text() + ENV_SET)
+    rendered = _rendered_compose(env_file=env_file)["services"][service]["environment"]
+    s = _settings_from_rendered(rendered, monkeypatch, tmp_path)
+    assert (s.resstock_chars_file, s.comstock_chars_file) == ("DC_res_named.xlsx", "DC_com_named.xlsx")
+    assert s.temperature_source == "weather_file" and s.temperature_weather_file == "weather/DC_2018.csv"
+    assert s.temperature_column == "Dry Bulb Temperature [°C]" and s.temperature_units == "C"
+    assert s.temperature_time_column == "date_time"
+    assert s.max_request_bytes == 65536 and s.permission_overrides == {"client": {"filters.use": True}}
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        "MICROGRID_TEMPERATURE_COLUMN=out.temp\n",  # source stays none: the column would be ignored
+        "MICROGRID_TEMPERATURE_COLUMN=\n",  # empty is "set" for Compose and for the API
+        "MICROGRID_RESSTOCK_CHARS_FILE=\n",
+        "MICROGRID_TEMPERATURE_SOURCE=timeseries_column\n",  # needs column and units
+    ],
+)
+def test_a_half_set_temperature_or_empty_line_stops_the_api_loudly(lines, monkeypatch, tmp_path):
+    from microgrid_api.config import ConfigurationError
+
+    env_file = tmp_path / "deploy.env"
+    env_file.write_text((REPO_ROOT / "deploy" / ".env.example").read_text() + "\n" + lines)
+    rendered = _rendered_compose(env_file=env_file)["services"]["api"]["environment"]
+    with pytest.raises((ConfigurationError, ValueError)):
+        _settings_from_rendered(rendered, monkeypatch, tmp_path)
+
+
+def test_smoke_custom_composition_runs_on_the_fixture(api, http_settings, monkeypatch):
+    """The CI smoke's second run (deploy/tests/smoke-composition.json) succeeds on the synthetic fixture."""
+    body = json.loads((REPO_ROOT / "deploy" / "tests" / "smoke-composition.json").read_text())
+    r = api.post("/api/v1/runs", headers=bearer("alice"), json=body)
+    assert r.status_code == 202, r.text
+    rid = r.json()["id"]
+    monkeypatch.setattr(worker, "_settings_override", http_settings)
+    worker.execute_run(rid, api.app.state.session_factory)
+    detail = api.get(f"/api/v1/runs/{rid}", headers=bearer("alice")).json()
+    assert detail["status"] == "succeeded", detail.get("error_message")
+    results = api.get(f"/api/v1/runs/{rid}/results", headers=bearer("alice"))
+    assert results.status_code == 200
+    doc = results.json()["results"]
+    assert doc["n_runs"] >= 1 and doc["time"]["hourly"]["count"] > 0

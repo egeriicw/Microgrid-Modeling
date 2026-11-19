@@ -13,10 +13,12 @@ deploy/.env:
 up:              ## build and start the whole stack (db, redis, migrate, api, worker, web) and wait for health
 	./deploy/preflight.sh full
 	@test -f deploy/.env || { cp deploy/.env.example deploy/.env && echo "Created deploy/.env from the template (development-only defaults; git-ignored)."; }
+	./deploy/check-env.sh deploy/.env
 	$(COMPOSE) up -d --build --wait --wait-timeout 600 db redis migrate api worker web
 
 lite-up:         ## small-disk stack: api + migrate on SQLite, one image, no db/redis/web/worker (about 1.5 to 3 GB)
 	./deploy/preflight.sh lite
+	$(if $(wildcard deploy/.env),./deploy/check-env.sh deploy/.env)
 	$(LITE) up -d --build --wait api
 
 lite-down:       ## stop and remove the lite containers; the lite volumes (SQLite file, outputs) are KEPT
@@ -34,7 +36,8 @@ logs:            ## tail logs, optionally one service: make logs s=api
 ps:              ## show service state and health
 	$(COMPOSE) ps
 
-config-check: deploy/.env  ## validate the compose file without starting anything
+config-check: deploy/.env  ## validate the compose file and deploy/.env without starting anything
+	./deploy/check-env.sh deploy/.env
 	$(COMPOSE) config -q && echo "compose config OK"
 
 image-check:     ## print (never run) the commands that verify arm64 manifests and image sizes

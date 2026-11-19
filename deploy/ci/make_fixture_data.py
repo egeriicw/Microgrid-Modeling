@@ -3,11 +3,12 @@
     python deploy/ci/make_fixture_data.py tests/fixtures/data
 
 Uses the test generator ``tests/fixtures/synthetic_data.py`` (made-up numbers in the real on-disk layout; no NREL
-data). The API builds the run's ``data`` section on the server from MICROGRID_DATA_DIR and never sets the
-characteristics file names, so the engine looks for its DataConfig defaults (``DC_upgrade0.xlsx`` and
-``DC_upgrade0_agg.xlsx``) under ``background/``. The generator names them ``chars_resstock.xlsx`` and
-``chars_comstock.xlsx``; this script adds copies under the default names. Generated files are git-ignored
-(``*.xlsx``, ``*.parquet``).
+data). The API builds the run's ``data`` section on the server from MICROGRID_DATA_DIR. The characteristics file
+names are SETTINGS (MICROGRID_RESSTOCK_CHARS_FILE / MICROGRID_COMSTOCK_CHARS_FILE, plain names inside
+``background/``; the owner sets them in deploy/.env). The CI smoke leaves both unset (deploy/.env.example has them
+commented out), so the API uses its defaults ``DC_upgrade0.xlsx`` and ``DC_upgrade0_agg.xlsx`` and /ready checks
+they exist. The generator names them ``chars_resstock.xlsx`` and ``chars_comstock.xlsx``; this script adds copies
+under the default names. Generated files are git-ignored (``*.xlsx``, ``*.parquet``).
 
 Safety: refuses the owner's ``data/`` folder, any non-empty folder it did not create (a marker file records that
 it did) and any folder containing a symlink or an entry that resolves outside it, marker or not.
@@ -26,7 +27,8 @@ ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = ROOT / "tests" / "fixtures" / "synthetic_data.py"
 MARKER = ".synthetic-fixture"
 ALLOWED = {"README.md", MARKER, "background", "input"}
-# The engine's DataConfig defaults (src/microgrid/community_load/synthetic/config.py); checked by a test.
+# The default values of the API settings MICROGRID_RESSTOCK_CHARS_FILE / MICROGRID_COMSTOCK_CHARS_FILE (also the
+# engine's DataConfig defaults); checked by a test. If those defaults change, change these names with them.
 DEFAULT_CHARS = {"chars_resstock.xlsx": "DC_upgrade0.xlsx", "chars_comstock.xlsx": "DC_upgrade0_agg.xlsx"}
 
 

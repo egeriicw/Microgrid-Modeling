@@ -114,7 +114,7 @@ jobs:
         run: python deploy/ci/make_fixture_data.py tests/fixtures/data
       - name: free disk before
         run: df -h /
-      - name: smoke (build, start, health, ready, web proxy, run to succeeded, results, SSE)
+      - name: smoke (build, start, health, ready incl. data files, unset settings absent, web proxy, run + custom composition to succeeded, results, SSE)
         run: ./deploy/tests/test_compose_smoke.sh
       - name: image sizes (linux/amd64 on the runner, not the owner's arm64 Mac)
         if: always()

@@ -29,9 +29,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy"
 SMOKE_FILES = (
     "deploy/preflight.sh",
+    "deploy/check-env.sh",
     "deploy/.env.example",
     "deploy/tests/test_compose_smoke.sh",
     "deploy/tests/smoke-run.json",
+    "deploy/tests/smoke-composition.json",
 )
 BASE_COMMIT = "4ab1fa5"
 RID = "0b6c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3"
@@ -75,7 +77,7 @@ html = '<!doctype html><html><head></head><body><div id="root"></div></body></ht
 default = {{
     "web /": (200, html), "web /runs/smoke-deep-link": (200, html),
     "web /api/v1/health": (200, '{{"status":"ok"}}'), "api /api/v1/health": (200, '{{"status":"ok"}}'),
-    "api /api/v1/ready": (200, '{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok"}}}}'),
+    "api /api/v1/ready": (200, '{{"ready":true,"checks":{{"db":"ok","schema":"ok","redis":"ok","data_files":"ok"}}}}'),
     "results": (200, '{{"schema_version":"1.1","engine_version":"0.1","results":{{"n_runs":2,'
                      '"time":{{"hourly":{{"start":"2018-01-01T00:00:00","step_minutes":60,"count":2}}}},'
                      '"envelopes":{{"hourly":{{"total":{{"mean_kw":[3,4]}}}}}}}}}}'),
@@ -143,12 +145,19 @@ sys.exit(0)
 
 
 def _smoke(
-    tmp_path: Path, scenario: dict[str, Any] | None = None, *, ci: bool = True, extra_env: dict[str, str] | None = None
+    tmp_path: Path,
+    scenario: dict[str, Any] | None = None,
+    *,
+    ci: bool = True,
+    extra_env: dict[str, str] | None = None,
+    owner_env: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str], list[list[str]], Path]:
     work = tmp_path / "repo"
     for rel in SMOKE_FILES:
         (work / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, work / rel)
+    if owner_env is not None:
+        (work / "deploy" / ".env").write_text(owner_env)
     bg = work / "tests" / "fixtures" / "data" / "background"
     bg.mkdir(parents=True)
     (bg / "DC_upgrade0.xlsx").write_text("stub")
@@ -214,8 +223,22 @@ BROKEN = {
         }
     },
     "api /ready 200 but redis key missing": {
-        "routes": {"api /api/v1/ready": {"body": '{"ready":true,"checks":{"db":"ok","schema":"ok"}}'}}
+        "routes": {"api /api/v1/ready": {"body": '{"ready":true,"checks":{"db":"ok","schema":"ok","data_files":"ok"}}'}}
     },
+    "api /ready 200 but data_files key missing": {
+        "routes": {"api /api/v1/ready": {"body": '{"ready":true,"checks":{"db":"ok","schema":"ok","redis":"ok"}}'}}
+    },
+    "api /ready 503 data file missing": {
+        "routes": {
+            "api /api/v1/ready": {
+                "code": 503,
+                "body": '{"ready":false,"checks":{"db":"ok","schema":"ok","redis":"ok",'
+                '"data_files":"unavailable: data file \'resstock_chars_file\' does not exist"}}',
+            }
+        }
+    },
+    "custom composition run ends failed": {"statuses": ["running", "succeeded", "failed"]},
+    "custom composition run never finishes": {"statuses": ["running", "succeeded", "queued"]},
     "web root 502": {"routes": {"web /": {"code": 502, "body": "<html>502 Bad Gateway</html>"}}},
     "web root is the nginx default page": {"routes": {"web /": {"body": "<h1>Welcome to nginx!</h1>"}}},
     "SPA fallback 404": {"routes": {"web /runs/smoke-deep-link": {"code": 404, "body": "not found"}}},
@@ -311,6 +334,85 @@ def test_owner_mode_preflight_refusal_stops_before_docker_and_env_file(tmp_path)
     assert r.returncode != 0
     assert docker_calls == []
     assert not (work / "deploy" / ".env").exists()
+
+
+# --- W1-DEPLOY2: data files at /ready, typo guard, the custom composition run, pass-through absence ----------------
+
+_DATA_FILES_503 = {
+    "routes": {
+        "api /api/v1/ready": {
+            "code": 503,
+            "body": '{"ready":false,"checks":{"db":"ok","schema":"ok","redis":"ok",'
+            '"data_files":"unavailable: data file \'comstock_chars_file\' does not exist"}}',
+        }
+    }
+}
+
+
+@pytest.mark.parametrize("ci", [True, False])
+def test_missing_data_file_gives_the_owner_a_plain_message(tmp_path, ci):
+    owner_env = (
+        None
+        if ci
+        else (DEPLOY / ".env.example")
+        .read_text()
+        .replace("MICROGRID_DATA_DIR=./data", "MICROGRID_DATA_DIR=/Volumes/NREL/dc")
+    )
+    r, docker_calls, _, _ = _smoke(tmp_path, _DATA_FILES_503, ci=ci, owner_env=owner_env)
+    _assert_failed(r)
+    err = r.stderr
+    assert "comstock_chars_file" in err, "the /ready reason is shown"
+    for name in ("MICROGRID_RESSTOCK_CHARS_FILE", "MICROGRID_COMSTOCK_CHARS_FILE", "MICROGRID_TEMPERATURE_",
+                 "MICROGRID_DATA_DIR", "Telling the app which data files to use"):  # fmt: skip
+        assert name in err, name
+    if ci:
+        assert "make_fixture_data.py" in err and "deploy/.env.example" in err
+    else:
+        assert "ls /Volumes/NREL/dc/background" in err and "deploy/.env" in err
+    assert docker_calls[-1].endswith(" stop")
+
+
+def test_a_redis_failure_does_not_blame_the_data_files(tmp_path):
+    r, _, _, _ = _smoke(tmp_path, BROKEN["api /ready 503 redis down"])
+    _assert_failed(r)
+    assert "MICROGRID_RESSTOCK_CHARS_FILE" not in r.stderr
+
+
+def test_a_typo_in_deploy_env_stops_the_smoke_before_docker(tmp_path):
+    owner_env = (DEPLOY / ".env.example").read_text() + "MICROGRID_TEMPERATURE_UNIT=F\n"
+    r, docker_calls, _, _ = _smoke(tmp_path, ci=False, owner_env=owner_env)
+    _assert_failed(r)
+    assert "MICROGRID_TEMPERATURE_UNIT" in r.stderr and "MICROGRID_TEMPERATURE_UNITS" in r.stderr
+    assert docker_calls == []
+
+
+def test_ci_runs_both_runs_and_checks_absence_in_both_containers(tmp_path):
+    r, docker_calls, curl_calls, _ = _smoke(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    posts = [c for c in curl_calls if "POST" in c]
+    assert [c[c.index("--data-binary") + 1] for c in posts] == [
+        "@deploy/tests/smoke-run.json",
+        "@deploy/tests/smoke-composition.json",
+    ]
+    assert all("http://127.0.0.1:3000/api/v1/runs" in c for c in posts), "both through the web proxy"
+    assert "composition run succeeded" in r.stdout
+    joined = "\n".join(docker_calls)
+    for svc in ("api", "worker"):
+        assert f"exec -T {svc} python -c" in joined, svc
+
+
+def test_owner_mode_with_smoke_run_also_runs_the_composition_but_skips_the_ci_only_env_check(tmp_path):
+    r, docker_calls, curl_calls, _ = _smoke(tmp_path, ci=False, extra_env={"SMOKE_RUN": "1"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert sum("POST" in c for c in curl_calls) == 2
+    assert not any(" exec " in f" {c} " for c in docker_calls), "the owner's own deploy/.env may set them"
+
+
+@pytest.mark.parametrize("final", ["failed", "cancelled"])
+def test_a_failed_composition_run_is_named_in_the_failure(tmp_path, final):
+    r, _, _, _ = _smoke(tmp_path, {"statuses": ["running", "succeeded", final]})
+    _assert_failed(r)
+    assert f"composition run ended '{final}'" in r.stderr
 
 
 # --- fixture generator: never the owner's data -------------------------------------------------------------------
@@ -542,9 +644,33 @@ def test_no_hardening_regression_against_the_base_commit():
         assert "no-new-privileges:true" in new[name].get("security_opt", []), name
 
 
+_LITE_PASS_THROUGH = {
+    "MICROGRID_RESSTOCK_CHARS_FILE",
+    "MICROGRID_COMSTOCK_CHARS_FILE",
+    "MICROGRID_TEMPERATURE_SOURCE",
+    "MICROGRID_TEMPERATURE_COLUMN",
+    "MICROGRID_TEMPERATURE_UNITS",
+    "MICROGRID_TEMPERATURE_WEATHER_FILE",
+    "MICROGRID_TEMPERATURE_TIME_COLUMN",
+    "MICROGRID_MAX_REQUEST_BYTES",
+    "MICROGRID_PERMISSION_OVERRIDES",
+}
+
+
 def test_lite_stack_and_destructive_targets_unchanged():
-    for rel in ("deploy/docker-compose.lite.yml", "deploy/preflight.sh", "deploy/api.Dockerfile"):
+    for rel in ("deploy/preflight.sh", "deploy/api.Dockerfile"):
         assert (ROOT / rel).read_text() == _at_base(rel), rel
+    # W1-DEPLOY2 added ONLY the owner pass-through settings (value-less) to the lite environment; nothing else moved.
+    old_lite = yaml.safe_load(_at_base("deploy/docker-compose.lite.yml"))
+    new_lite = yaml.safe_load((DEPLOY / "docker-compose.lite.yml").read_text())
+    seen: set[int] = set()
+    for doc in (new_lite["x-lite-env"], *(s["environment"] for s in new_lite["services"].values())):
+        if id(doc) in seen:  # a YAML alias of the anchor already checked (PyYAML shares the object)
+            continue
+        seen.add(id(doc))
+        added = {k: doc.pop(k) for k in list(doc) if k in _LITE_PASS_THROUGH}
+        assert set(added) == _LITE_PASS_THROUGH and all(v is None for v in added.values())
+    assert new_lite == old_lite
 
     def targets(text: str, names: tuple[str, ...]) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -556,6 +682,10 @@ def test_lite_stack_and_destructive_targets_unchanged():
 
     names = ("lite-up", "lite-down", "lite-nuke", "nuke", "down")
     old, new = targets(_at_base("Makefile"), names), targets((ROOT / "Makefile").read_text(), names)
+    # W1-DEPLOY2 added only the read-only deploy/.env name check to lite-up
+    guard = "\t$(if $(wildcard deploy/.env),./deploy/check-env.sh deploy/.env)\n"
+    assert guard in new["lite-up"]
+    new["lite-up"] = new["lite-up"].replace(guard, "")
     assert old == new
     assert "Type DELETE to continue" in new["nuke"] and '[ "$$ans" = "DELETE" ]' in new["nuke"]
 

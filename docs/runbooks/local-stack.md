@@ -89,23 +89,70 @@ inside this image. If the page shows data while `make logs s=api` shows no reque
 
 Automated check: `make smoke` (or `./deploy/tests/test_compose_smoke.sh`). It first runs the free-disk preflight (full
 mode) and stops if that refuses, before creating `deploy/.env` or calling Docker. Then it builds and starts all six
-services; waits for each to be healthy; FAILS unless `/api/v1/ready` reports `"ready":true` with `db`, `schema` and
-`redis` all `ok`; and checks the web page, a browser link, the security headers (including the Content-Security-Policy)
+services; waits for each to be healthy; FAILS unless `/api/v1/ready` reports `"ready":true` with `db`, `schema`,
+`redis` and `data_files` all `ok` (if `data_files` is the problem it prints which settings to check, see "Telling the
+app which data files to use" below); and checks the web page, a browser link, the security headers (including the Content-Security-Policy)
 and the `/api/` forwarding. It reads every API reply as JSON with `python3` (installed with the Xcode command line
 tools). It stops the stack at the end but keeps volumes. `SMOKE_RUN=1 make smoke` also submits a small run
 (4 buildings, 300 repetitions, several seconds) with the first key in `API_KEYS`, watches its live progress through the
-web port while it runs, waits for it to finish and checks its results contain a filled-in hourly load curve; that
-needs your data folder in the
-layout the API expects (`background/DC_upgrade0.xlsx`, `background/DC_upgrade0_agg.xlsx`,
+web port while it runs, waits for it to finish and checks its results contain a filled-in hourly load curve; then it
+submits a second, short run described the way the web app describes a neighbourhood (building types with counts or
+share ranges, `deploy/tests/smoke-composition.json`) and requires that to succeed too. That needs your data folder in
+the layout the API expects (`background/<ResStock spreadsheet>`, `background/<ComStock spreadsheet>`,
 `input/resstock/timeseries_individual_buildings/...`, `input/comstock/timeseries_individual_buildings/...`).
 
 **What GitHub CI checks.** The `compose-smoke` job generates a tiny made-up dataset
 (`python deploy/ci/make_fixture_data.py tests/fixtures/data`, git-ignored) and runs the same script with `SMOKE_CI=1`:
 it always submits the run through the web port, requires a live progress event to arrive through the web port while
 the run is still running (a proxy that holds the stream back until the end fails this), waits until the run is
-`succeeded`, checks the results document has a non-empty hourly time axis and load envelope, and prints the container
-logs if anything fails. It uses its own project name
-(`microgrid-smoke`), so if you ever run it on your Mac it does not touch your database volume.
+`succeeded`, checks the results document has a non-empty hourly time axis and load envelope, runs the short
+custom-composition run as well, checks inside the `api` and `worker` containers that the optional settings the
+template leaves commented out are really absent there, and prints the container logs if anything fails. It uses its
+own project name (`microgrid-smoke`), so if you ever run it on your Mac it does not touch your database volume.
+
+## Telling the app which data files to use
+The app reads two "building characteristics" spreadsheets (one row per NREL sample building: its type, size, age,
+heating and so on) from the `background` folder inside your data folder. Two settings in `deploy/.env` name them:
+
+| Setting | What it names | Default |
+|---|---|---|
+| `MICROGRID_RESSTOCK_CHARS_FILE` | the ResStock (homes) spreadsheet | `DC_upgrade0.xlsx` |
+| `MICROGRID_COMSTOCK_CHARS_FILE` | the ComStock (commercial buildings) spreadsheet | `DC_upgrade0_agg.xlsx` |
+
+They are plain file NAMES (no folders). The defaults are the names your copy is believed to use **[verify]**. To see the
+real names, from the repo folder (if your data lives elsewhere, use that folder instead of `data`):
+
+```bash
+ls data/background
+```
+
+If the names differ, open `deploy/.env`, find the lines `# MICROGRID_RESSTOCK_CHARS_FILE=...` and
+`# MICROGRID_COMSTOCK_CHARS_FILE=...` (copy them from `deploy/.env.example` if your file is older), remove the `# `
+at the start (uncomment) and write the real names. Then restart: `make down && make up`. To go back to a default, put
+the `# ` back (comment it out). Never leave a line empty (`NAME=` with nothing after it): an empty value counts as
+"set" and the app refuses to start. `make up` also runs `./deploy/check-env.sh deploy/.env`, which stops with a list
+of valid names if a `MICROGRID_` name in `deploy/.env` is misspelled (Docker Compose would otherwise drop it
+silently).
+
+**What it looks like when they are wrong.** The API still starts, but http://127.0.0.1:8000/api/v1/ready answers
+"not ready" (HTTP 503) with, for example:
+
+```
+{"ready":false,"checks":{"db":"ok","schema":"ok","redis":"ok","data_files":"unavailable: data file 'resstock_chars_file' does not exist"}}
+```
+
+`make smoke` then stops with a plain message naming these settings and the folder it looked in, and new runs are
+refused with "the server's ResStock characteristics file is not available".
+
+**Temperature stays off for now.** `MICROGRID_TEMPERATURE_SOURCE` is `none` by default, so results say plainly that no
+outdoor temperature is available. Leave it, and every other `MICROGRID_TEMPERATURE_` line, commented out until we have
+confirmed from the data inspector report where your NREL data keeps temperature (a column in each building's load
+file, or a separate weather file). Turning it on half-way (a source without its column and units, or a column without
+a source) stops the app at startup on purpose, so a setting is never silently ignored.
+
+The same section of `deploy/.env.example` also documents `MICROGRID_MAX_REQUEST_BYTES` (largest request accepted)
+and `MICROGRID_PERMISSION_OVERRIDES` (for example, letting the `client` role use attribute filters). The lite stack
+reads the same lines when `deploy/.env` exists.
 
 ## What only you can verify on your Mac
 Only you can verify these; the cloud environment has no Docker daemon or Apple silicon:

@@ -15,6 +15,20 @@ x-app-env: &app-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   MICROGRID_DATA_DIR: /data
   MICROGRID_OUTPUT_DIR: /outputs
+  # Owner-tunable settings, documented in deploy/.env.example. PASS-THROUGH form (a name with no value): the value
+  # comes from the shell or deploy/.env; a line that is unset or commented out there leaves the variable ABSENT in
+  # the container, so the API uses its own default. Never give these a `${...:-}` default: an empty string counts as
+  # "set" and the API refuses it (a temperature setting the chosen source does not use is a startup error).
+  # deploy/check-env.sh refuses MICROGRID_* names in deploy/.env that are not in this list (typos would be dropped).
+  MICROGRID_RESSTOCK_CHARS_FILE:
+  MICROGRID_COMSTOCK_CHARS_FILE:
+  MICROGRID_TEMPERATURE_SOURCE:
+  MICROGRID_TEMPERATURE_COLUMN:
+  MICROGRID_TEMPERATURE_UNITS:
+  MICROGRID_TEMPERATURE_WEATHER_FILE:
+  MICROGRID_TEMPERATURE_TIME_COLUMN:
+  MICROGRID_MAX_REQUEST_BYTES:
+  MICROGRID_PERMISSION_OVERRIDES:
 
 services:
   db:
