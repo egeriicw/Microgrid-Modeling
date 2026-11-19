@@ -33,7 +33,8 @@ describe("formatTooltip: load and temperature at the SAME timestamp", () => {
   it("reads every shown series and the temperature at the nearest sample", () => {
     const i = 100;
     const t = formatTooltip(series.ts[i] + 1000, series, ["total", "residential"]);
-    expect(t.time).toContain("UTC");
+    expect(t.time).toContain("(local time)");
+    expect(t.time).not.toContain("UTC");
     expect(t.loads.map((l) => l.name)).toEqual(["Total", "Residential"]);
     expect(t.loads[0].kw).toBeCloseTo(series.total[i], 9);
     expect(t.temperatureC).toBeCloseTo(series.temperature[i], 9);

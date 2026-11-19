@@ -20,11 +20,14 @@ const ok: Composition = {
   totalBuildings: 100,
   seeds: {},
   maxRuns: 200,
+  convergence: false,
   entries: [
     { typeId: "a", mode: "fraction", minFraction: 0.2, maxFraction: 0.8 },
     { typeId: "b", mode: "fraction", minFraction: 0, maxFraction: 1 },
   ],
 };
+/** A run that outlasts the test: the server's cap of runs, building types the (mock) catalogue knows. */
+const LONG_RUN: Composition = { ...ok, maxRuns: 1000, entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }] };
 
 describe("QA: composition validation holes", () => {
   it("rejects NaN, negative and non-finite numbers", () => {
@@ -101,7 +104,7 @@ describe("QA: role gating and run lifecycle", () => {
     const watchRun = vi.fn((id: string, on: Parameters<ApiClient["watchRun"]>[1], s: AbortSignal) => ((signal = s), base.watchRun(id, on, s)));
     const client: ApiClient = { ...base, watchRun };
     await base.login("client");
-    const { runId } = await base.startRun({ kind: "custom", composition: { ...ok, maxRuns: 100000 } });
+    const { runId } = await base.startRun({ kind: "custom", composition: LONG_RUN });
     const { unmount } = await renderApp({ route: `/runs/${runId}`, client, role: "client" });
     await waitFor(() => expect(watchRun).toHaveBeenCalled());
     expect(signal?.aborted).toBe(false);
@@ -115,7 +118,7 @@ describe("QA: role gating and run lifecycle", () => {
     const cancelRun = vi.fn(() => new Promise<void>((r) => (release = r)));
     const client: ApiClient = { ...base, cancelRun };
     await base.login("client");
-    const { runId } = await base.startRun({ kind: "custom", composition: { ...ok, maxRuns: 100000 } });
+    const { runId } = await base.startRun({ kind: "custom", composition: LONG_RUN });
     await renderApp({ route: `/runs/${runId}`, client, role: "client" });
     const user = userEvent.setup();
     const btn = await screen.findByRole("button", { name: /cancel/i });

@@ -15,6 +15,16 @@ const RUN_ID = "7c0f2a2e-1111-4222-8333-444455556666";
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const hdr = (init: RequestInit, name: string) => new Headers(init.headers).get(name);
+/** A `GET /me` body (sign-in) that also answers list calls (`items`). */
+const ME_OK = {
+  subject: "alice",
+  role: "client",
+  permissions: { "filters.use": false },
+  run_inputs: ["composition", "composition_id", "config"],
+  may_set_seeds: true,
+  limits: { max_total_buildings: 5000, max_ensemble_runs: 1000, default_min_runs: 20, demo_caps: null },
+  items: [] as string[],
+};
 
 function fakeFetch(handler: Handler) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -56,7 +66,7 @@ const status = (s: string) => `event: status\ndata: {"status": "${s}"}\n\n`;
 
 async function signedIn(handler: Handler, opts: { retryDelayMs?: number; maxStreamRetries?: number } = {}) {
   let loggedIn = false;
-  const f = fakeFetch((url, init, n) => (!loggedIn ? json(200, { items: ["small"] }) : handler(url, init, n)));
+  const f = fakeFetch((url, init, n) => (!loggedIn ? json(200, { ...ME_OK, items: ["small"] }) : handler(url, init, n)));
   const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage, retryDelayMs: 1, ...opts });
   await c.login(KEY);
   loggedIn = true;
@@ -82,7 +92,7 @@ describe("QA W1-WEB: API key handling", () => {
       if (url.endsWith("/events")) return sse([status("succeeded")]);
       if (url.endsWith("/results")) return json(404, { detail: "results not available" });
       if (url.endsWith("/runs")) return json(202, { id: RUN_ID });
-      if (url.endsWith("/demo-compositions")) return json(200, { items: [] });
+      if (url.endsWith("/demo-compositions")) return json(200, ME_OK);
       return json(200, { id: RUN_ID, status: "running", owner: "a", seeds: {}, engine_version: "x", progress: {}, cancel_requested: false, error_message: null, created_at: "", started_at: null, finished_at: null, composition_snapshot: {}, result: null });
     });
     await c.listPredefinedCompositions();
@@ -105,7 +115,7 @@ describe("QA W1-WEB: API key handling", () => {
   });
 
   it("stores the key in sessionStorage by default (not localStorage) when no storage option is given", async () => {
-    const f = fakeFetch(() => json(200, { items: [] }));
+    const f = fakeFetch(() => json(200, ME_OK));
     const c = new HttpApiClient({ fetch: f.fn });
     await c.login(KEY);
     expect(sessionStorage.getItem(KEY_STORAGE)).toBe(KEY);
@@ -133,7 +143,7 @@ describe("QA W1-WEB: API key handling", () => {
   });
 
   it("sign-out removes the key everywhere and later calls send nothing", async () => {
-    const { c, calls } = await signedIn(() => json(200, { items: [] }));
+    const { c, calls } = await signedIn(() => json(200, ME_OK));
     await c.logout();
     expect(sessionStorage.getItem(KEY_STORAGE)).toBeNull();
     expect(await c.getSession()).toBeNull();
@@ -146,7 +156,7 @@ describe("QA W1-WEB: API key handling", () => {
     const f = fakeFetch((url, init) =>
       hdr(init, "Authorization") === "Bearer old-key-0123456789abcd" && url.endsWith("/runs/" + RUN_ID)
         ? new Promise<Response>((r) => (release = r))
-        : json(200, { items: [] }),
+        : json(200, ME_OK),
     );
     const c = new HttpApiClient({ fetch: f.fn, storage: sessionStorage });
     await c.login("old-key-0123456789abcd");
@@ -158,7 +168,7 @@ describe("QA W1-WEB: API key handling", () => {
   });
 
   it("DEFECT: a key the runtime cannot put in a header fails as a plain sign-in error that does not echo the key", async () => {
-    const f = fakeFetch(() => json(200, { items: [] }));
+    const f = fakeFetch(() => json(200, ME_OK));
     const c = new HttpApiClient({ fetch: f.fn, storage: sessionStorage });
     const bad = "abc\ndef-secret-0123456789";
     const err = await c.login(bad).catch((e: unknown) => e);
@@ -175,10 +185,14 @@ describe("QA W1-WEB: API key handling", () => {
     }
   });
 
-  it("the real client never invents a role: the session role is null whatever the server returns", async () => {
-    const c = new HttpApiClient({ fetch: fakeFetch(() => json(200, { items: [], role: "admin" })).fn, storage: sessionStorage });
-    expect((await c.login(KEY)).role).toBeNull();
-    expect((await c.getSession())?.role).toBeNull();
+  it("the real client never invents a role: it is GET /me's role, and an answer without one is refused", async () => {
+    const f = fakeFetch((url) => (url.endsWith("/me") ? json(200, { ...ME_OK, role: "demo" }) : json(200, { ...ME_OK, role: "admin" })));
+    const c = new HttpApiClient({ fetch: f.fn, storage: sessionStorage });
+    expect((await c.login(KEY)).role).toBe("demo");
+    expect((await c.getSession())?.role).toBe("demo");
+    const noRole = new HttpApiClient({ fetch: fakeFetch(() => json(200, { items: [] })).fn, storage: sessionStorage });
+    sessionStorage.clear();
+    await expect(noRole.login(KEY)).rejects.toBeInstanceOf(ApiError);
   });
 });
 
@@ -309,7 +323,7 @@ describe("QA W1-WEB: progress stream (SSE over fetch) edge cases", () => {
     const s2 = new Map<string, string>();
     const store = (m: Map<string, string>) =>
       ({ getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) }) as unknown as Storage;
-    const f = fakeFetch((url) => (url.endsWith("/events") ? sse([status("succeeded")]) : json(200, { items: [] })));
+    const f = fakeFetch((url) => (url.endsWith("/events") ? sse([status("succeeded")]) : json(200, ME_OK)));
     const a = new HttpApiClient({ fetch: f.fn, storage: store(s1) });
     const b = new HttpApiClient({ fetch: f.fn, storage: store(s2) });
     await a.login("key-a-0123456789abcdef");

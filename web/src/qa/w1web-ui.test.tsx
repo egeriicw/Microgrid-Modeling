@@ -22,6 +22,14 @@ const KEY = "client-key-alice-0123456789";
 const RUN_ID = "7c0f2a2e-1111-4222-8333-444455556666";
 const SEEDS = { composition_seed: 11, archetype_seed: 22, perturbation_seed: 33 };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const ME = {
+  subject: "alice",
+  role: "client",
+  permissions: { "filters.use": false },
+  run_inputs: ["composition", "composition_id", "config"],
+  may_set_seeds: true,
+  limits: { max_total_buildings: 5000, max_ensemble_runs: 1000, default_min_runs: 20, demo_caps: null },
+};
 const detail = (over: Record<string, unknown> = {}) => ({
   id: RUN_ID,
   status: "running",
@@ -56,6 +64,7 @@ type Route = (url: string, init: RequestInit) => Response | Promise<Response>;
 async function realClient(route: Route) {
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
+    if (url.endsWith("/me")) return json(200, ME);
     return url.endsWith("/demo-compositions") ? json(200, { items: ["small-mixed"] }) : route(url, init);
   });
   const client = new HttpApiClient({ fetch: fetchFn as unknown as typeof fetch, storage: sessionStorage, retryDelayMs: 1, maxStreamRetries: 1 });
@@ -97,7 +106,9 @@ describe("QA W1-WEB: errors are shown as text, never as HTML", () => {
   });
 
   it("422 field errors with HTML in loc and msg are rendered as text list items", async () => {
-    const { client } = await realClient(() => json(422, { detail: [{ loc: ["body", "<i>composition_id</i>"], msg: evil, type: "value_error" }] }));
+    const { client } = await realClient((url) =>
+      url.endsWith("/building-types") ? json(200, { items: [] }) : json(422, { detail: [{ loc: ["body", "<i>composition_id</i>"], msg: evil, type: "value_error" }] }),
+    );
     const { container } = await renderReal(client, "/composition");
     await userEvent.click(await screen.findByRole("button", { name: /run small-mixed/i }));
     expect(await screen.findByText(/the server did not accept the request/i)).toBeInTheDocument();

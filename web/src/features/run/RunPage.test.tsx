@@ -10,6 +10,7 @@ const comp: Composition = {
   totalBuildings: 10,
   seeds: { composition_seed: 1, archetype_seed: 2, perturbation_seed: 3 },
   maxRuns: 100,
+  convergence: true,
   entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }],
 };
 
@@ -80,7 +81,7 @@ describe("run screen (FR-WEB-2)", () => {
     await base.login("client");
     const client: ApiClient = {
       ...base,
-      getRun: async (id) => ({ runId: id, state: "queued", stage: "Queued", maxRuns: null, completedRuns: 0, feasible: 0, rejected: 0, converged: false, seeds: null, config: null, engineVersion: "x", cancelRequested: false }),
+      getRun: async (id) => ({ runId: id, state: "queued", stage: "Queued", maxRuns: null, completedRuns: 0, feasible: 0, rejected: 0, converged: false, seeds: null, config: null, engineVersion: "x", cancelRequested: false, ensembleMode: null, convergenceRule: null, dataFiles: null }),
       watchRun: () => new Promise(() => undefined),
     };
     const { runId } = await base.startRun({ kind: "custom", composition: comp });
@@ -105,6 +106,9 @@ describe("convergence wording and cancelling (honest status)", () => {
     config: null,
     engineVersion: "x",
     cancelRequested: false,
+    ensembleMode: "adaptive",
+    convergenceRule: null,
+    dataFiles: null,
     ...over,
   });
   async function show(s: RunStatus) {
@@ -126,6 +130,22 @@ describe("convergence wording and cancelling (honest status)", () => {
     if (over.converged !== true) expect(screen.queryByText(/convergence: converged/i)).toBeNull();
   });
 
+  it("a run with convergence off says so instead of reporting the engine's 'converged' flag", async () => {
+    await show(status({ ensembleMode: "fixed", state: "succeeded", converged: true }));
+    expect(screen.getByText(/convergence: off \(a fixed number of runs\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/convergence: converged/i)).toBeNull();
+  });
+
+  it("shows the convergence rule the engine reports for a finished run, and none before", async () => {
+    await show(status({ state: "succeeded", converged: true, convergenceRule: "legacy_window" }));
+    expect(screen.getByText(/convergence rule used: legacy_window/i)).toBeInTheDocument();
+  });
+
+  it("does not claim a rule while the run has not reported one", async () => {
+    await show(status({}));
+    expect(screen.queryByText(/convergence rule used/i)).toBeNull();
+  });
+
   it("shows Cancelling… while a cancel has been requested and the run is not yet terminal", async () => {
     await show(status({ cancelRequested: true }));
     expect(screen.getByText(/cancelling…/i)).toBeInTheDocument();
@@ -135,6 +155,58 @@ describe("convergence wording and cancelling (honest status)", () => {
   it("does not show Cancelling… once the run is cancelled", async () => {
     await show(status({ state: "cancelled", cancelRequested: true }));
     expect(screen.queryByText(/cancelling…/i)).toBeNull();
+  });
+});
+
+describe("data used (data_files, in plain language)", () => {
+  const files = (temperature: Partial<NonNullable<RunStatus["dataFiles"]>["temperature"]>): RunStatus["dataFiles"] => ({
+    resstockCharacteristicsFile: "DC_upgrade0.xlsx",
+    comstockCharacteristicsFile: "DC_upgrade0_agg.xlsx",
+    temperature: { source: "none", file: null, column: null, timeColumn: null, units: null, ...temperature },
+  });
+  async function showFiles(dataFiles: RunStatus["dataFiles"]) {
+    const base = createMockClient();
+    await base.login("client");
+    const { runId } = await base.startRun({ kind: "custom", composition: comp });
+    const s = await base.getRun(runId);
+    const client: ApiClient = { ...base, getRun: async () => ({ ...s, dataFiles }), watchRun: () => new Promise(() => undefined) };
+    const view = await renderApp({ route: `/runs/${runId}`, role: "client", client });
+    return { view, panel: dataFiles ? await screen.findByRole("region", { name: /data used/i }) : null };
+  }
+
+  it("names the characteristics files and says when no temperature source was declared", async () => {
+    const { panel } = await showFiles(files({}));
+    expect(panel).toHaveTextContent(/home \(ResStock\) characteristics: DC_upgrade0\.xlsx/i);
+    expect(panel).toHaveTextContent(/building \(ComStock\) characteristics: DC_upgrade0_agg\.xlsx/i);
+    expect(panel).toHaveTextContent(/no outdoor temperature source was declared/i);
+  });
+
+  it("describes a temperature column in the building files", async () => {
+    const { panel } = await showFiles(files({ source: "timeseries_column", column: "out.temp_c", units: "C" }));
+    expect(panel).toHaveTextContent(/column out\.temp_c of each sampled building's load file, in degrees Celsius/i);
+  });
+
+  it("describes a weather file", async () => {
+    const { panel } = await showFiles(files({ source: "weather_file", file: "weather_2018.csv", column: "temp_f", timeColumn: "timestamp", units: "F" }));
+    expect(panel).toHaveTextContent(/weather file weather_2018\.csv \(column temp_f, time column timestamp\), in degrees Fahrenheit/i);
+  });
+
+  it("says when the run did not record a source or a file", async () => {
+    const { panel } = await showFiles({ resstockCharacteristicsFile: null, comstockCharacteristicsFile: null, temperature: { source: null, file: null, column: null, timeColumn: null, units: null } });
+    expect(panel).toHaveTextContent(/home \(ResStock\) characteristics: not recorded for this run/i);
+    expect(panel).toHaveTextContent(/outdoor temperature: not recorded for this run/i);
+  });
+
+  it("renders file names as text, never markup", async () => {
+    const { view } = await showFiles(files({ source: "weather_file", file: "<img src=x onerror=alert(1)>.csv", column: "t", timeColumn: "ts", units: "C" }));
+    expect(view.container.querySelector("main img")).toBeNull();
+    expect(screen.getByText(/<img src=x onerror=alert\(1\)>\.csv/)).toBeInTheDocument();
+  });
+
+  it("shows no panel when the server does not report data files", async () => {
+    await showFiles(null);
+    await screen.findByText(/runs completed/i);
+    expect(screen.queryByRole("region", { name: /data used/i })).toBeNull();
   });
 });
 
@@ -160,6 +232,14 @@ describe("seeds and replay (FR-ENG-4 d)", () => {
     const original = await client.getRun(runId);
     expect(startRun).toHaveBeenCalledWith({ kind: "replay", config: original.config, seeds: original.seeds });
     expect((await client.getRun("run-2")).seeds).toEqual(original.seeds);
+  });
+
+  it("does not offer replay when the server says this caller may not set seeds", async () => {
+    const { client, runId } = await startedRun(50);
+    const noSeeds: ApiClient = { ...client, login: async (k) => ({ ...(await client.login(k)), maySetSeeds: false }) };
+    await renderApp({ route: `/runs/${runId}`, role: "client", client: noSeeds });
+    await screen.findByRole("link", { name: /view results/i });
+    expect(screen.queryByRole("button", { name: /replay/i })).not.toBeInTheDocument();
   });
 
   it("does not offer replay to the demo role (the server forbids custom configs for demo)", async () => {

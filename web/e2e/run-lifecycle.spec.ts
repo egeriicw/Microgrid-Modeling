@@ -13,6 +13,11 @@ test("client: compose, run, inspect results", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: /define a community composition/i })).toBeVisible();
   await page.getByLabel(/total buildings/i).fill("50");
+  await page.getByRole("checkbox", { name: /include single-family detached/i }).check();
+  await page.getByRole("checkbox", { name: /include office/i }).check();
+  await page.getByLabel(/single-family detached mode/i).selectOption("count");
+  await page.getByLabel(/single-family detached number of buildings/i).fill("20");
+  await expect(page.getByRole("checkbox", { name: /include civic building/i })).toBeDisabled();
   await page.getByRole("button", { name: /start run/i }).click();
 
   await expect(page.getByRole("progressbar", { name: /run progress/i })).toBeVisible();
@@ -40,6 +45,7 @@ test("demo: runs a predefined composition only", async ({ page }) => {
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page.getByText(/demo accounts can run the predefined compositions only/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /start run/i })).toHaveCount(0);
+  await expect(page.getByLabel(/composition seed/i)).toHaveCount(0);
   await page.getByRole("button", { name: /^run /i }).first().click();
   await expect(page.getByRole("link", { name: /view results/i })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: /replay/i })).toHaveCount(0);

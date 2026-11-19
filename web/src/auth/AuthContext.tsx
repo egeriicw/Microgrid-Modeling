@@ -2,15 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../api/context";
 import type { Session } from "../api/types";
-import { canStartRuns, canUseFilters } from "./roles";
+import { capabilitiesOf, type Capabilities } from "./roles";
 
 interface AuthValue {
   session: Session | null;
   /** Validates the API key with the server and keeps it for this browser tab. */
   signIn(apiKey: string): Promise<Session>;
   signOut(): Promise<void>;
-  /** UI affordances only. The server enforces every permission. */
-  can: { startRuns: boolean; useFilters: boolean };
+  /** UI affordances only, from the server's session (`GET /me`). The server enforces every permission. */
+  can: Capabilities;
 }
 
 const Ctx = createContext<AuthValue | null>(null);
@@ -50,7 +50,7 @@ export function AuthProvider({ initialSession = null, children }: { initialSessi
       session,
       signIn,
       signOut,
-      can: { startRuns: session ? canStartRuns(session.role) : false, useFilters: session ? canUseFilters(session.role) : false },
+      can: capabilitiesOf(session),
     }),
     [session, signIn, signOut],
   );

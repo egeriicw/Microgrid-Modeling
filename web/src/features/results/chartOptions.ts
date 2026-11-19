@@ -55,7 +55,7 @@ export function viewAtResolution(data: LoadSeries, resolution: Resolution): Load
 const pad = (n: number) => String(n).padStart(2, "0");
 export function stamp(ms: number): string {
   const d = new Date(ms);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} (local time)`;
 }
 
 export interface TooltipContent {
@@ -215,7 +215,7 @@ export function buildSeasonalOption(series: LoadSeries, compact = false): EChart
     ...base,
     grid: { ...base.grid, top: compact ? GRID_TOP.compact : GRID_TOP.wide },
     tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: slotLabels(prof.winter.length), name: "time of day (UTC)" },
+    xAxis: { type: "category", data: slotLabels(prof.winter.length), name: "time of day (local time)" },
     yAxis: yKw,
     series: SEASONS.map((s) => ({
       type: "line",

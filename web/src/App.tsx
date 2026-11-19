@@ -52,7 +52,7 @@ function Layout() {
                 )}
               </Box>
               <Typography variant="body2">
-                {session.role ? `Signed in as ${session.role}` : "Signed in with an API key (the server decides what it may do)"}
+                {`Signed in as ${session.displayName} (${session.role})`}
               </Typography>
               <Button
                 color="inherit"

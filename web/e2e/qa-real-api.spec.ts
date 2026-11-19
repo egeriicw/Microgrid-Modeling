@@ -82,14 +82,11 @@ test("client key: cancel a running run", async ({ page }) => {
   await expect(page.getByTestId("stage-text")).toHaveText(/cancelled/i, { timeout: 30_000 });
 });
 
-test("demo key: replay is refused by the server (role enforced by the API, not the browser)", async ({ page }) => {
+test("demo key: no replay offered (GET /me says the demo role may not set seeds; the API also refuses it)", async ({ page }) => {
   await signIn(page, KEYS.demo);
   await page.getByRole("button", { name: /^run small-mixed$/i }).click();
   await expect(page.getByRole("table", { name: /seeds/i })).toBeVisible();
-  const replay = page.getByRole("button", { name: /replay with same seeds/i });
-  await expect(replay).toBeVisible(); // the real API does not report the role, so the UI cannot hide it
-  await replay.click();
-  await expect(page.getByText(/demo role may only run a predefined composition/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /replay with same seeds/i })).toHaveCount(0);
 });
 
 test("client key: replay with same seeds starts a new run with identical seeds", async ({ page }) => {

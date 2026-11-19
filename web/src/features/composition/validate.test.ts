@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MAX_RUNS_LIMIT, MAX_SEED, parseNumber, validateComposition } from "./validate";
-import type { Composition, CompositionEntry } from "../../api/types";
+import { MAX_COUNT, MAX_SEED, parseNumber, validateComposition } from "./validate";
+import type { Composition, CompositionEntry, Limits } from "../../api/types";
 
 const range = (typeId: string, minFraction: number, maxFraction: number): CompositionEntry => ({ typeId, mode: "fraction", minFraction, maxFraction });
 const fixed = (typeId: string, count: number): CompositionEntry => ({ typeId, mode: "count", count });
@@ -10,6 +10,7 @@ const ok: Composition = {
   totalBuildings: 100,
   seeds: {},
   maxRuns: 200,
+  convergence: false,
   entries: [range("sf", 0.2, 0.8), range("office", 0, 1)],
 };
 const withEntries = (entries: CompositionEntry[], total = 100): Composition => ({ ...ok, totalBuildings: total, entries });
@@ -60,8 +61,9 @@ describe("validateComposition (input-shape checks; the API is the authority)", (
     expect(validateComposition(withEntries([fixed("a", 40), fixed("b", 60)]))).toEqual({});
     expect(validateComposition(withEntries([fixed("a", 40), fixed("b", 50)])).entries).toMatch(/add up/i);
   });
-  it("when fixed counts use up the total, fraction ranges are ignored (those types get 0), not rejected", () => {
-    expect(validateComposition(withEntries([fixed("a", 100), range("b", 0.9, 1), range("c", 0.9, 1)]))).toEqual({});
+  it("checks the ranges even when fixed counts use up the total (the API does: sum of minimums must still be <= 1)", () => {
+    expect(validateComposition(withEntries([fixed("a", 100), range("b", 0.9, 1), range("c", 0.9, 1)])).entries).toMatch(/minimum.*more than 1/i);
+    expect(validateComposition(withEntries([fixed("a", 100), range("b", 0, 1)]))).toEqual({});
   });
   it("validates seeds (optional, each 0..2^32-1) and max runs, with upper bounds", () => {
     expect(validateComposition({ ...ok, seeds: { composition_seed: -1 } }).composition_seed).toMatch(/0 or more/i);
@@ -71,8 +73,32 @@ describe("validateComposition (input-shape checks; the API is the authority)", (
     expect(validateComposition({ ...ok, seeds: { composition_seed: MAX_SEED + 1 } }).composition_seed).toMatch(/at most/i);
     expect(validateComposition({ ...ok, seeds: { composition_seed: MAX_SEED, archetype_seed: 0, perturbation_seed: 7 } })).toEqual({});
     expect(validateComposition({ ...ok, seeds: {} })).toEqual({});
-    expect(validateComposition({ ...ok, maxRuns: MAX_RUNS_LIMIT + 1 }).maxRuns).toMatch(/at most/i);
-    expect(validateComposition({ ...ok, maxRuns: MAX_RUNS_LIMIT })).toEqual({});
+    expect(validateComposition({ ...ok, maxRuns: MAX_COUNT + 1 }).maxRuns).toMatch(/at most/i);
+    expect(validateComposition({ ...ok, maxRuns: MAX_COUNT })).toEqual({});
+  });
+});
+
+describe("validateComposition with the server's limits (GET /me) and convergence", () => {
+  const limits: Limits = { maxTotalBuildings: 500, maxEnsembleRuns: 300, defaultMinRuns: 20, demoCaps: null };
+  it("uses the server's caps for total buildings and max runs", () => {
+    expect(validateComposition({ ...ok, totalBuildings: 501 }, limits).totalBuildings).toMatch(/at most 500/);
+    expect(validateComposition({ ...ok, totalBuildings: 500, entries: [range("a", 0, 1)] }, limits)).toEqual({});
+    expect(validateComposition({ ...ok, maxRuns: 301 }, limits).maxRuns).toMatch(/at most 300/);
+    expect(validateComposition({ ...ok, maxRuns: 300 }, limits)).toEqual({});
+  });
+  it("with convergence on, max runs must be at least the server's default minimum", () => {
+    expect(validateComposition({ ...ok, convergence: true, maxRuns: 19 }, limits).maxRuns).toMatch(/at least 20/);
+    expect(validateComposition({ ...ok, convergence: true, maxRuns: 20 }, limits)).toEqual({});
+    expect(validateComposition({ ...ok, convergence: false, maxRuns: 19 }, limits)).toEqual({});
+  });
+  it("mirrors the server's name rules: at most 120 characters, no control or text-direction characters", () => {
+    expect(validateComposition({ ...ok, name: "x".repeat(121) }).name).toMatch(/120/);
+    expect(validateComposition({ ...ok, name: "x".repeat(120) })).toEqual({});
+    expect(validateComposition({ ...ok, name: "a\nb" }).name).toMatch(/control|line|direction/i);
+    expect(validateComposition({ ...ok, name: `a${String.fromCharCode(0x202e)}b` }).name).toMatch(/control|line|direction/i);
+  });
+  it("a type listed twice is refused (the server refuses it too)", () => {
+    expect(validateComposition(withEntries([range("a", 0, 1), range("a", 0, 1)])).entries).toMatch(/more than once/i);
   });
 });
 

@@ -7,9 +7,11 @@ const comp: Composition = {
   totalBuildings: 10,
   seeds: { composition_seed: 1 },
   maxRuns: 50,
+  convergence: false,
   entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }],
 };
 const custom: RunRequest = { kind: "custom", composition: comp };
+const withComp = (over: Partial<Composition>): RunRequest => ({ kind: "custom", composition: { ...comp, ...over } });
 
 async function drain(c: ReturnType<typeof createMockClient>, runId: string) {
   const events: RunEvent[] = [];
@@ -100,6 +102,68 @@ describe("mock ApiClient (mirrors the real API's rules)", () => {
     expect(r.calibrationStatus).toMatch(/not calibrated/i);
     expect(r.series.ts).toHaveLength(96 * 8);
     expect(r.series.total[0]).toBeCloseTo(r.series.residential[0] + r.series.commercial[0], 6);
+  });
+
+  it("reports each role's session like GET /me: permissions, run inputs, seeds and limits", async () => {
+    const c = createMockClient();
+    const client = await c.login("client");
+    expect(client).toMatchObject({
+      role: "client",
+      permissions: { "filters.use": false },
+      runInputs: ["composition", "composition_id", "config"],
+      maySetSeeds: true,
+      limits: { maxTotalBuildings: 5000, maxEnsembleRuns: 1000, defaultMinRuns: 20, demoCaps: null },
+    });
+    const demo = await c.login("demo");
+    expect(demo).toMatchObject({ runInputs: ["composition_id"], maySetSeeds: false, permissions: { "filters.use": false } });
+    expect(demo.limits.demoCaps).toEqual({ maxBuildings: 50, maxRuns: 20 });
+    expect((await c.login("admin")).permissions["filters.use"]).toBe(true);
+  });
+
+  it("lists building types with an inactive one, and refuses compositions the server would refuse (422)", async () => {
+    const c = createMockClient();
+    await c.login("client");
+    const types = await c.listBuildingTypes();
+    expect(types.some((t) => !t.active)).toBe(true);
+    const inactive = types.find((t) => !t.active)!.id;
+    const cases: [RunRequest, RegExp][] = [
+      [withComp({ entries: [{ typeId: inactive, mode: "fraction", minFraction: 0, maxFraction: 1 }] }), /not active/],
+      [withComp({ entries: [{ typeId: "nope", mode: "fraction", minFraction: 0, maxFraction: 1 }] }), /unknown building type 'nope'/],
+      [withComp({ entries: [{ typeId: "sf", mode: "count", count: 11 }, { typeId: "mf", mode: "fraction", minFraction: 0, maxFraction: 1 }] }), /fixed counts add up to 11, more than total_buildings \(10\)/],
+      [withComp({ entries: [{ typeId: "sf", mode: "count", count: 4 }] }), /add up to 4, not total_buildings \(10\)/],
+      [withComp({ entries: [{ typeId: "sf", mode: "fraction", minFraction: 0.6, maxFraction: 1 }, { typeId: "mf", mode: "fraction", minFraction: 0.6, maxFraction: 1 }] }), /minimum fractions.*more than 1/],
+      [withComp({ entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 0.4 }, { typeId: "mf", mode: "fraction", minFraction: 0, maxFraction: 0.4 }] }), /maximum fractions.*less than 1/],
+      [withComp({ convergence: true, maxRuns: 10 }), /max_runs must be at least min_runs \(20/],
+      [withComp({ totalBuildings: 5001 }), /exceeds the server cap of 5000/],
+      [withComp({ maxRuns: 1001 }), /exceeds the server cap of 1000/],
+    ];
+    for (const [req, msg] of cases) {
+      const err = (await c.startRun(req).catch((e: unknown) => e)) as ApiError;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.status).toBe(422);
+      expect(err.message).toMatch(msg);
+    }
+  });
+
+  it("refuses seeds and custom compositions from demo with 403 (run inputs)", async () => {
+    const c = createMockClient();
+    await c.login("demo");
+    await expect(c.startRun(withComp({ seeds: {} }))).rejects.toMatchObject({ status: 403 });
+    await expect(c.startRun({ kind: "replay", config: {}, seeds: { composition_seed: 1, archetype_seed: 2, perturbation_seed: 3 } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("reports ensemble mode, the convergence rule after success, and the data files", async () => {
+    const c = createMockClient({ runsPerTick: 50, tickMs: 1 });
+    await c.login("client");
+    const { runId } = await c.startRun(withComp({ convergence: true }));
+    const before = await c.getRun(runId);
+    expect(before.ensembleMode).toBe("adaptive");
+    expect(before.convergenceRule).toBeNull();
+    expect(before.dataFiles?.resstockCharacteristicsFile).toBeTruthy();
+    await drain(c, runId);
+    expect((await c.getRun(runId)).convergenceRule).toBe("legacy_window");
+    const fixed = await c.getRun((await c.startRun(custom)).runId);
+    expect(fixed.ensembleMode).toBe("fixed");
   });
 
   it("persists the session in sessionStorage only when asked, and survives a bad storage", async () => {

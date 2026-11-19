@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useApiClient } from "../../api/context";
 import { EChart } from "../../charts/EChart";
+import { DataUsedPanel } from "../run/DataUsedPanel";
 import { buildLoadDurationOption, buildSeasonalOption, buildSplitOption } from "./chartOptions";
 import { ChartCard } from "./ChartCard";
 import { loadDurationTable, seasonalTable, splitTable } from "./tables";
@@ -24,6 +25,8 @@ export function ResultsPage() {
   const { runId = "" } = useParams();
   const client = useApiClient();
   const q = useQuery({ queryKey: ["results", runId], queryFn: () => client.getResults(runId), staleTime: Infinity });
+  // Run detail, for the "data used" panel only. If it cannot be read the panel is simply absent (the results stand).
+  const run = useQuery({ queryKey: ["run", runId], queryFn: () => client.getRun(runId), enabled: q.isSuccess });
   const compact = useMediaQuery("(max-width:600px)");
   const series = q.data?.series;
   // Shown wherever the weather year appears; the API does not report it yet for real runs.
@@ -49,7 +52,7 @@ export function ResultsPage() {
             <Typography variant="body2">Calibration status: {q.data.calibrationStatus ?? "not reported by the API"}</Typography>
           </Box>
 
-          <TimeSeriesChart series={series} weatherYear={wy} />
+          <TimeSeriesChart series={series} weatherYear={wy} temperatureNote={q.data.temperatureNote} />
 
           <ChartCard title="Load-duration curve" subtitle={`Weather year ${wy}`} table={() => loadDurationTable(series, wy)}>
             <EChart option={ldc} ariaLabel={`Load-duration curve for total, residential and commercial load, weather year ${wy}`} />
@@ -62,6 +65,8 @@ export function ResultsPage() {
           <ChartCard title="Residential and commercial split" subtitle={`Weather year ${wy}`} table={() => splitTable(series, wy)}>
             <EChart option={split} height={300} ariaLabel={`Annual energy in MWh, residential versus commercial, weather year ${wy}`} />
           </ChartCard>
+
+          {run.data?.dataFiles && <DataUsedPanel files={run.data.dataFiles} />}
         </>
       )}
     </Box>

@@ -6,11 +6,14 @@ import { useApiClient } from "../../api/context";
 import { applyProgress, isTerminal } from "../../api/mapping";
 import { ApiError, SEED_KEYS, type RunStatus } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
+import { DataUsedPanel } from "./DataUsedPanel";
 
 const terminal = (s: RunStatus | undefined) => s !== undefined && isTerminal(s.state);
 
 /** Only the API's own answer is reported; "converged" appears only when the API says true. */
 function convergenceText(s: RunStatus): string {
+  // Fixed mode: the engine marks a completed run "converged", which would mislead; convergence was simply off.
+  if (s.ensembleMode === "fixed") return "off (a fixed number of runs)";
   if (s.converged === true) return "converged";
   if (s.converged === null) return isTerminal(s.state) ? "not reported" : "not checked yet";
   if (s.state === "succeeded") return "did not converge (stopped at the run limit)";
@@ -101,6 +104,9 @@ function RunView({ runId, pollMs }: { runId: string; pollMs: number }) {
               <Typography>Feasible: {s.feasible}</Typography>
               <Typography>Rejected: {s.rejected}</Typography>
               <Typography>Convergence: {convergenceText(s)}</Typography>
+              {s.convergenceRule && s.ensembleMode !== "fixed" && (
+                <Typography variant="body2">Convergence rule used: {s.convergenceRule} (as reported by the engine for this run)</Typography>
+              )}
               {s.state === "failed" && <Alert severity="error" sx={{ mt: 2 }}>{s.message ?? "The run failed."}</Alert>}
             </Box>
           )}
@@ -133,7 +139,7 @@ function RunView({ runId, pollMs }: { runId: string; pollMs: number }) {
                   ))}
                 </TableBody>
               </Table>
-              {can.startRuns && s.config && (
+              {can.replay && s.config && (
                 <Button sx={{ mt: 2 }} variant="outlined" onClick={() => replay.mutate(s)} disabled={replay.isPending}>
                   Replay with same seeds
                 </Button>
@@ -142,6 +148,7 @@ function RunView({ runId, pollMs }: { runId: string; pollMs: number }) {
               {replay.isError && <Alert severity="error" sx={{ mt: 2 }}>{replay.error.message}</Alert>}
             </Box>
           )}
+          {s?.dataFiles && <DataUsedPanel files={s.dataFiles} />}
         </>
       )}
     </Paper>

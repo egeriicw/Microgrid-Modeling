@@ -11,7 +11,7 @@ import { zoomWindow, type ZoomAction, type ZoomWindow } from "./zoom";
 const KEYS: LoadKey[] = ["total", "residential", "commercial"];
 const KEY_ACTIONS: Record<string, ZoomAction> = { "+": "in", "=": "in", "-": "out", ArrowLeft: "left", ArrowRight: "right", "0": "reset", Home: "reset" };
 
-export function TimeSeriesChart({ series, weatherYear }: { series: LoadSeries; weatherYear: string }) {
+export function TimeSeriesChart({ series, weatherYear, temperatureNote = null }: { series: LoadSeries; weatherYear: string; temperatureNote?: string | null }) {
   // Hourly by default: a full year of 15-minute lines is a solid block at this width. Switch to 15-minute and zoom in.
   const [resolution, setResolution] = useState<Resolution>("1h");
   const compact = useMediaQuery("(max-width:600px)");
@@ -61,7 +61,9 @@ export function TimeSeriesChart({ series, weatherYear }: { series: LoadSeries; w
       {hasTemp ? (
         <FormControlLabel control={<Checkbox checked={showTemperature} onChange={(e) => setShowTemperature(e.target.checked)} />} label="Temperature overlay" />
       ) : (
-        <Typography variant="body2">These results do not include temperature.</Typography>
+        <Typography variant="body2">
+          {temperatureNote ? `These results do not include temperature (the server says: ${temperatureNote}).` : "These results do not include temperature."}
+        </Typography>
       )}
       <ButtonGroup size="small" aria-label="Zoom and pan" sx={{ flexWrap: "wrap" }}>
         <Button onClick={() => zoom("in")}>Zoom in</Button>

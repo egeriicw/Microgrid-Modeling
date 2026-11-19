@@ -10,6 +10,6 @@ const env = (globalThis as unknown as { process: { env: Record<string, string | 
 const exe = env.PW_CHROMIUM_EXECUTABLE;
 export default defineConfig({
   testDir: ".",
-  testMatch: /qa-real-api\.spec\.ts$/,
+  testMatch: /(qa-real-api|real-api-compose)\.spec\.ts$/,
   use: { baseURL: env.QA_WEB_URL ?? "http://localhost:5174", ...(exe ? { launchOptions: { executablePath: exe } } : {}) },
 });

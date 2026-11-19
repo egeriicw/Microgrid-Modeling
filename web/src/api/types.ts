@@ -5,19 +5,42 @@
 
 export type Role = "admin" | "client" | "demo";
 
+/** Size caps from `GET /me` (`limits`). The server enforces them; the form only checks them early. */
+export interface Limits {
+  maxTotalBuildings: number;
+  maxEnsembleRuns: number;
+  /** The engine's default minimum number of runs when convergence is on. */
+  defaultMinRuns: number;
+  /** Stricter caps for the demo role; null for other roles. */
+  demoCaps: { maxBuildings: number; maxRuns: number } | null;
+}
+
+/**
+ * Who is signed in and what the server lets them do, exactly as `GET /me` reports it. The browser never decides
+ * any of this; it only hides controls the server would refuse (and the server still enforces every rule).
+ */
 export interface Session {
-  /**
-   * The caller's role, or null when the server does not report it. The real API has no "who am I" endpoint yet,
-   * so the HTTP client cannot know the role; the UI then shows every control and the server enforces permissions.
-   */
-  role: Role | null;
+  subject: string;
+  /** The role name as the server reports it (admin, client or demo today). */
+  role: string;
   displayName: string;
+  /** Permission flags, e.g. {"filters.use": false}. A flag that is absent counts as not granted. */
+  permissions: Record<string, boolean>;
+  /** Which `POST /runs` inputs the server accepts from this caller: "composition", "composition_id", "config". */
+  runInputs: string[];
+  maySetSeeds: boolean;
+  limits: Limits;
 }
 
 export interface BuildingType {
   id: string;
   label: string;
   sector: "residential" | "commercial";
+  source: "resstock" | "comstock";
+  /** Plain-language description from the server, when it has one. */
+  description: string | null;
+  /** False: listed but not usable yet (the server refuses a composition naming it). */
+  active: boolean;
 }
 
 export interface FilterOption {
@@ -48,7 +71,12 @@ export interface Composition {
   /** Seeds left out are drawn fresh by the server (FR-ENG-4: random by default, always recorded). */
   seeds: Partial<Seeds>;
   maxRuns: number;
-  /** Admin-only in the MVP (FR-ENG-11); the server rejects it for other roles. */
+  /**
+   * On: stop early when the server's convergence rule holds (the rule is the server's default; the browser never
+   * picks one). Off: a fixed ensemble of `maxRuns` runs.
+   */
+  convergence: boolean;
+  /** Mock only: the real API takes no filter from this form yet, and the HTTP client refuses it loudly. */
   vintageFilter?: string;
 }
 
@@ -59,8 +87,7 @@ export type ScenarioConfig = Record<string, unknown>;
  * What to run. Mirrors the API's RunCreate (exactly one of config / composition id):
  * - `predefined`: a server-side composition by name (the only kind the demo role may start);
  * - `replay`: a stored config with explicit seeds (FR-ENG-4 d);
- * - `custom`: the composition form. The real API takes a full scenario config, and building one needs the
- *   building-type catalogue the API does not offer yet, so the HTTP client rejects this kind (see report).
+ * - `custom`: the composition form (API `composition`; the server builds the scenario from its registry).
  */
 export type RunRequest =
   | { kind: "predefined"; compositionId: string }
@@ -91,6 +118,26 @@ export interface RunStatus {
   config: ScenarioConfig | null;
   engineVersion: string;
   cancelRequested: boolean;
+  /** `ensemble.mode` of the stored config: "adaptive" = convergence on, "fixed" = off; null if not reported. */
+  ensembleMode: "adaptive" | "fixed" | null;
+  /** The convergence rule the engine reports in the finished run's result; null until then or if not reported. */
+  convergenceRule: string | null;
+  /** Which data files the run read (file names only); null when the server does not report them. */
+  dataFiles: DataFiles | null;
+}
+
+/** API `RunDetail.data_files`: provenance as file names, never paths. A null field = not recorded for this run. */
+export interface DataFiles {
+  resstockCharacteristicsFile: string | null;
+  comstockCharacteristicsFile: string | null;
+  temperature: {
+    /** "none" | "timeseries_column" | "weather_file" as declared; null for runs stored before it was recorded. */
+    source: string | null;
+    file: string | null;
+    column: string | null;
+    timeColumn: string | null;
+    units: string | null;
+  };
 }
 
 /** Progress payload of one engine event (engine ProgressEvent, stored by the worker as JSON). */
@@ -112,7 +159,7 @@ export type RunEvent =
 
 /** A year of data. Arrays are parallel and have the same length (35,040 for a full year at 15 minutes). */
 export interface LoadSeries {
-  /** ms since epoch; the engine's local wall-clock time is encoded as if it were UTC (labels say "UTC"). */
+  /** ms since epoch; the engine's local wall-clock time is encoded as if it were UTC so no browser time zone shifts it; labels say "local time" (the results document gives no zone). */
   ts: Float64Array;
   stepMs: number;
   /** kW (ensemble mean) */
@@ -122,7 +169,7 @@ export interface LoadSeries {
   p10: Float64Array;
   p50: Float64Array;
   p90: Float64Array;
-  /** degrees C; null when the results do not include temperature (the real engine does not yet). */
+  /** degrees C, aligned with `ts`; null when the results do not include temperature. */
   temperature: Float64Array | null;
 }
 
@@ -133,6 +180,8 @@ export interface ResultsData {
   /** Null when the API does not report it. */
   calibrationStatus: string | null;
   series: LoadSeries;
+  /** Why the results have no temperature (the server's reason, shown as text); null when they have it. */
+  temperatureNote: string | null;
 }
 
 /** One field-level message from a 422 response (`loc` joined with "."). */
@@ -156,14 +205,15 @@ export class ApiError extends Error {
 export interface ApiClient {
   /** "mock" for the fixture client, "http" for the real API. */
   readonly kind: "mock" | "http";
-  /** Validates the key against the API; rejects with ApiError(401) if it is wrong. */
+  /** Validates the key and learns the session from the server (`GET /me`); rejects with ApiError(401) if wrong. */
   login(apiKey: string): Promise<Session>;
   logout(): Promise<void>;
+  /** The stored key's session, asked of the server again; null when there is no key or the server does not answer. */
   getSession(): Promise<Session | null>;
   /** Called when the server rejects the stored key (401); returns an unsubscribe function. */
   onSignedOut(listener: () => void): () => void;
   listBuildingTypes(): Promise<BuildingType[]>;
-  /** Empty unless the caller may use filters (admin in the MVP). */
+  /** Empty unless the caller has the `filters.use` permission. */
   listFilterOptions(): Promise<FilterOption[]>;
   /** Names of the predefined compositions every role may run. */
   listPredefinedCompositions(): Promise<string[]>;

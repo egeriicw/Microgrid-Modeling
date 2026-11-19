@@ -131,6 +131,43 @@ describe("results screen", () => {
     expect(screen.queryByText(/AMY2018/)).not.toBeInTheDocument();
   });
 
+  it("gives the server's reason when temperature is not available, as text", async () => {
+    const base = createMockClient({ pointsPerYear: 96 * 20 });
+    const reason = "no temperature source declared <b>(config)</b>";
+    const client: ApiClient = {
+      ...base,
+      getResults: async (id) => {
+        const r = await base.getResults(id);
+        return { ...r, temperatureNote: reason, series: { ...r.series, temperature: null } };
+      },
+    };
+    const { container } = await renderApp({ route: "/results/demo-run", role: "client", client });
+    expect(await screen.findByText(/these results do not include temperature/i)).toHaveTextContent(reason);
+    expect(container.querySelector("main b")).toBeNull();
+  });
+
+  it("shows the run's data files on the results screen when the server reports them", async () => {
+    const base = createMockClient({ runsPerTick: 50, tickMs: 1, pointsPerYear: 96 * 20 });
+    await base.login("client");
+    const { runId } = await base.startRun({
+      kind: "custom",
+      composition: { name: "t", totalBuildings: 5, seeds: {}, maxRuns: 50, convergence: false, entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }] },
+    });
+    await base.watchRun(runId, () => undefined, new AbortController().signal);
+    await renderApp({ route: `/results/${runId}`, role: "client", client: base });
+    const panel = await screen.findByRole("region", { name: /data used/i });
+    expect(panel).toHaveTextContent(/DC_upgrade0\.xlsx/);
+  });
+
+  it("labels time as the data's local clock time, not as UTC (the results document has no time zone)", async () => {
+    const user = userEvent.setup();
+    await open();
+    const section = screen.getByRole("region", { name: /load over the year/i });
+    await user.click(within(section).getByRole("checkbox", { name: /show data table/i }));
+    expect(within(section).getByRole("columnheader", { name: /date \(local time\)/i })).toBeInTheDocument();
+    expect(screen.queryByText(/\(UTC\)/)).toBeNull();
+  });
+
   it("offers a data-table alternative for each chart", async () => {
     const user = userEvent.setup();
     await open();
