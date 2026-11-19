@@ -22,6 +22,14 @@ const KEY = "client-key-alice-0123456789";
 const RUN_ID = "7c0f2a2e-1111-4222-8333-444455556666";
 const SEEDS = { composition_seed: 11, archetype_seed: 22, perturbation_seed: 33 };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const ME = {
+  subject: "alice",
+  role: "client",
+  permissions: { "filters.use": false },
+  run_inputs: ["composition", "composition_id", "config"],
+  may_set_seeds: true,
+  limits: { max_total_buildings: 5000, max_ensemble_runs: 1000, default_min_runs: 20, demo_caps: null },
+};
 const detail = (over: Record<string, unknown> = {}) => ({
   id: RUN_ID,
   status: "running",
@@ -56,6 +64,7 @@ type Route = (url: string, init: RequestInit) => Response | Promise<Response>;
 async function realClient(route: Route) {
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
+    if (url.endsWith("/me")) return json(200, ME);
     return url.endsWith("/demo-compositions") ? json(200, { items: ["small-mixed"] }) : route(url, init);
   });
   const client = new HttpApiClient({ fetch: fetchFn as unknown as typeof fetch, storage: sessionStorage, retryDelayMs: 1, maxStreamRetries: 1 });
@@ -97,9 +106,11 @@ describe("QA W1-WEB: errors are shown as text, never as HTML", () => {
   });
 
   it("422 field errors with HTML in loc and msg are rendered as text list items", async () => {
-    const { client } = await realClient(() => json(422, { detail: [{ loc: ["body", "<i>composition_id</i>"], msg: evil, type: "value_error" }] }));
+    const { client } = await realClient((url) =>
+      url.endsWith("/building-types") ? json(200, { items: [] }) : json(422, { detail: [{ loc: ["body", "<i>composition_id</i>"], msg: evil, type: "value_error" }] }),
+    );
     const { container } = await renderReal(client, "/composition");
-    await userEvent.click(await screen.findByRole("button", { name: /run small-mixed/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /run this neighbourhood: small mixed/i }));
     expect(await screen.findByText(/the server did not accept the request/i)).toBeInTheDocument();
     expect(screen.getByText(`<i>composition_id</i>: ${evil}`)).toBeInTheDocument();
     expect(container.querySelector("main img, main i, main b")).toBeNull();
@@ -134,10 +145,10 @@ describe("QA W1-WEB: the run screen on the real client", () => {
   it("shows stage, runs completed, feasible/rejected from the SSE stream, and never puts the key in the DOM", async () => {
     const { client } = await realClient((url) => (url.endsWith("/events") ? sseBody(stream, true) : json(200, detail())));
     const { container } = await renderReal(client, `/runs/${RUN_ID}`);
-    expect(await screen.findByText("run 2/3 rejected")).toBeInTheDocument();
-    expect(screen.getByText(/runs completed: 2 of 3/i)).toBeInTheDocument();
-    expect(screen.getByText("Feasible: 1")).toBeInTheDocument();
-    expect(screen.getByText("Rejected: 1")).toBeInTheDocument();
+    expect(await screen.findByText(/run 2\/3 rejected/)).toBeInTheDocument();
+    expect(screen.getByText(/neighbourhoods simulated \(runs\): 2 of 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Valid runs: 1 /)).toBeInTheDocument();
+    expect(screen.getByText(/^Rejected runs: 1 /)).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(KEY);
     void container;
   });
@@ -165,7 +176,7 @@ describe("QA W1-WEB: the run screen on the real client", () => {
       return json(200, detail());
     });
     await renderReal(client, `/runs/${RUN_ID}`);
-    await screen.findByText("run 2/3 rejected");
+    await screen.findByText(/run 2\/3 rejected/);
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
     expect(await screen.findByRole("heading", { name: /sign in/i })).toBeInTheDocument();
     expect(sessionStorage.getItem(KEY_STORAGE)).toBeNull();
@@ -192,14 +203,14 @@ describe("QA W1-WEB: the run screen on the real client", () => {
       json(200, detail({ status: "succeeded", progress: { stage: "finished", run_index: 2, n_attempted: 3, n_feasible: 3, max_runs: 3, converged: false, message: "finished: 3 feasible of 3 attempted" } })),
     );
     await renderReal(client, `/runs/${RUN_ID}`);
-    await screen.findByText(/runs completed: 3 of 3/i);
+    await screen.findByText(/neighbourhoods simulated \(runs\): 3 of 3/i);
     expect(screen.queryByText(/not yet converged/i)).toBeNull();
   });
 
   it("DEFECT (honesty): before any convergence check (converged: null) the screen does not assert 'not yet converged'", async () => {
     const { client } = await realClient((url) => (url.endsWith("/events") ? sseBody(stream, true) : json(200, detail())));
     await renderReal(client, `/runs/${RUN_ID}`);
-    await screen.findByText("run 2/3 rejected");
+    await screen.findByText(/run 2\/3 rejected/);
     expect(screen.getByText(/convergence: not (checked|reported)/i)).toBeInTheDocument();
   });
 });
@@ -223,7 +234,7 @@ describe("QA W1-WEB: results view on the real client (FR-WEB-8 and honesty)", ()
     await renderReal(client, `/results/${RUN_ID}`);
     expect(await screen.findByText(/not validated for engineering or investment decisions/i)).toBeInTheDocument();
     expect(screen.getByText(/weather year: not reported/i)).toBeInTheDocument();
-    expect(screen.getByText(/calibration status: not reported/i)).toBeInTheDocument();
+    expect(screen.getByText(/calibration status: not checked against measured data \(no site data was uploaded\)/i)).toBeInTheDocument();
     expect(screen.getByText(/do not include temperature/i)).toBeInTheDocument();
     expect(screen.queryByText(/AMY2018/)).toBeNull();
   });

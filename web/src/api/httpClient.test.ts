@@ -49,8 +49,19 @@ const runOut = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const ME = {
+  subject: "alice",
+  role: "client",
+  permissions: { "filters.use": false },
+  run_inputs: ["composition", "composition_id", "config"],
+  may_set_seeds: true,
+  limits: { max_total_buildings: 5000, max_ensemble_runs: 1000, default_min_runs: 20, demo_caps: null },
+};
+
 async function signedIn(handler: Handler) {
-  const f = fakeFetch((url, init) => (url.endsWith("/demo-compositions") ? json(200, { items: ["small"] }) : handler(url, init)));
+  const f = fakeFetch((url, init) =>
+    url.endsWith("/me") ? json(200, ME) : url.endsWith("/demo-compositions") ? json(200, { items: ["small"] }) : handler(url, init),
+  );
   const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage, retryDelayMs: 1 });
   await c.login("secret-key");
   f.calls.length = 0;
@@ -63,17 +74,17 @@ beforeEach(() => {
 });
 
 describe("HttpApiClient: sign-in (FR-WEB-5)", () => {
-  it("validates the key against an authenticated endpoint with a bearer header", async () => {
-    const f = fakeFetch(() => json(200, { items: [] }));
+  it("validates the key against GET /me with a bearer header and takes the role from the server", async () => {
+    const f = fakeFetch(() => json(200, ME));
     const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
     const s = await c.login("  secret-key  ");
-    expect(f.calls[0].url).toBe("/api/v1/demo-compositions");
+    expect(f.calls[0].url).toBe("/api/v1/me");
     expect(header(f.calls[0].init, "Authorization")).toBe("Bearer secret-key");
-    expect(s.role).toBeNull(); // the API does not report the role; the client never invents one
+    expect(s.role).toBe("client");
   });
 
   it("keeps the key in sessionStorage only, never localStorage", async () => {
-    const f = fakeFetch(() => json(200, { items: [] }));
+    const f = fakeFetch(() => json(200, ME));
     const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
     await c.login("secret-key");
     expect(sessionStorage.getItem(KEY_STORAGE)).toBe("secret-key");
@@ -86,11 +97,11 @@ describe("HttpApiClient: sign-in (FR-WEB-5)", () => {
 
   it("restores the session from sessionStorage after a reload", async () => {
     sessionStorage.setItem(KEY_STORAGE, "secret-key");
-    const f = fakeFetch(() => json(200, runOut()));
+    const f = fakeFetch((url) => (url.endsWith("/me") ? json(200, ME) : json(200, runOut())));
     const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
     expect(await c.getSession()).not.toBeNull();
     await c.getRun(RUN_ID);
-    expect(header(f.calls[0].init, "Authorization")).toBe("Bearer secret-key");
+    expect(header(f.calls[1].init, "Authorization")).toBe("Bearer secret-key");
   });
 
   it("rejects a wrong key with 401 and stores nothing", async () => {
@@ -115,7 +126,7 @@ describe("HttpApiClient: sign-in (FR-WEB-5)", () => {
   );
 
   it("trims surrounding whitespace and newlines from a pasted key", async () => {
-    const f = fakeFetch(() => json(200, { items: [] }));
+    const f = fakeFetch(() => json(200, ME));
     const c = new HttpApiClient({ baseUrl: "/api/v1", fetch: f.fn, storage: sessionStorage });
     await c.login("\n  secret-key\r\n");
     expect(header(f.calls[0].init, "Authorization")).toBe("Bearer secret-key");
@@ -200,13 +211,6 @@ describe("HttpApiClient: runs", () => {
     const { c, calls } = await signedIn(() => json(202, runOut({ status: "queued" })));
     await c.startRun({ kind: "replay", config: { composition: { total_buildings: 3 } }, seeds: SEEDS });
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ config: { composition: { total_buildings: 3 } }, seeds: SEEDS });
-  });
-
-  it("refuses a custom composition loudly instead of guessing a scenario config", async () => {
-    const { c, calls } = await signedIn(() => json(500, {}));
-    const req = { kind: "custom" as const, composition: { name: "x", totalBuildings: 1, entries: [], seeds: {}, maxRuns: 1 } };
-    await expect(c.startRun(req)).rejects.toMatchObject({ status: 501 });
-    expect(calls).toHaveLength(0);
   });
 
   it("lists predefined compositions", async () => {

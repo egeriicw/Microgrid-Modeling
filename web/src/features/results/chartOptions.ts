@@ -6,11 +6,16 @@ import type { EChartsCoreOption } from "echarts/core";
 import type { LoadSeries } from "../../api/types";
 import { annualEnergyMwh, hourlyMean, loadDurationCurve, seasonalDailyProfile, SEASONS } from "./stats";
 
-// Okabe-Ito colour-blind-safe palette. Series are also told apart by line style, never by hue alone.
+// Okabe-Ito colour-blind-safe palette, one palette for every chart. Series are also told apart by line style, never
+// by hue alone. Two entries are adjusted so that anything drawn on the white background has at least 3:1 contrast
+// (WCAG 1.4.11): orange is darkened from #E69F00 (2.25:1) to #B36B00 (4.2:1), and the uncertainty band uses a deeper
+// blue, #4A90C8 (3.4:1), instead of sky blue #56B4E9 (2.3:1). White is only used for the median line drawn INSIDE the
+// band (3.4:1 against the band).
 export const OKABE_ITO = {
   black: "#000000",
-  orange: "#E69F00",
-  skyBlue: "#56B4E9",
+  orange: "#B36B00",
+  bandBlue: "#4A90C8",
+  white: "#FFFFFF",
   bluishGreen: "#009E73",
   yellow: "#F0E442",
   blue: "#0072B2",
@@ -55,7 +60,7 @@ export function viewAtResolution(data: LoadSeries, resolution: Resolution): Load
 const pad = (n: number) => String(n).padStart(2, "0");
 export function stamp(ms: number): string {
   const d = new Date(ms);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} (local time)`;
 }
 
 export interface TooltipContent {
@@ -119,9 +124,15 @@ const base = {
 };
 const yKw = { type: "value" as const, name: "kW", scale: true };
 
+/** Legend names (also the accessible wording): the band and the median are explained where they first appear. */
+export const BAND_NAME = "Uncertainty band (P10 to P90)";
+export const P50_NAME = "P50 (the median run)";
+
 export interface TimeSeriesParams {
   series: LoadSeries;
   resolution: Resolution;
+  /** Load lines to draw; default all three. The results screen starts with Total only. */
+  loads?: LoadKey[];
   showBand: boolean;
   showTemperature: boolean;
   /** Phone-width layout: narrower side margins, taller top so a wrapped legend clears the axis titles. */
@@ -132,19 +143,22 @@ export const GRID_TOP = { wide: 72, compact: 104 } as const;
 
 export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
   const d = viewAtResolution(p.series, p.resolution);
-  const loads = LOAD_DEFS.map((s) => ({
+  const shown = p.loads ?? LOAD_DEFS.map((l) => l.key);
+  const loads = LOAD_DEFS.filter((l) => shown.includes(l.key)).map((s) => ({
     type: "line" as const,
     name: s.name,
     color: s.color,
     encode: { x: "ts", y: s.key },
-    lineStyle: { width: 1, type: s.dash },
+    lineStyle: { width: s.key === "total" ? 1.5 : 1, type: s.dash },
+    z: 3, // lines on top of the band
     ...fast,
   }));
   const band = p.showBand
     ? [
         { type: "line" as const, name: "P10 (base)", encode: { x: "ts", y: "p10" }, stack: "band", silent: true, symbol: "none", lineStyle: { width: 0, opacity: 0 }, areaStyle: { opacity: 0 }, ...fastBase },
-        { type: "line" as const, name: "P10-P90 band", encode: { x: "ts", y: "span" }, stack: "band", symbol: "none", itemStyle: { color: OKABE_ITO.skyBlue }, lineStyle: { width: 0, opacity: 0 }, areaStyle: { color: OKABE_ITO.skyBlue, opacity: 0.6 }, ...fastBase },
-        { type: "line" as const, name: "P50", color: OKABE_ITO.bluishGreen, encode: { x: "ts", y: "p50" }, lineStyle: { width: 1, type: "solid" as const }, ...fast },
+        { type: "line" as const, name: BAND_NAME, encode: { x: "ts", y: "span" }, stack: "band", symbol: "none", z: 1, itemStyle: { color: OKABE_ITO.bandBlue }, lineStyle: { width: 0, opacity: 0 }, areaStyle: { color: OKABE_ITO.bandBlue, opacity: 1 }, ...fastBase },
+        // The median always lies inside the band: a white dashed line there; its legend swatch gets a black border.
+        { type: "line" as const, name: P50_NAME, color: OKABE_ITO.white, z: 2, itemStyle: { color: OKABE_ITO.white, borderColor: OKABE_ITO.black, borderWidth: 1 }, encode: { x: "ts", y: "p50" }, lineStyle: { width: 1, type: "dashed" as const, color: OKABE_ITO.white }, ...fast },
       ]
     : [];
   const showTemp = p.showTemperature && d.temperature !== null;
@@ -157,6 +171,7 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
           color: OKABE_ITO.reddishPurple,
           encode: { x: "ts", y: "temperature" },
           lineStyle: { width: 1, type: "dashed" as const },
+          z: 3,
           ...fast,
         },
       ]
@@ -164,7 +179,7 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
   return {
     ...base,
     grid: { ...base.grid, left: p.compact ? 44 : 64, right: p.compact ? 44 : 64, top: p.compact ? GRID_TOP.compact : GRID_TOP.wide },
-    legend: { top: 4, icon: "rect", itemGap: p.compact ? 8 : 10, data: [...loads.map((l) => l.name), ...(p.showBand ? ["P10-P90 band", "P50"] : []), ...(showTemp ? ["Temperature (°C)"] : [])] },
+    legend: { top: 4, icon: "rect", itemGap: p.compact ? 8 : 10, data: [...loads.map((l) => l.name), ...(p.showBand ? [BAND_NAME, P50_NAME] : []), ...(showTemp ? ["Temperature (°C)"] : [])] },
     dataset: { source: columns(d) },
     tooltip: { show: false }, // replaced by the DOM overlay
     xAxis: { type: "time" },
@@ -176,7 +191,7 @@ export function buildTimeSeriesOption(p: TimeSeriesParams): EChartsCoreOption {
       { type: "inside", xAxisIndex: 0, filterMode: "filter" },
       { type: "slider", xAxisIndex: 0, filterMode: "filter", height: 24, bottom: 24 },
     ],
-    series: [...loads, ...band, ...temp],
+    series: [...band, ...loads, ...temp], // band first so the lines are drawn over it
   };
 }
 
@@ -215,7 +230,7 @@ export function buildSeasonalOption(series: LoadSeries, compact = false): EChart
     ...base,
     grid: { ...base.grid, top: compact ? GRID_TOP.compact : GRID_TOP.wide },
     tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: slotLabels(prof.winter.length), name: "time of day (UTC)" },
+    xAxis: { type: "category", data: slotLabels(prof.winter.length), name: "time of day (local time)" },
     yAxis: yKw,
     series: SEASONS.map((s) => ({
       type: "line",

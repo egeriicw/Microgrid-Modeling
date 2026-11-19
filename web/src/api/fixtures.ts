@@ -10,10 +10,12 @@ export const FULL_YEAR_POINTS = 35_040;
 const REALIZATIONS = 25;
 
 export const BUILDING_TYPES: BuildingType[] = [
-  { id: "sf", label: "Single-family detached", sector: "residential" },
-  { id: "mf", label: "Multifamily", sector: "residential" },
-  { id: "office", label: "Office", sector: "commercial" },
-  { id: "retail", label: "Retail", sector: "commercial" },
+  { id: "sf", label: "Single-family detached", sector: "residential", source: "resstock", description: null, active: true },
+  { id: "mf", label: "Multifamily", sector: "residential", source: "resstock", description: null, active: true },
+  { id: "office", label: "Office", sector: "commercial", source: "comstock", description: null, active: true },
+  { id: "retail", label: "Retail", sector: "commercial", source: "comstock", description: null, active: true },
+  // Like the real catalogue's `civic`: listed, but the server cannot model it yet and refuses it.
+  { id: "civic", label: "Civic building", sector: "commercial", source: "comstock", description: null, active: false },
 ];
 
 export const FILTER_OPTIONS: FilterOption[] = [

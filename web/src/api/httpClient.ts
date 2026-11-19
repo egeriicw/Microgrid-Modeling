@@ -2,9 +2,9 @@
 // Auth is a bearer API key; the role is decided by the server. The key lives in memory and sessionStorage only
 // (gone when the tab closes), never localStorage. All HTTP in the app goes through this file.
 import type { components } from "./generated/openapi";
-import { resultsFromApi, runEventFrom, runStatusFromApi } from "./mapping";
+import { buildingTypesFromApi, compositionToApi, resultsFromApi, runEventFrom, runStatusFromApi, sessionFromMe } from "./mapping";
 import { SseParser } from "./sse";
-import { ApiError, type ApiClient, type FieldError, type RunEvent, type RunRequest, type Session } from "./types";
+import { ApiError, type ApiClient, type BuildingType, type FieldError, type RunEvent, type RunRequest, type Session } from "./types";
 
 type Schemas = components["schemas"];
 
@@ -26,8 +26,6 @@ export interface HttpClientOptions {
   /** Consecutive failed SSE connects before giving up. */
   maxStreamRetries?: number;
 }
-
-const SESSION: Session = { role: null, displayName: "API key" };
 
 function messageFor(status: number, detail: unknown): { message: string; fieldErrors: FieldError[] } {
   // The server's 401 text ("authentication required") does not tell a person what to do.
@@ -160,15 +158,24 @@ export class HttpApiClient implements ApiClient {
 
   // --- ApiClient ---------------------------------------------------------------------------------------------
 
+  /** `GET /me` with `key`: the server's word on who this is and what it may do. */
+  private async me(key: string): Promise<Session> {
+    const res = await this.send("/me", {}, key);
+    try {
+      return sessionFromMe(await res.json());
+    } catch {
+      throw new ApiError(res.status, "The server's answer about your account could not be read. Try again, or ask the administrator.");
+    }
+  }
+
   async login(apiKey: string): Promise<Session> {
     const key = apiKey.trim();
     if (!key) throw new ApiError(401, "Paste your API key.");
     // Printable ASCII only: anything else cannot travel in an HTTP header. The message never repeats the key.
     if (!API_KEY_PATTERN.test(key)) throw new ApiError(400, BAD_KEY_MESSAGE);
-    // Cheapest authenticated endpoint. It proves the key is valid; it does NOT report the role (API gap).
-    await this.send("/demo-compositions", {}, key);
+    const session = await this.me(key); // proves the key is valid and reports the role, permissions and limits
     this.write(key);
-    return SESSION;
+    return session;
   }
 
   async logout(): Promise<void> {
@@ -177,7 +184,14 @@ export class HttpApiClient implements ApiClient {
 
   async getSession(): Promise<Session | null> {
     this.key = this.read() ?? this.key;
-    return this.key ? SESSION : null;
+    if (!this.key) return null;
+    try {
+      return await this.me(this.key);
+    } catch {
+      // No answer from /me = not signed in (the role is never assumed). The key is dropped; sign in again.
+      this.write(null);
+      return null;
+    }
   }
 
   onSignedOut(listener: () => void): () => void {
@@ -185,15 +199,12 @@ export class HttpApiClient implements ApiClient {
     return () => this.listeners.delete(listener);
   }
 
-  async listBuildingTypes(): Promise<never> {
-    throw new ApiError(
-      501,
-      "The API does not offer the building-type list yet, so custom compositions cannot be built here. Use a predefined composition.",
-    );
+  async listBuildingTypes(): Promise<BuildingType[]> {
+    return buildingTypesFromApi(await this.json<unknown>("/building-types"));
   }
 
   async listFilterOptions() {
-    return []; // the API has no filter-options endpoint yet
+    return []; // filter selection UI is not built yet (the API's exposed-attributes endpoint is not wired here)
   }
 
   async listPredefinedCompositions(): Promise<string[]> {
@@ -205,10 +216,13 @@ export class HttpApiClient implements ApiClient {
     if (request.kind === "predefined") body = { composition_id: request.compositionId };
     else if (request.kind === "replay") body = { config: request.config, seeds: request.seeds };
     else {
-      throw new ApiError(
-        501,
-        "Custom compositions are not supported by the API yet: it needs a full scenario config, which the web app cannot build without the building-type list. Use a predefined composition.",
-      );
+      const c = request.composition;
+      if (c.vintageFilter !== undefined) {
+        // Never dropped silently: this form has no way to send filters to the real API yet.
+        throw new ApiError(400, "Building filters cannot be sent from this form yet. Remove the filter and try again.");
+      }
+      body = { composition: compositionToApi(c) };
+      if (Object.keys(c.seeds).length > 0) body.seeds = { ...c.seeds };
     }
     const out = await this.json<Schemas["RunOut"]>("/runs", { method: "POST", body: JSON.stringify(body) });
     return { runId: out.id };

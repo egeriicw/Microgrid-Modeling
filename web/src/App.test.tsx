@@ -11,7 +11,20 @@ describe("role-aware shell", () => {
     const nav = await screen.findByRole("navigation");
     expect(nav).toHaveTextContent(/compose/i);
     expect(nav).toHaveTextContent(/demo results/i);
-    expect(screen.getByText(/signed in as client/i)).toBeInTheDocument();
+    expect(screen.getByText("Signed in as demo data (client)")).toBeInTheDocument();
+  });
+
+  it("never shows 'mock' to a person in demo-data mode: not as a user name, nor as the engine version (U11)", async () => {
+    const base = createMockClient({ runsPerTick: 50, tickMs: 1, pointsPerYear: 96 * 20 });
+    await base.login("client");
+    const { runId } = await base.startRun({
+      kind: "custom",
+      composition: { name: "t", totalBuildings: 5, seeds: {}, maxRuns: 50, convergence: false, entries: [{ typeId: "sf", mode: "fraction", minFraction: 0, maxFraction: 1 }] },
+    });
+    const { container } = await renderApp({ route: `/runs/${runId}`, role: "client", client: base });
+    await screen.findByRole("link", { name: /view results/i });
+    expect(screen.getByText(/engine version \(demo data\)/i)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/mock/i);
   });
 
   it("shows Compose to demo too (predefined compositions only)", async () => {
@@ -20,12 +33,15 @@ describe("role-aware shell", () => {
     expect(nav).toHaveTextContent(/compose/i);
   });
 
-  it("does not invent a role when the server did not report one", async () => {
+  it("shows the role and subject the server reported (GET /me), not one decided in the browser", async () => {
     const base = createMockClient();
-    const client: ApiClient = { ...base, kind: "http", login: async () => ({ role: null, displayName: "API key" }) };
-    await renderApp({ route: "/composition", role: "client", client });
-    expect(await screen.findByText(/signed in with an api key/i)).toBeInTheDocument();
-    expect(screen.queryByText(/signed in as client/i)).not.toBeInTheDocument();
+    const client: ApiClient = {
+      ...base,
+      kind: "http",
+      login: async (k) => ({ ...(await base.login(k)), subject: "alice", displayName: "alice", role: "client" }),
+    };
+    await renderApp({ route: "/composition", role: "demo", client });
+    expect(await screen.findByText(/signed in as alice \(client\)/i)).toBeInTheDocument();
     expect(screen.getByRole("navigation")).not.toHaveTextContent(/demo results/i);
   });
 
@@ -39,7 +55,7 @@ describe("role-aware shell", () => {
     const client: ApiClient = { ...base, kind: "http" };
     await renderApp({ route: "/composition", role: "client", client });
     await screen.findByRole("navigation");
-    expect(screen.queryByText(/demo data/i)).toBeNull();
+    expect(screen.queryByText(/demo data — not connected to a server/i)).toBeNull();
   });
 
   it("signs out back to the sign-in page", async () => {
