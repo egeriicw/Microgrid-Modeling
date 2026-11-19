@@ -5,17 +5,21 @@
 **Operating plan:** `docs/agent-deployment-plan.md` (waves, roster, models, criticality rating). It supersedes the
 "what to do next" parts of sections 3b to 4 and 8 below, which are kept as history.
 
-## 0. Current state (2026-11-17)
-- Wave 0 work is done and pushed; record in `docs/sprints/wave-0-progress.md`. GitHub CI is green with lint, engine,
-  api (real Postgres 16), web and compose-config (blocking API image build). `compose-smoke` is still off until Wave 1.
-- PR 11 was merged on 2026-11-17; `main` holds everything. Wave 1 runs on this branch and lands as a new pull request.
-- Next: Wave 1 (deployment plan section 6). Before delegating, rate every story and post the wave plan.
-- Waiting on the owner: merge decision; PRs 2 to 8; the Mac checks (data inspector, lite Docker); the decision batch in
-  deployment plan section 9. Results storage is decided: files for the MVP (ADR-004).
-- Traceability matrix was rebuilt from evidence on 2026-11-17; MUST items with no test evidence: ENG-10, DATA-3, DATA-7,
-  WEB-4, WEB-6, CAL-1/2/3.
-- Sub-agents were run in the shared working tree with disjoint write scopes and no commits (lead committed). That
-  worked for three agents; use worktrees when two stories must touch the same folder.
+## 0. Current state (2026-11-19, Day 14 of 30)
+- `main` holds everything up to Wave 0 (PR 11). Wave 1 batch 1 is merged on this branch and pushed, **not yet in a
+  pull request**: temperature on results, real worker and web in compose with a CI smoke test, web app on the real
+  API, filters admin API. Full record: `docs/sprints/wave-1-progress.md`.
+- Baseline (lead, 2026-11-19): root 1,167 passed; API 378 passed, 29 expected failures; web 226 passed; all linters and
+  type checks clean; GitHub CI green on six jobs including `compose-smoke`.
+- Next (batch 2, one API story at a time because they share `api/`): W1-COMPOSE (caller identity endpoint,
+  building-type catalogue, composition to scenario config, saved compositions), W1-DATASET (server names the
+  characteristics files and a temperature source), W1-DATA (characteristics store, meter placeholder). Then the Wave 1
+  pull request and the Day-14 checkpoint report (deployment plan section 8).
+- Usage limits: nine Opus agents in one session exhausted the five-hour allowance. Run at most three or four at once.
+- Sub-agents cannot commit; the lead commits their work after re-running the checks. Worktrees live under
+  `.claude/worktrees/` (git-ignored); the four batch-1 worktrees can be removed.
+- Waiting on the owner: fixed-count convergence wording decision; the Mac checks (data inspector, Docker); the decision
+  batch in deployment plan section 9. An older `deploy/.env` on the Mac needs an `API_KEYS` line (runbook, top).
 
 ## 1. One-paragraph situation
 The owner (Bill Eger, non-expert builder) is turning a notebook-era prototype into a production web app for community

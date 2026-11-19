@@ -5,6 +5,16 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added (Wave 1 batch 1, 2026-11-19)
+- API: exposed-attribute configuration (`/api/v1/exposed-attributes/...`: active, versions, activate, preview), stored and versioned (migration 0004); `filter_selections` on `POST /runs`; run detail shows effective filters, selections and pool sizes.
+- Engine: temperature series on results (results schema 1.1), `weather` module interface, `ensemble.building_profiles` (per-building load, verified against run totals).
+- Web: typed client generated from `api/openapi.json`, real API by default, API-key sign-in, seeds and "replay with same seeds", honest convergence wording, mock-mode banner.
+- Deploy: real Celery worker and web image in Docker Compose; `compose-smoke` CI job runs a fixture job end to end.
+### Changed
+- `POST /runs` refuses raw column-level attribute filters for every role. Request bodies over 1 MiB are refused (413). Validation errors no longer echo the input.
+### Fixed
+- Results documents and run detail no longer expose server folder paths. Compose now passes `MICROGRID_API_KEYS` (the stack could not start without it). An older `deploy/.env` needs an `API_KEYS` line: see `docs/runbooks/local-stack.md`.
+
 ### Changed (Wave 0, 2026-11-17)
 - CI: `api` job (ruff, mypy, migrate an empty Postgres 16 to head, pytest with coverage against Postgres) and `web` job
   (Node 22: typecheck, lint, test, build) are enabled and blocking; the API image build no longer uses continue-on-error.
