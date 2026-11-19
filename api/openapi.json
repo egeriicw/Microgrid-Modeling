@@ -246,7 +246,6 @@
           "name": {
             "maxLength": 120,
             "minLength": 1,
-            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
             "title": "Name",
             "type": "string"
           },
@@ -501,6 +500,10 @@
       },
       "Limits": {
         "properties": {
+          "default_min_runs": {
+            "title": "Default Min Runs",
+            "type": "integer"
+          },
           "demo_caps": {
             "anyOf": [
               {
@@ -523,6 +526,7 @@
         "required": [
           "max_total_buildings",
           "max_ensemble_runs",
+          "default_min_runs",
           "demo_caps"
         ],
         "title": "Limits",
@@ -532,6 +536,10 @@
         "properties": {
           "limits": {
             "$ref": "#/components/schemas/Limits"
+          },
+          "may_set_seeds": {
+            "title": "May Set Seeds",
+            "type": "boolean"
           },
           "permissions": {
             "additionalProperties": {
@@ -561,6 +569,7 @@
           "role",
           "permissions",
           "run_inputs",
+          "may_set_seeds",
           "limits"
         ],
         "title": "Me",

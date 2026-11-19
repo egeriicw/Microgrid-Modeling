@@ -1,8 +1,9 @@
 """Liveness (`/health`, no dependencies) and readiness (`/ready`).
 
 `/ready` checks that the database answers and that the Alembic head revision is applied, and (only when
-MICROGRID_REDIS_URL is configured) that Redis answers PING. Failures report the exception class only, never a
-message, URL or credentials. Storage checks arrive later.
+MICROGRID_REDIS_URL is configured) that Redis answers PING, and (only when MICROGRID_DATA_DIR is configured) that the
+data files the server names exist inside the data root (`checks.data_files`; key names only, never paths). Failures
+report the exception class only, never a message, URL or credentials.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from microgrid_api.db.migrate import head_revision
+from microgrid_api.services import runs as run_svc
 
 router = APIRouter(tags=["health"])
 
@@ -86,4 +88,13 @@ def ready(request: Request) -> ReadyOut | JSONResponse:
             checks["redis"] = f"unavailable: {type(exc).__name__}"
             return JSONResponse(status_code=503, content=ReadyOut(ready=False, checks=checks).model_dump())
         checks["redis"] = "ok"
+    if request.app.state.settings.data_dir is not None:
+        # The same containment-and-existence check as run creation, so a wrong file name never looks healthy.
+        # DataSectionError messages carry setting/key names only, never paths or file names.
+        try:
+            run_svc.require_data_files(run_svc.server_side_data_section(request.app.state.settings))
+        except run_svc.DataSectionError as exc:
+            checks["data_files"] = f"unavailable: {exc}"
+            return JSONResponse(status_code=503, content=ReadyOut(ready=False, checks=checks).model_dump())
+        checks["data_files"] = "ok"
     return ReadyOut(ready=True, checks=checks)

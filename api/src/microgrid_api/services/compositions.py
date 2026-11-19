@@ -18,7 +18,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from microgrid.community_load.registry import BuildingTypeRegistry, with_default_filters
-from microgrid.community_load.synthetic.config import config_from_dict, config_to_dict
+from microgrid.community_load.synthetic.config import EnsembleConfig, ScenarioConfig, config_from_dict, config_to_dict
+
+#: The engine's default ``ensemble.min_runs`` (read from the engine, not copied): with convergence on, a run needs
+#: at least this many runs unless the client sets ``min_runs``.
+DEFAULT_MIN_RUNS = EnsembleConfig().min_runs
 
 
 class CompositionError(ValueError):
@@ -48,21 +52,37 @@ _TOL = 1e-9
 
 
 def check_counts(comp: Composition) -> None:
-    """FR-ENG-2 feasibility, stated in the client's terms before the engine sees it.
+    """FR-ENG-2 feasibility, stated in the client's terms before the engine sees it."""
+    check_category_counts(comp.total_buildings, comp.entries)
 
-    Fixed counts are taken first; the ranged types share the remainder by fraction. So: fixed counts may not exceed
-    the total; with no ranged type they must equal it (otherwise the counts could not sum to the total); and the
-    ranged fractions must be able to sum to 1 (sum of minimums <= 1 <= sum of maximums).
-    """
-    fixed = sum(e.fixed_count for e in comp.entries if e.fixed_count is not None)
-    ranged = [e for e in comp.entries if e.fixed_count is None]
-    if fixed > comp.total_buildings:
-        raise CompositionError(
-            f"the fixed counts add up to {fixed}, more than total_buildings ({comp.total_buildings})"
+
+def check_config_counts(cfg: ScenarioConfig) -> None:
+    """The same rules for a parsed engine scenario, whatever the run input (`config`, `composition_id`,
+    `composition`). The engine itself does not check fixed counts against the total (engine fix pending the owner),
+    so the API does, so that no run input can sample more or fewer buildings than total_buildings."""
+    entries = tuple(
+        Entry(
+            name,
+            b.fixed_count,
+            None if b.fixed_count is not None else b.min_fraction,
+            None if b.fixed_count is not None else b.max_fraction,
         )
-    if not ranged and fixed != comp.total_buildings:
+        for name, b in cfg.composition.categories.items()
+    )
+    check_category_counts(cfg.composition.total_buildings, entries)
+
+
+def check_category_counts(total: int, entries: tuple[Entry, ...]) -> None:
+    """Fixed counts are taken first; the ranged categories share the remainder by fraction. So: fixed counts may not
+    exceed the total; with no ranged category they must equal it (otherwise the counts could not sum to the total);
+    and the ranged fractions must be able to sum to 1 (sum of minimums <= 1 <= sum of maximums)."""
+    fixed = sum(e.fixed_count for e in entries if e.fixed_count is not None)
+    ranged = [e for e in entries if e.fixed_count is None]
+    if fixed > total:
+        raise CompositionError(f"the fixed counts add up to {fixed}, more than total_buildings ({total})")
+    if not ranged and fixed != total:
         raise CompositionError(
-            f"every type has a fixed count and they add up to {fixed}, not total_buildings ({comp.total_buildings}); "
+            f"every type has a fixed count and they add up to {fixed}, not total_buildings ({total}); "
             "make them add up or give at least one type a fraction range"
         )
     if ranged:
@@ -102,6 +122,13 @@ def build_scenario(comp: Composition, registry: BuildingTypeRegistry) -> dict[st
             bounds["max_fraction"] = 1.0 if e.max_fraction is None else e.max_fraction
         categories[t.key] = bounds
     check_counts(comp)
+    if comp.convergence:
+        min_runs = DEFAULT_MIN_RUNS if comp.min_runs is None else comp.min_runs
+        if min_runs > comp.max_runs:
+            raise CompositionError(
+                f"with convergence on, max_runs must be at least min_runs ({DEFAULT_MIN_RUNS} unless you set it); "
+                f"got max_runs {comp.max_runs}"
+            )
 
     ensemble: dict[str, Any] = {"mode": "adaptive" if comp.convergence else "fixed", "max_runs": comp.max_runs}
     if comp.min_runs is not None:

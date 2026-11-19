@@ -190,6 +190,18 @@ class Settings(BaseSettings):
                     f"{var} must be a plain file name inside the data directory's background folder (no folders, "
                     "'..', backslashes or control characters; value not shown)."
                 )
+        known = {f"MICROGRID_{name.upper()}" for name in type(self).model_fields}
+        data_vars = ", ".join(f"MICROGRID_{f.upper()}" for f in ("temperature_source", *TEMPERATURE_OPTIONAL_FIELDS))
+        for env_name in sorted(os.environ):
+            upper = env_name.upper()
+            if upper in known or not upper.startswith("MICROGRID_"):
+                continue
+            if upper.startswith("MICROGRID_TEMPERATURE_") or ("CHAR" in upper and upper.endswith(("_FILE", "_FILES"))):
+                raise ConfigurationError(
+                    f"{upper} is not a setting this service reads (misspelled?); it would be silently ignored. "
+                    "Data-file settings are MICROGRID_RESSTOCK_CHARS_FILE, MICROGRID_COMSTOCK_CHARS_FILE and "
+                    f"{data_vars}."
+                )
         source = self.temperature_source
         if source not in TEMPERATURE_FIELDS:
             raise ConfigurationError(

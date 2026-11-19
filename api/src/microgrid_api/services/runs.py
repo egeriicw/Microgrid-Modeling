@@ -131,6 +131,51 @@ def require_data_files(data: dict[str, str]) -> None:
             )
 
 
+_STORED_DIR_KEYS = ("background_dir", "resstock_timeseries_dir", "comstock_timeseries_dir")
+
+
+def check_stored_data_section(data: Any, data_dir: Path | None) -> None:
+    """The worker's check immediately before execution (defence in depth): every path a stored `data` section names
+    (directories, characteristics files, weather file) must still resolve inside the data root, and every file must
+    exist. A snapshot without path keys (none were stored) has nothing to check. DataSectionError carries a public,
+    path-free reason (``exc.public``) and key names only in ``str(exc)``."""
+    if not isinstance(data, dict):
+        return
+    present = sorted(k for k in data if k in DATA_PATH_KEYS)
+    if not present:
+        return
+    if data_dir is None:
+        raise DataSectionError("MICROGRID_DATA_DIR is not configured for the worker")
+    root = data_dir.resolve()
+
+    def inside(key: str, value: Any) -> Path:
+        if not isinstance(value, str) or not value:
+            raise DataSectionError(f"stored data path '{key}' is not a path")
+        path = Path(value).resolve()
+        if not path.is_relative_to(root):
+            raise DataSectionError(f"stored data path '{key}' resolves outside the data root")
+        return path
+
+    for key in _STORED_DIR_KEYS:
+        if key in data:
+            inside(key, data[key])
+    files: dict[str, Path] = {}
+    for key in ("resstock_chars_file", "comstock_chars_file"):
+        if key not in data:
+            continue
+        name = data[key]
+        if not isinstance(name, str) or not is_plain_file_name(name) or "background_dir" not in data:
+            raise DataSectionError(f"stored data file '{key}' is not a file name under background_dir")
+        files[key] = inside(key, str(Path(str(data["background_dir"])) / name))
+    if "temperature_weather_file" in data:
+        files["temperature_weather_file"] = inside("temperature_weather_file", data["temperature_weather_file"])
+    for key, path in files.items():
+        if not path.is_file():
+            raise DataSectionError(
+                f"stored data file '{key}' does not exist", public=f"the server's {_FILE_LABELS[key]} is not available"
+            )
+
+
 def data_files_provenance(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Which data files a stored run read, as file NAMES only (never paths), from its snapshot's `data` section.
     Runs stored before the names were recorded report None (the engine defaults of that time were used)."""

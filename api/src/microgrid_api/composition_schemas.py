@@ -8,9 +8,10 @@ are refused. Unknown keys are refused at every level, so no filter, column, path
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
 from microgrid_api.filter_schemas import KEY_PATTERN, MAX_CATEGORIES
 from microgrid_api.services.compositions import Composition, Entry
@@ -24,8 +25,21 @@ TypeKey = Annotated[str, StringConstraints(strict=True, pattern=KEY_PATTERN)]
 Count = Annotated[int, Field(strict=True, ge=0, le=MAX_COUNT)]
 PositiveCount = Annotated[int, Field(strict=True, ge=1, le=MAX_COUNT)]
 Fraction = Annotated[float, Field(strict=True, ge=0.0, le=1.0, allow_inf_nan=False)]
+#: Characters a display name may not contain: C0 and C1 controls, DEL, line/paragraph separators and the bidi
+#: embedding, override and isolate controls (they can make a name display differently from what it is).
+_FORBIDDEN_IN_NAME = re.compile("[\x00-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
+
+
+def _display_name(value: str) -> str:
+    if not value.strip():
+        raise ValueError("name must contain at least one visible character")
+    if _FORBIDDEN_IN_NAME.search(value):
+        raise ValueError("name must not contain control, line-separator or text-direction characters")
+    return value
+
+
 CompositionName = Annotated[
-    str, StringConstraints(strict=True, min_length=1, max_length=MAX_NAME, pattern=r"^[^\x00-\x1f\x7f]+$")
+    str, StringConstraints(strict=True, min_length=1, max_length=MAX_NAME), AfterValidator(_display_name)
 ]
 ConvergenceRule = Literal["legacy_window", "prd_default"]  # the engine's CONVERGENCE_RULES (checked by a test)
 

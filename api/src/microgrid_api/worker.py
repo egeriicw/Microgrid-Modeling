@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import traceback
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
@@ -62,8 +63,33 @@ def _session_factory() -> SessionFactory:
         return _factory_cache[url]
 
 
+_ENGINE = "microgrid.community_load.synthetic."
+# Where in the engine a failure happened -> a fixed, path-free reason about the server's data. Identified from the
+# traceback's module and function names only; the exception's own text is never stored (it can carry paths).
+_DATA_REASONS_BY_FUNCTION = {
+    (_ENGINE + "archetype", "load_resstock_characteristics"): "the server's ResStock characteristics file could not "
+    "be read",
+    (_ENGINE + "archetype", "load_comstock_characteristics"): "the server's ComStock characteristics file could not "
+    "be read",
+}
+_DATA_REASONS_BY_MODULE = {
+    _ENGINE + "temperature": "the server's weather or temperature data could not be read or used",
+    _ENGINE + "loader": "the server's building time-series data could not be read",
+}
+
+
 def _safe_error(exc: BaseException) -> str:
-    """Exception class name only: raw messages can carry paths, connection strings or credentials."""
+    """A stored failure reason that never contains exception text (it can carry paths, connection strings or
+    credentials): the class name, plus a fixed reason when the failure happened while the engine read the server's
+    data files (the deepest matching engine frame wins)."""
+    reason: str | None = None
+    for frame, _ in traceback.walk_tb(exc.__traceback__):
+        module = str(frame.f_globals.get("__name__", ""))
+        found = _DATA_REASONS_BY_FUNCTION.get((module, frame.f_code.co_name)) or _DATA_REASONS_BY_MODULE.get(module)
+        if found:
+            reason = found
+    if reason is not None:
+        return f"{reason} ({type(exc).__name__}); see worker logs"
     return f"engine run failed ({type(exc).__name__}); see worker logs"
 
 
@@ -159,6 +185,14 @@ def execute_run(run_id: uuid.UUID | str, session_factory: SessionFactory) -> Non
                 session.add(RunEvent(run_id=rid, stage=ev.stage, message=ev.message[:1000], payload=payload))
             session.commit()
 
+        try:
+            # Defence in depth: the stored paths must still be inside the data root, and the files must exist.
+            svc.check_stored_data_section(config.get("data"), (_settings_override or Settings()).data_dir)
+        except svc.DataSectionError as exc:
+            logger.error("run %s refused before execution: %s", rid, exc)  # key names only
+            session.rollback()
+            _finish(session, rid, RunStatus.failed, error_message=exc.public)
+            return
         try:
             result = run_scenario(config, progress=on_progress, should_cancel=should_cancel)
             data = result.to_dict(include_results=False)  # compact summary: the only thing the runs table stores

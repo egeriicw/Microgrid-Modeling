@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 from microgrid_api.auth import Principal, current_principal
 from microgrid_api.config import Settings
-from microgrid_api.routers.runs import run_inputs
+from microgrid_api.routers.runs import may_set_seeds, run_inputs
+from microgrid_api.services.compositions import DEFAULT_MIN_RUNS
 
 router = APIRouter(tags=["identity"])
 
@@ -27,6 +28,9 @@ class DemoCaps(BaseModel):
 class Limits(BaseModel):
     max_total_buildings: int
     max_ensemble_runs: int
+    # the engine's default ensemble.min_runs: with convergence on, max_runs must be at least this unless the request
+    # sets min_runs (a form can pre-validate)
+    default_min_runs: int
     demo_caps: DemoCaps | None  # only for the demo role (stricter; predefined compositions only)
 
 
@@ -35,6 +39,7 @@ class Me(BaseModel):
     role: str
     permissions: dict[str, bool]  # every permission flag the library defines, e.g. {"filters.use": false}
     run_inputs: list[str]  # which of composition / composition_id / config this role may send to POST /runs
+    may_set_seeds: bool  # whether POST /runs accepts `seeds` from this role (demo: no, its fixed seed is used)
     limits: Limits
 
 
@@ -52,9 +57,11 @@ def me(request: Request, principal: Principal = Depends(current_principal)) -> M
         role=principal.role,
         permissions={flag: can(principal.role, flag, overrides) for flag in sorted(FLAGS)},
         run_inputs=run_inputs(principal.role),
+        may_set_seeds=may_set_seeds(principal.role),
         limits=Limits(
             max_total_buildings=settings.max_total_buildings,
             max_ensemble_runs=settings.max_ensemble_runs,
+            default_min_runs=DEFAULT_MIN_RUNS,
             demo_caps=demo_caps,
         ),
     )

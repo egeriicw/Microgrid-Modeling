@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from microgrid_api import __version__
 from microgrid_api.config import Settings
 from microgrid_api.db.models import Run
+from microgrid_api.headers import NoStore
 from microgrid_api.limits import BodySizeLimit
 from microgrid_api.routers import v1
 from microgrid_api.services.demo import load_demo_compositions
@@ -78,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     logger.info("database backend: %s (environment=%s)", make_url(url).get_backend_name(), settings.environment)
     # Body cap before parsing (added before CORS, so CORS stays outermost and a 413 still carries CORS headers).
     app.add_middleware(BodySizeLimit, max_bytes=settings.max_request_bytes)
+    # Outside the body cap, so its 413 is marked too: nothing under the API prefix may be cached.
+    app.add_middleware(NoStore, prefix=prefix)
     app.add_exception_handler(RequestValidationError, _validation_error)
     if settings.cors_origins:  # wildcard is rejected in Settings, so credentials are safe with explicit origins
         app.add_middleware(

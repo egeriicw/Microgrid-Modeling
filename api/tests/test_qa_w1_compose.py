@@ -409,13 +409,7 @@ def test_integer_fraction_values_from_a_browser_are_accepted(api):
     assert r.status_code == 202, r.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM, API): a raw `config` whose fixed counts add up to MORE than total_buildings is accepted "
-    "(202) and the worker then samples a neighbourhood bigger than total_buildings. The composition path refuses "
-    "the same shape (check_counts), so the two run inputs disagree. Fix: apply services.compositions.check_counts "
-    "(or the engine fix) to the parsed config on every run input.",
-)
+# Fixed in the W1-COMPOSE fix pass: the count rules apply to the parsed config of every run input.
 def test_raw_config_with_fixed_counts_above_total_is_refused(api, tiny_config):
     cfg = client_config(tiny_config)
     cfg["composition"]["categories"]["mf_small"] = {"fixed_count": 6, "source": "resstock"}
@@ -424,12 +418,6 @@ def test_raw_config_with_fixed_counts_above_total_is_refused(api, tiny_config):
     assert r.status_code == 422, r.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM, API): a raw `config` where every category is fixed and the counts add up to LESS than "
-    "total_buildings is accepted and the run's neighbourhood has fewer buildings than total_buildings (FR-ENG-2 AC "
-    "broken on the config path). The composition path refuses it. Fix: same as above.",
-)
 def test_raw_config_all_fixed_not_summing_to_total_is_refused(api, tiny_config):
     cfg = client_config(tiny_config)
     cfg["composition"]["categories"] = {
@@ -440,27 +428,22 @@ def test_raw_config_all_fixed_not_summing_to_total_is_refused(api, tiny_config):
     assert r.status_code == 422, r.text
 
 
-def test_raw_config_fixed_counts_above_total_really_oversamples_today(api, spy, tiny_config):
-    """Evidence for the defect above: what the engine actually samples (6 + 0 buildings for a total of 4)."""
-    cfg = client_config(tiny_config)
+def test_raw_config_fixed_counts_above_total_really_oversamples_today(spy, tiny_config, tmp_path):
+    """Evidence for the ENGINE gap the API now guards against (engine fix pending the owner). Since the fix pass
+    the API refuses this config with 422, so the evidence calls the engine directly: 6 + 0 buildings for a total
+    of 4."""
+    from microgrid.community_load.synthetic.run import run_scenario
+
+    cfg = copy.deepcopy(tiny_config)  # keeps the fixture's own data section
     cfg["composition"]["categories"]["mf_small"] = {"fixed_count": 6, "source": "resstock"}
     cfg["composition"]["categories"]["mf_mid"] = {"min_fraction": 0.0, "max_fraction": 1.0, "source": "resstock"}
     cfg["ensemble"] = {"mode": "fixed", "max_runs": 2}
-    r = _post(api, {"config": cfg, "seeds": SEEDS})
-    if r.status_code != 202:
-        pytest.skip("refused at creation (defect fixed)")
-    worker.execute_run(r.json()["id"], api.app.state.session_factory)
+    cfg["rng"] = dict(SEEDS)
+    cfg["output"] = {"base_dir": str(tmp_path / "engine-out")}
+    run_scenario(config_from_dict(cfg, source="<engine evidence>"))
     assert spy and all(sum(c.values()) == 6 for c in spy), spy
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (MEDIUM, API): a composition naming an ACTIVE registry type that has no buildings in the "
-    "server's data (here sf_attached on the fixture) with a fixed count > 0 is accepted (202) and only fails later "
-    "in the worker as 'engine run failed (ValueError)'. The pool check that exists for filter selections "
-    "(routers.runs.check_pools) is not applied to composition runs. Fix: run check_pools for every composition "
-    "(and config) run, not only when filter_selections are used.",
-)
 def test_composition_with_a_type_that_has_no_buildings_is_refused_at_creation(api):
     r = _post(api, {"composition": _comp(4, _fixed("sf_attached", 1), _ranged("mf_small", 0, 1)), "seeds": SEEDS})
     assert r.status_code == 422, r.text
@@ -473,21 +456,24 @@ def test_a_type_without_buildings_is_fine_when_it_can_receive_none(api):
         assert detail["status"] == "succeeded", (entry, detail["error_message"])
 
 
-def test_late_failure_for_an_empty_pool_still_says_why(api):
-    """Today the empty-pool case fails in the worker: the run is failed with a non-empty reason, never stuck."""
-    r = _post(api, {"composition": _comp(4, _fixed("sf_attached", 1), _ranged("mf_small", 0, 1)), "seeds": SEEDS})
-    if r.status_code != 202:
-        pytest.skip("refused at creation (defect fixed)")
-    worker.execute_run(r.json()["id"], api.app.state.session_factory)
-    d = api.get(f"/api/v1/runs/{r.json()['id']}", headers=bearer("alice")).json()
+def test_late_failure_for_an_empty_pool_still_says_why(api, http_settings):
+    """The empty-pool case is now refused at creation; if the data changes after creation the worker still fails the
+    run with a non-empty reason, never stuck. Simulated by storing the server-built snapshot directly (fix pass)."""
+    from microgrid_api.composition_schemas import CompositionRequest
+    from microgrid_api.services import compositions as comp_svc
+
+    body = _comp(4, _fixed("sf_attached", 1), _ranged("mf_small", 0, 1))
+    scenario = comp_svc.build_scenario(CompositionRequest(**body).to_composition(), default_registry())
+    rid = uuid.uuid4()
+    scenario["data"] = svc.server_side_data_section(http_settings)
+    scenario["output"] = {**scenario["output"], "base_dir": str(http_settings.output_dir.resolve() / str(rid))}
+    with api.app.state.session_factory() as s:
+        svc.create_run(s, scenario, SEEDS, trusted_data_paths=True, owner="alice", run_id=rid)
+    worker.execute_run(rid, api.app.state.session_factory)
+    d = api.get(f"/api/v1/runs/{rid}", headers=bearer("alice")).json()
     assert d["status"] == "failed" and d["error_message"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW, API): a whitespace-only composition name ('   ') is accepted and stored as the scenario name "
-    "(a form or run list would show a blank title). Fix: require a non-space character in CompositionName.",
-)
 def test_whitespace_only_name_is_refused(api):
     r = _post(api, {"composition": {**_comp(3, _fixed("mf_small", 3)), "name": "   "}})
     assert r.status_code == 422, r.text
@@ -552,7 +538,8 @@ def test_me_lists_every_library_flag_and_nothing_else(api):
     for who in ("admin", "alice", "demo"):
         me = api.get("/api/v1/me", headers=bearer(who)).json()
         assert set(me["permissions"]) == set(FLAGS)
-        assert set(me) == {"subject", "role", "permissions", "run_inputs", "limits"}
+        # fix pass W1-COMPOSE item I adds may_set_seeds
+        assert set(me) == {"subject", "role", "permissions", "run_inputs", "may_set_seeds", "limits"}
 
 
 def test_me_limits_are_the_caps_the_server_enforces(api, http_settings):
@@ -717,8 +704,9 @@ def test_a_directory_in_place_of_a_file_is_503_at_creation(tmp_path, synthetic_d
 def test_zero_byte_file_fails_in_the_worker_with_a_reason_never_silently(
     tmp_path, synthetic_dataset, tiny_config, monkeypatch, which
 ):
-    """A zero-byte file exists, so creation accepts it; the worker must then fail the run with a reason (status
-    failed, non-empty error message, no path) rather than leave it running or succeed without the data."""
+    """A zero-byte file is never silent. Weather: it exists, so creation accepts it; the worker must then fail the
+    run with a reason (status failed, non-empty error message, no path). Characteristics: since the fix pass the
+    pool check reads them at creation, so the run is refused with a path-free 503 before it is stored."""
     mod = _fixture_module()
     ds = mod.build_synthetic_dataset(tmp_path / "z", weather_file=True)
     over: dict[str, Any] = {}
@@ -737,6 +725,10 @@ def test_zero_byte_file_fails_in_the_worker_with_a_reason_never_silently(
     monkeypatch.setattr(worker, "_settings_override", s)
     with _client(s) as api:
         r = _post(api, {"composition": _comp(3, _fixed("mf_small", 3)), "seeds": SEEDS})
+        if which == "resstock":
+            assert r.status_code == 503, r.text
+            assert str(ds.root) not in r.text and _rows(api) == 0 and api.app.state.enqueued == []
+            return
         assert r.status_code == 202, r.text
         worker.execute_run(r.json()["id"], api.app.state.session_factory)
         d = api.get(f"/api/v1/runs/{r.json()['id']}", headers=bearer("alice")).json()
@@ -767,7 +759,8 @@ def test_file_removed_between_creation_and_execution_fails_with_a_reason(
         worker.execute_run(r.json()["id"], api.app.state.session_factory)
         d = api.get(f"/api/v1/runs/{r.json()['id']}", headers=bearer("alice")).json()
     assert d["status"] == "failed", d
-    assert d["error_message"] and "FileNotFoundError" in d["error_message"], d["error_message"]
+    # fix pass item J: the worker re-checks the files first and stores which kind of file is missing (no path)
+    assert d["error_message"] and "is not available" in d["error_message"], d["error_message"]
     assert str(ds.root) not in json.dumps(d)
 
 
@@ -1001,13 +994,6 @@ def test_data_section_rechecks_the_weather_path_shape_even_inside_the_root(tmp_p
         svc.server_side_data_section(s)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT (LOW, FR-ENG-3): a misspelled temperature variable (MICROGRID_TEMPERATURE_SOURCES=weather_file) "
-    "is silently ignored (Settings extra='ignore'), so the server runs with source 'none'. Results do say no "
-    "temperature is available, but the operator's setting was ignored without a message. Fix: refuse unknown "
-    "MICROGRID_TEMPERATURE_* / *_CHARS_FILE names at startup.",
-)
 def test_misspelled_temperature_variable_fails_at_startup(tmp_path, monkeypatch):
     monkeypatch.setenv("MICROGRID_DATABASE_URL", f"sqlite:///{tmp_path / 'x.db'}")
     monkeypatch.setenv("MICROGRID_ENVIRONMENT", "test")

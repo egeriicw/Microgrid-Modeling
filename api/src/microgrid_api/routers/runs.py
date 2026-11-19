@@ -198,10 +198,13 @@ def selection_http_error(exc: ValueError, principal: Principal) -> HTTPException
     return HTTPException(422, str(exc))
 
 
-def check_pools(settings: Settings, parsed: Any, exposed: Any, principal: Principal) -> dict[str, Any]:
+def check_pools(
+    settings: Settings, parsed: Any, exposed: Any, principal: Principal, *, filtered: bool = True
+) -> dict[str, Any]:
     """Pool preview on a parsed, server-built snapshot (FR-ENG-11 c/d on the run path). Refuses (422) a filter that
     does not fit the data and a category that may receive buildings but matches none, so a run never fails later
-    with only an exception class name. Returns the previews."""
+    with only an exception class name. ``filtered`` = attribute selections were applied (wording only). Returns
+    the previews."""
     assert settings.data_dir is not None  # the server-built data section exists
     try:
         previews = ea_svc.preview(parsed, settings.data_dir, exposed)
@@ -213,6 +216,12 @@ def check_pools(settings: Settings, parsed: Any, exposed: Any, principal: Princi
     except (ValueError, OverflowError) as exc:
         raise selection_http_error(exc if isinstance(exc, ValueError) else ValueError(str(exc)), principal) from None
     empty = ea_svc.unsampleable_categories(parsed, previews)
+    if empty and not filtered:
+        raise HTTPException(
+            422,
+            f"the server's data has no buildings for {', '.join(repr(n) for n in empty)}, so it cannot be sampled; "
+            "give it a fixed count of 0 or a max_fraction of 0, or remove it",
+        )
     if empty:
         raise HTTPException(
             422,
@@ -294,6 +303,12 @@ def run_inputs(role: str) -> list[str]:
     return ["composition_id"] if role == "demo" else ["composition", "composition_id", "config"]
 
 
+def may_set_seeds(role: str) -> bool:
+    """Whether a role may send `seeds` (demo runs use the fixed stored seed). Enforced by `create_run`; shown by
+    `GET /me`."""
+    return role != "demo"
+
+
 @router.get("/demo-compositions", response_model=DemoCompositions, summary="Predefined compositions")
 def demo_compositions(request: Request, _: Principal = Depends(current_principal)) -> DemoCompositions:
     return DemoCompositions(items=sorted(request.app.state.demo_compositions))
@@ -310,7 +325,9 @@ def create_run(
     overrides = settings.permission_overrides
     demo = principal.role == "demo"
     sent = [k for k in ("config", "composition_id", "composition") if getattr(body, k) is not None]
-    if any(k not in run_inputs(principal.role) for k in sent) or (demo and body.seeds is not None):
+    if any(k not in run_inputs(principal.role) for k in sent) or (
+        body.seeds is not None and not may_set_seeds(principal.role)
+    ):
         raise HTTPException(403, "the demo role may only run a predefined composition with its fixed seed")
     if demo and body.filter_selections is not None:  # even only empty lists: demo never uses filters
         raise HTTPException(403, "role 'demo' does not have the filters.use permission")
@@ -362,8 +379,18 @@ def create_run(
     run_id = uuid.uuid4()
     snapshot = _build_snapshot(settings, config, run_id)
     parsed = _check_caps(settings, snapshot)
-    if active is not None:  # selections were applied: refuse now what would only fail later in the worker
-        check_pools(settings, parsed, active.exposed, principal)
+    try:  # every run input: the engine does not check fixed counts against the total (engine fix pending)
+        comp_svc.check_config_counts(parsed)
+    except comp_svc.CompositionError as exc:
+        raise HTTPException(422, str(exc)) from None
+    # Every run is pool-checked at creation (cheap after the first read: the characteristics are cached in-process),
+    # so a category that must be sampled but has no buildings is a 422 now, not a late worker failure. Without
+    # selections the packaged attribute set is used only to word messages, so an invalid stored configuration
+    # never blocks unfiltered runs.
+    check_pools(
+        settings, parsed, active.exposed if active is not None else ea_svc.packaged_exposed(), principal,
+        filtered=active is not None,
+    )  # fmt: skip
     try:
         # permission flag filters.use: adding, changing or removing filters relative to the stored composition
         validate_filter_edit(principal.role, new=snapshot, saved=saved, overrides=overrides)
