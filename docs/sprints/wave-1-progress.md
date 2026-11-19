@@ -73,3 +73,44 @@ the web app (now a lint rule) · database-level immutability for configuration v
 ### Waiting on the owner
 How a fixed-count run should report convergence (lead recommends a "not checked" state; today it says converged) ·
 data inspector and Docker checks on the Mac · the decision batch in the deployment plan section 9.
+
+---
+
+## Batch 2 result (2026-11-19)
+At most three Opus agents at a time. No reviewer escalation.
+
+| Story | Rating | Review | Lead check | State |
+|---|---|---|---|---|
+| W1-COMPOSE: `GET /me`, `GET /building-types`, `composition` runs built from the registry, server names the characteristics files and a temperature source, readiness and worker verify data files | **Critical** | Security: no critical, high or medium. QA: pass with conditions; results byte-identical to before for existing inputs; 50 mutations, one equivalent survivor; Postgres 16 green. 10 items fixed | **Lead read the full production diff (13 files, about 800 lines)**; no changes needed | Merged |
+| W1-DEPLOY2: compose passes the new settings only when set; env typo guard; smoke test checks `data_files` and runs a custom composition | Standard | No separate QA (deviation from the plan, small follow-up to a reviewed story); builder mutation checks | Lead read the scripts; GitHub run 63 green | Merged |
+| W1-WEB2: composition form on the real API, role from `/me`, catalogue, data-used panel, temperature overlay | Standard | QA: pass with conditions, 6 defects fixed, real-API browser run 9/9, keyboard operation tested. UX review (first use of `ux-reviewer`, Sonnet): 5 major problems and about 25 wording changes, all must-fix items fixed | Lead viewed the screens at 1280 and 390 px and re-ran the web checks | Merged |
+
+### Measured (lead, 2026-11-19, `b2a9b40`)
+Root 1,219 passed, 3 skipped, 2 expected failures (engine count rules, pending the owner); API 686 passed, 7 skipped
+(Postgres-only), 28 expected failures; web 443 passed; lint, format, types, web typecheck and build clean. API on
+Postgres 16: 684 passed (builder, before the deploy follow-up). GitHub run 63 green on all six jobs, including a custom
+composition run on real containers; run 64 (web merge) not yet seen.
+
+### Wave 1 exit criterion
+"In a browser against the compose stack, on fixtures: define a composition, run it with progress, see the stored run."
+Proven in parts, not yet as one test: the compose stack runs a custom composition through nginx, Redis and the worker
+(CI smoke, curl); the browser flow works against a real API with an in-process worker (builder and QA, Chromium).
+A browser test against the real containers is the first story of Wave 2 (it is also FR-PLAT's end-to-end test).
+
+### Not built in Wave 1 (owner decision pending)
+W1-DATA: characteristics store in the database (FR-DATA-7) and meter placeholder (FR-DATA-3). The API now keeps the
+characteristics files in an in-process cache, so pool previews are fast after the first read; the lead recommends
+deferring the database table. Risk: first-read time and memory on the real DC files is unmeasured.
+
+### Engine defect found, not fixed (owner decision pending)
+`config_from_dict` accepts fixed counts above `total_buildings` and all-fixed counts that do not equal it; the engine
+then samples the wrong number of buildings. The API refuses such input for every run; direct library use is
+unprotected. Two strict expected-failure tests in `tests/test_qa_w1_compose_engine_counts.py`.
+
+### API gaps for later stories
+Title and description per predefined composition · explicit weather year and calibration status in results · filter
+options for a filter form · saved compositions (also closes QA D1 from batch 1).
+
+### Still unverified
+The owner's real data (file names, columns, time convention, first-read cost) · macOS and arm64 · a browser against
+the real containers · an adaptive run that actually converges, seen in the app · Firefox, Safari, screen readers.

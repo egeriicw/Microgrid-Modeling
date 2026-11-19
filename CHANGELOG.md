@@ -5,6 +5,13 @@ marked **[numbers change]**.
 
 ## [Unreleased]
 
+### Added (Wave 1 batch 2, 2026-11-19)
+- API: `GET /api/v1/me`, `GET /api/v1/building-types`; `POST /runs` accepts `composition`; run detail `data_files`; `/ready` `checks.data_files`; settings `MICROGRID_RESSTOCK_CHARS_FILE`, `MICROGRID_COMSTOCK_CHARS_FILE`, `MICROGRID_TEMPERATURE_*`.
+- Web: composition form on the real API, plain-language run and results screens, data-used panel, temperature overlay, per-field errors.
+- Deploy: settings pass-through, `deploy/check-env.sh`, custom composition run in the CI smoke test.
+### Changed
+- Every run is checked at creation for count rules and empty building pools (422 instead of a late worker failure). All API responses are `Cache-Control: no-store`.
+
 ### Added (Wave 1 batch 1, 2026-11-19)
 - API: exposed-attribute configuration (`/api/v1/exposed-attributes/...`: active, versions, activate, preview), stored and versioned (migration 0004); `filter_selections` on `POST /runs`; run detail shows effective filters, selections and pool sizes.
 - Engine: temperature series on results (results schema 1.1), `weather` module interface, `ensemble.building_profiles` (per-building load, verified against run totals).

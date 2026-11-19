@@ -6,20 +6,21 @@
 "what to do next" parts of sections 3b to 4 and 8 below, which are kept as history.
 
 ## 0. Current state (2026-11-19, Day 14 of 30)
-- `main` holds everything up to Wave 0 (PR 11). Wave 1 batch 1 is merged on this branch and pushed, **not yet in a
-  pull request**: temperature on results, real worker and web in compose with a CI smoke test, web app on the real
-  API, filters admin API. Full record: `docs/sprints/wave-1-progress.md`.
-- Baseline (lead, 2026-11-19): root 1,167 passed; API 378 passed, 29 expected failures; web 226 passed; all linters and
-  type checks clean; GitHub CI green on six jobs including `compose-smoke`.
-- Next (batch 2, one API story at a time because they share `api/`): W1-COMPOSE (caller identity endpoint,
-  building-type catalogue, composition to scenario config, saved compositions), W1-DATASET (server names the
-  characteristics files and a temperature source), W1-DATA (characteristics store, meter placeholder). Then the Wave 1
-  pull request and the Day-14 checkpoint report (deployment plan section 8).
-- Usage limits: nine Opus agents in one session exhausted the five-hour allowance. Run at most three or four at once.
-- Sub-agents cannot commit; the lead commits their work after re-running the checks. Worktrees live under
-  `.claude/worktrees/` (git-ignored); the four batch-1 worktrees can be removed.
-- Waiting on the owner: fixed-count convergence wording decision; the Mac checks (data inspector, Docker); the decision
-  batch in deployment plan section 9. An older `deploy/.env` on the Mac needs an `API_KEYS` line (runbook, top).
+- `main` holds everything up to Wave 0 (PR 11). **Wave 1 is built and merged on this branch, pushed, not yet in a
+  pull request** (the owner must ask for one). Full record: `docs/sprints/wave-1-progress.md` (batches 1 and 2).
+- Baseline (lead, 2026-11-19, `b2a9b40`): root 1,219 passed; API 686 passed, 28 expected failures; web 443 passed; all
+  linters and type checks clean; GitHub run 63 green on six jobs including a custom composition on real containers.
+- What works: a Client signs in with an API key, defines a neighbourhood by building type (exact numbers or share
+  ranges), runs it with live progress, cancels or replays it, and sees results with an uncertainty band; filters admin
+  API; temperature on results when a source is configured; Docker Compose stack with a real worker.
+- Next: Day-14 checkpoint decisions (deployment plan section 8), then Wave 2. First Wave 2 story: a browser test
+  against the real containers (Playwright in CI). Then charts on real results, CSV downloads, results-model gaps.
+- Waiting on the owner (all asked, none answered yet): Wave 1 pull request; defer the characteristics table and
+  meter entity (FR-DATA-7, FR-DATA-3)?; fixed-count runs report convergence as "not checked"?; default convergence
+  rule; fix the engine to reject fixed counts above the total?; may Demo see data file names?; the Mac checks (data
+  inspector, Docker; an older `deploy/.env` needs an `API_KEYS` line, runbook top); deployment plan section 9.
+- Usage limits: run at most three or four Opus agents at once. Sub-agents cannot commit; the lead commits their work
+  after re-running the checks. Worktrees live under `.claude/worktrees/` (git-ignored); all are removed.
 
 ## 1. One-paragraph situation
 The owner (Bill Eger, non-expert builder) is turning a notebook-era prototype into a production web app for community
